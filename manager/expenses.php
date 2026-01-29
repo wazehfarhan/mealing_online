@@ -28,6 +28,14 @@ $filter_month = isset($_GET['month']) && $_GET['month'] !== '' ? intval($_GET['m
 $filter_year = isset($_GET['year']) && $_GET['year'] !== '' ? intval($_GET['year']) : '';
 $filter_category = isset($_GET['category']) ? $_GET['category'] : '';
 
+// Validate filter values
+if ($filter_month) {
+    $filter_month = max(1, min(12, $filter_month)); // Ensure month is 1-12
+}
+if ($filter_year) {
+    $filter_year = max(2000, min(2100, $filter_year)); // Ensure reasonable year
+}
+
 // Sanitize category if provided
 if ($filter_category) {
     $filter_category = mysqli_real_escape_string($conn, $filter_category);
@@ -68,18 +76,21 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
 // Now include the header AFTER potential redirects
 require_once __DIR__ . '/../includes/header.php';
 
-// Build WHERE clause for queries
+// Build WHERE clause for queries using MySQL functions for flexible filtering
 $where_conditions = ["1=1"];
 $params = [];
 $param_types = "";
 
-if ($filter_month && $filter_year) {
-    $month_start = "$filter_year-" . str_pad($filter_month, 2, "0", STR_PAD_LEFT) . "-01";
-    $month_end = date('Y-m-t', strtotime($month_start));
-    $where_conditions[] = "e.expense_date BETWEEN ? AND ?";
-    $params[] = $month_start;
-    $params[] = $month_end;
-    $param_types .= "ss";
+if ($filter_month) {
+    $where_conditions[] = "MONTH(e.expense_date) = ?";
+    $params[] = $filter_month;
+    $param_types .= "i";
+}
+
+if ($filter_year) {
+    $where_conditions[] = "YEAR(e.expense_date) = ?";
+    $params[] = $filter_year;
+    $param_types .= "i";
 }
 
 if ($filter_category) {
@@ -167,7 +178,7 @@ $summary = $summary_row ?: [
 // CATEGORY BREAKDOWN
 // =========================
 $breakdown_sql = "SELECT category, SUM(amount) as total, COUNT(*) as count 
-                  FROM expenses 
+                  FROM expenses e
                   WHERE $where_clause 
                   GROUP BY category 
                   ORDER BY total DESC";
@@ -261,7 +272,30 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                             </button>
                         </div>
                     </div>
+                    
+                    <!-- Hidden field to preserve current page if needed -->
+                    <?php if (isset($_GET['page']) && $_GET['page'] > 1): ?>
+                    <input type="hidden" name="page" value="<?php echo intval($_GET['page']); ?>">
+                    <?php endif; ?>
                 </form>
+                
+                <?php if ($filter_month || $filter_year || $filter_category): ?>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        Active filters: 
+                        <?php if ($filter_month): ?>
+                        <span class="badge bg-info">Month: <?php echo $months[$filter_month-1]; ?></span>
+                        <?php endif; ?>
+                        <?php if ($filter_year): ?>
+                        <span class="badge bg-info">Year: <?php echo $filter_year; ?></span>
+                        <?php endif; ?>
+                        <?php if ($filter_category): ?>
+                        <span class="badge bg-info">Category: <?php echo $filter_category; ?></span>
+                        <?php endif; ?>
+                        <a href="expenses.php" class="text-danger ms-2"><small>Clear all filters</small></a>
+                    </small>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -326,7 +360,17 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                 <div class="text-center py-5">
                     <i class="fas fa-money-bill-wave fa-3x text-muted mb-3"></i>
                     <h5>No Expenses Found</h5>
-                    <p class="text-muted">Add your first expense to get started</p>
+                    <p class="text-muted">
+                        <?php if ($filter_month || $filter_year || $filter_category): ?>
+                        Try adjusting your filters or
+                        <?php endif; ?>
+                        Add your first expense to get started
+                    </p>
+                    <?php if ($filter_month || $filter_year || $filter_category): ?>
+                    <a href="expenses.php" class="btn btn-outline-secondary me-2">
+                        <i class="fas fa-times me-2"></i>Clear Filters
+                    </a>
+                    <?php endif; ?>
                     <a href="add_expense.php" class="btn btn-primary">
                         <i class="fas fa-plus me-2"></i>Add First Expense
                     </a>
@@ -523,7 +567,7 @@ function confirmDelete(expenseId, category, date) {
 }
 
 <?php if (!empty($category_breakdown)): ?>
-$(document).ready(function() {
+document.addEventListener('DOMContentLoaded', function() {
     const ctx = document.getElementById('categoryChart').getContext('2d');
     const categoryChart = new Chart(ctx, {
         type: 'doughnut',
