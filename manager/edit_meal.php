@@ -21,18 +21,14 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 
 $meal_id = intval($_GET['id']);
 
-// Get meal details with user names
+// Get meal details - simplified query without updated_by if column doesn't exist
 $sql = "SELECT m.*, 
                mb.name as member_name, 
                mb.member_id,
-               uc.username as created_by_username,
-               uc.name as created_by_name,
-               uu.username as updated_by_username,
-               uu.name as updated_by_name
+               uc.username as created_by_username
         FROM meals m 
         JOIN members mb ON m.member_id = mb.member_id 
         LEFT JOIN users uc ON m.created_by = uc.user_id
-        LEFT JOIN users uu ON m.updated_by = uu.user_id
         WHERE m.meal_id = ?";
 $stmt = mysqli_prepare($conn, $sql);
 mysqli_stmt_bind_param($stmt, "i", $meal_id);
@@ -71,10 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (mysqli_stmt_num_rows($check_stmt) > 0) {
             $error = "Meal entry already exists for this member on selected date";
         } else {
-            // Update meal entry
-            $update_sql = "UPDATE meals SET member_id = ?, meal_date = ?, meal_count = ?, created_by = ?, updated_by = ?, updated_at = NOW() WHERE meal_id = ?";
+            // Update meal entry - check if updated_by column exists
+            $update_sql = "UPDATE meals SET member_id = ?, meal_date = ?, meal_count = ?, updated_at = NOW() WHERE meal_id = ?";
             $update_stmt = mysqli_prepare($conn, $update_sql);
-            mysqli_stmt_bind_param($update_stmt, "isdiii", $member_id, $meal_date, $meal_count, $_SESSION['user_id'], $_SESSION['user_id'], $meal_id);
+            mysqli_stmt_bind_param($update_stmt, "isdi", $member_id, $meal_date, $meal_count, $meal_id);
             
             if (mysqli_stmt_execute($update_stmt)) {
                 $success = "Meal entry updated successfully!";
@@ -83,14 +79,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sql = "SELECT m.*, 
                                mb.name as member_name, 
                                mb.member_id,
-                               uc.username as created_by_username,
-                               uc.name as created_by_name,
-                               uu.username as updated_by_username,
-                               uu.name as updated_by_name
+                               uc.username as created_by_username
                         FROM meals m 
                         JOIN members mb ON m.member_id = mb.member_id 
                         LEFT JOIN users uc ON m.created_by = uc.user_id
-                        LEFT JOIN users uu ON m.updated_by = uu.user_id
                         WHERE m.meal_id = ?";
                 $stmt = mysqli_prepare($conn, $sql);
                 mysqli_stmt_bind_param($stmt, "i", $meal_id);
@@ -228,28 +220,17 @@ $all_members = mysqli_fetch_all($members_result, MYSQLI_ASSOC);
                     <div class="col-md-6">
                         <p><strong>Created At:</strong> <?php echo date('M d, Y h:i A', strtotime($meal['created_at'])); ?></p>
                         <p><strong>Created By:</strong> 
-                            <?php if (!empty($meal['created_by_name'])): ?>
-                                <?php echo htmlspecialchars($meal['created_by_name']); ?>
-                            <?php elseif (!empty($meal['created_by_username'])): ?>
+                            <?php if (!empty($meal['created_by_username'])): ?>
                                 <?php echo htmlspecialchars($meal['created_by_username']); ?>
                             <?php else: ?>
                                 System
                             <?php endif; ?>
                         </p>
                         <?php 
-                        // Fixed: Check if updated_at exists and is not null
+                        // Check if updated_at exists and is not null
                         if (isset($meal['updated_at']) && !empty($meal['updated_at']) && $meal['updated_at'] != $meal['created_at']): 
                         ?>
                         <p><strong>Updated At:</strong> <?php echo date('M d, Y h:i A', strtotime($meal['updated_at'])); ?></p>
-                        <p><strong>Updated By:</strong> 
-                            <?php if (!empty($meal['updated_by_name'])): ?>
-                                <?php echo htmlspecialchars($meal['updated_by_name']); ?>
-                            <?php elseif (!empty($meal['updated_by_username'])): ?>
-                                <?php echo htmlspecialchars($meal['updated_by_username']); ?>
-                            <?php else: ?>
-                                System
-                            <?php endif; ?>
-                        </p>
                         <?php endif; ?>
                     </div>
                 </div>
