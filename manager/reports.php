@@ -281,16 +281,24 @@ foreach ($monthly_report as $member) {
                         <label for="member_id" class="form-label">Select Member</label>
                         <?php
                         $members_sql = "SELECT * FROM members WHERE status = 'active' ORDER BY name";
-                        $members_result = mysqli_query($conn, $sql);
-                        $all_members = mysqli_fetch_all($members_result, MYSQLI_ASSOC);
+                        $members_result = mysqli_query($conn, $members_sql);
+    
+                        if ($members_result) {
+                            $all_members = mysqli_fetch_all($members_result, MYSQLI_ASSOC);
+                        } else {
+                            $all_members = [];
+                            echo '<div class="alert alert-warning">Error loading members: ' . mysqli_error($conn) . '</div>';
+                        }
                         ?>
                         <select name="member_id" id="member_id" class="form-select" required>
                             <option value="">Select Member</option>
-                            <?php foreach ($all_members as $member): ?>
-                            <option value="<?php echo $member['member_id']; ?>">
-                                <?php echo htmlspecialchars($member['name']); ?>
-                            </option>
-                            <?php endforeach; ?>
+                            <?php if (!empty($all_members)): ?>
+                                <?php foreach ($all_members as $member): ?>
+                                <option value="<?php echo $member['member_id']; ?>">
+                                    <?php echo htmlspecialchars($member['name']); ?>
+                                </option>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         </select>
                     </div>
                     
