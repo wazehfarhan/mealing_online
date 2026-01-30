@@ -12,8 +12,11 @@ class Auth {
         // Sanitize input
         $username = mysqli_real_escape_string($this->conn, $username);
         
-        // Prepare SQL statement
-        $sql = "SELECT * FROM users WHERE (username = ? OR email = ?) AND is_active = 1";
+        // Prepare SQL statement - Join with houses table to get house info
+        $sql = "SELECT u.*, h.house_id as user_house_id, h.house_name, h.house_code 
+                FROM users u 
+                LEFT JOIN houses h ON u.house_id = h.house_id 
+                WHERE (u.username = ? OR u.email = ?) AND u.is_active = 1";
         $stmt = mysqli_prepare($this->conn, $sql);
         
         if (!$stmt) {
@@ -37,6 +40,18 @@ class Auth {
                 $_SESSION['role'] = $row['role'];
                 $_SESSION['member_id'] = $row['member_id'];
                 $_SESSION['logged_in'] = true;
+                
+                // Set house information if exists
+                if (!empty($row['user_house_id'])) {
+                    $_SESSION['house_id'] = $row['user_house_id'];
+                    $_SESSION['house_name'] = $row['house_name'] ?? null;
+                    $_SESSION['house_code'] = $row['house_code'] ?? null;
+                } else {
+                    // Clear house_id if user doesn't have one
+                    unset($_SESSION['house_id']);
+                    unset($_SESSION['house_name']);
+                    unset($_SESSION['house_code']);
+                }
                 
                 // Update last login
                 $update_sql = "UPDATE users SET last_login = NOW() WHERE user_id = ?";
@@ -68,8 +83,380 @@ class Auth {
         
         if ($_SESSION['role'] !== $role) {
             $_SESSION['error'] = "Access denied. You need to be a " . $role . " to access this page.";
-            header("Location: ../index.php");
+            
+            // Redirect based on user's actual role
+            if (isset($_SESSION['role'])) {
+                if ($_SESSION['role'] === 'manager') {
+                    header("Location: ../manager/dashboard.php");
+                } else {
+                    header("Location: ../member/dashboard.php");
+                }
+            } else {
+                header("Location: ../index.php");
+            }
             exit();
+        }
+        
+        // For manager/member roles, also check if they have a house
+        if (in_array($role, ['manager', 'member'])) {
+            $this->requireHouse();
+        }
+    }
+    
+    public function requireHouse() {
+        $this->requireLogin();
+        
+        // Check if house_id is set in session
+        if (!isset($_SESSION['house_id']) || empty($_SESSION['house_id'])) {
+            // Try to get house_id from database
+            $house_info = $this->getUserHouseInfo();
+            
+            if ($house_info && !empty($house_info['house_id'])) {
+                // Set house info in session
+                $_SESSION['house_id'] = $house_info['house_id'];
+                $_SESSION['house_name'] = $house_info['house_name'] ?? null;
+                $_SESSION['house_code'] = $house_info['house_code'] ?? null;
+            } else {
+                // No house found, redirect to setup
+                if ($_SESSION['role'] === 'manager') {
+                    header("Location: ../manager/setup_house.php");
+                } else {
+                    header("Location: ../manager/setup_house.php");
+                }
+                exit();
+            }
+        }
+    }
+    
+    public function hasHouse($user_id = null) {
+        if (!$user_id && isset($_SESSION['user_id'])) {
+            $user_id = $_SESSION['user_id'];
+        }
+        
+        if (!$user_id) {
+            return false;
+        }
+        
+        $sql = "SELECT house_id FROM users WHERE user_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $user_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        if ($row = mysqli_fetch_assoc($result)) {
+            return !empty($row['house_id']);
+        }
+        
+        return false;
+    }
+    
+    public function getUserHouseInfo($user_id = null) {
+        if (!$user_id && isset($_SESSION['user_id'])) {
+            $user_id = $_SESSION['user_id'];
+        }
+        
+        if (!$user_id) {
+            return null;
+        }
+        
+        $sql = "SELECT u.house_id, h.house_name, h.house_code, h.description, h.is_active, h.created_at
+                FROM users u 
+                LEFT JOIN houses h ON u.house_id = h.house_id 
+                WHERE u.user_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $user_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        return mysqli_fetch_assoc($result);
+    }
+    
+    public function createHouse($house_name, $description = '', $user_id = null) {
+        if (!$user_id && isset($_SESSION['user_id'])) {
+            $user_id = $_SESSION['user_id'];
+        }
+        
+        if (!$user_id) {
+            return ['success' => false, 'error' => 'User ID is required'];
+        }
+        
+        // Generate unique house code
+        $house_code = strtoupper(substr(md5(uniqid()), 0, 6));
+        
+        // Start transaction
+        mysqli_begin_transaction($this->conn);
+        
+        try {
+            // Insert house
+            $sql = "INSERT INTO houses (house_name, description, house_code, created_by, is_active) 
+                    VALUES (?, ?, ?, ?, 1)";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "sssi", $house_name, $description, $house_code, $user_id);
+            
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception("Failed to insert house: " . mysqli_error($this->conn));
+            }
+            
+            $new_house_id = mysqli_insert_id($this->conn);
+            
+            // Update user with house_id
+            $sql = "UPDATE users SET house_id = ? WHERE user_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "ii", $new_house_id, $user_id);
+            
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception("Failed to update user: " . mysqli_error($this->conn));
+            }
+            
+            // Get user info for member creation
+            $sql = "SELECT username, email FROM users WHERE user_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "i", $user_id);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            $current_user = mysqli_fetch_assoc($result);
+            
+            if (!$current_user) {
+                throw new Exception("Failed to get user information");
+            }
+            
+            // Create user as a member of the house
+            $sql = "INSERT INTO members (house_id, name, phone, email, join_date, status, created_by) 
+                    VALUES (?, ?, ?, ?, CURDATE(), 'active', ?)";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            
+            // Create variables for binding
+            $member_name = $current_user['username'];
+            $member_phone = '';
+            $member_email = isset($current_user['email']) ? $current_user['email'] : '';
+            
+            mysqli_stmt_bind_param($stmt, "isssi", $new_house_id, $member_name, 
+                                  $member_phone, $member_email, $user_id);
+            
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception("Failed to create member: " . mysqli_error($this->conn));
+            }
+            
+            $member_id = mysqli_insert_id($this->conn);
+            
+            // Link user to member
+            $sql = "UPDATE users SET member_id = ? WHERE user_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "ii", $member_id, $user_id);
+            
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception("Failed to link user to member: " . mysqli_error($this->conn));
+            }
+            
+            // Commit transaction
+            mysqli_commit($this->conn);
+            
+            // Update session
+            $_SESSION['house_id'] = $new_house_id;
+            $_SESSION['member_id'] = $member_id;
+            
+            return [
+                'success' => true,
+                'house_id' => $new_house_id,
+                'house_code' => $house_code,
+                'member_id' => $member_id
+            ];
+            
+        } catch (Exception $e) {
+            mysqli_rollback($this->conn);
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+    
+    public function joinHouse($house_code, $user_id = null) {
+        if (!$user_id && isset($_SESSION['user_id'])) {
+            $user_id = $_SESSION['user_id'];
+        }
+        
+        if (!$user_id) {
+            return ['success' => false, 'error' => 'User ID is required'];
+        }
+        
+        // Check if house exists
+        $sql = "SELECT house_id, house_name, is_active FROM houses WHERE house_code = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "s", $house_code);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        $house = mysqli_fetch_assoc($result);
+        
+        if (!$house) {
+            return ['success' => false, 'error' => 'Invalid house code'];
+        }
+        
+        if (!$house['is_active']) {
+            return ['success' => false, 'error' => 'This house is inactive'];
+        }
+        
+        // Start transaction
+        mysqli_begin_transaction($this->conn);
+        
+        try {
+            // Update user with house_id
+            $sql = "UPDATE users SET house_id = ? WHERE user_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "ii", $house['house_id'], $user_id);
+            
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception("Failed to update user with house: " . mysqli_error($this->conn));
+            }
+            
+            // Get user info for member creation
+            $sql = "SELECT username, email FROM users WHERE user_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "i", $user_id);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            $current_user = mysqli_fetch_assoc($result);
+            
+            if (!$current_user) {
+                throw new Exception("Failed to get user information");
+            }
+            
+            // Create user as a member of the house
+            $sql = "INSERT INTO members (house_id, name, phone, email, join_date, status, created_by) 
+                    VALUES (?, ?, ?, ?, CURDATE(), 'active', ?)";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            
+            // Create variables for binding
+            $member_name = $current_user['username'];
+            $member_phone = '';
+            $member_email = isset($current_user['email']) ? $current_user['email'] : '';
+            
+            mysqli_stmt_bind_param($stmt, "isssi", $house['house_id'], $member_name, 
+                                  $member_phone, $member_email, $user_id);
+            
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception("Failed to create member: " . mysqli_error($this->conn));
+            }
+            
+            $member_id = mysqli_insert_id($this->conn);
+            
+            // Link user to member
+            $sql = "UPDATE users SET member_id = ? WHERE user_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "ii", $member_id, $user_id);
+            
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception("Failed to link user to member: " . mysqli_error($this->conn));
+            }
+            
+            // Commit transaction
+            mysqli_commit($this->conn);
+            
+            // Update session
+            $_SESSION['house_id'] = $house['house_id'];
+            $_SESSION['member_id'] = $member_id;
+            
+            return [
+                'success' => true,
+                'house_id' => $house['house_id'],
+                'house_name' => $house['house_name'],
+                'member_id' => $member_id
+            ];
+            
+        } catch (Exception $e) {
+            mysqli_rollback($this->conn);
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+    
+    public function leaveHouse($user_id = null) {
+        if (!$user_id && isset($_SESSION['user_id'])) {
+            $user_id = $_SESSION['user_id'];
+        }
+        
+        if (!$user_id) {
+            return ['success' => false, 'error' => 'User ID is required'];
+        }
+        
+        $house_id = $_SESSION['house_id'] ?? null;
+        
+        if (!$house_id) {
+            return ['success' => false, 'error' => 'No house to leave'];
+        }
+        
+        // Start transaction
+        mysqli_begin_transaction($this->conn);
+        
+        try {
+            // Remove house_id and member_id from user
+            $sql = "UPDATE users SET house_id = NULL, member_id = NULL WHERE user_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "i", $user_id);
+            
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception("Failed to remove house from user: " . mysqli_error($this->conn));
+            }
+            
+            // If user is a manager, handle manager transition
+            if ($_SESSION['role'] === 'manager') {
+                // Check if there are other managers in the house
+                $sql = "SELECT COUNT(*) as manager_count FROM users 
+                        WHERE house_id = ? AND role = 'manager' AND user_id != ?";
+                $stmt = mysqli_prepare($this->conn, $sql);
+                mysqli_stmt_bind_param($stmt, "ii", $house_id, $user_id);
+                mysqli_stmt_execute($stmt);
+                $result = mysqli_stmt_get_result($stmt);
+                $data = mysqli_fetch_assoc($result);
+                
+                if ($data['manager_count'] == 0) {
+                    // No other managers, assign the oldest active member as manager
+                    $sql = "SELECT user_id FROM users 
+                            WHERE house_id = ? AND role = 'member' AND is_active = 1 
+                            ORDER BY created_at ASC LIMIT 1";
+                    $stmt = mysqli_prepare($this->conn, $sql);
+                    mysqli_stmt_bind_param($stmt, "i", $house_id);
+                    mysqli_stmt_execute($stmt);
+                    $result = mysqli_stmt_get_result($stmt);
+                    
+                    if ($new_manager = mysqli_fetch_assoc($result)) {
+                        // Promote this member to manager
+                        $sql = "UPDATE users SET role = 'manager' WHERE user_id = ?";
+                        $stmt = mysqli_prepare($this->conn, $sql);
+                        mysqli_stmt_bind_param($stmt, "i", $new_manager['user_id']);
+                        mysqli_stmt_execute($stmt);
+                    }
+                }
+            }
+            
+            // Update member status to inactive
+            $sql = "UPDATE members m 
+                    INNER JOIN users u ON m.member_id = u.member_id 
+                    SET m.status = 'inactive' 
+                    WHERE u.user_id = ? AND m.house_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "ii", $user_id, $house_id);
+            mysqli_stmt_execute($stmt);
+            
+            // Commit transaction
+            mysqli_commit($this->conn);
+            
+            // Clear session house data
+            unset($_SESSION['house_id']);
+            unset($_SESSION['house_name']);
+            unset($_SESSION['house_code']);
+            unset($_SESSION['member_id']);
+            
+            return ['success' => true];
+            
+        } catch (Exception $e) {
+            mysqli_rollback($this->conn);
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
         }
     }
     
@@ -124,8 +511,10 @@ class Auth {
     
     public function getCurrentUser() {
         if ($this->isLoggedIn()) {
-            $sql = "SELECT u.*, m.name as member_name FROM users u 
+            $sql = "SELECT u.*, m.name as member_name, h.house_name 
+                    FROM users u 
                     LEFT JOIN members m ON u.member_id = m.member_id 
+                    LEFT JOIN houses h ON u.house_id = h.house_id 
                     WHERE u.user_id = ?";
             $stmt = mysqli_prepare($this->conn, $sql);
             mysqli_stmt_bind_param($stmt, "i", $_SESSION['user_id']);
@@ -171,6 +560,69 @@ class Auth {
         }
         
         return false;
+    }
+    
+    // Helper function to check if current page is house setup
+    public function isHouseSetupPage() {
+        $current_page = basename($_SERVER['PHP_SELF']);
+        return $current_page === 'setup_house.php';
+    }
+    
+    // Helper function to redirect to house setup if no house
+    public function redirectIfNoHouse() {
+        if (!$this->isHouseSetupPage() && !$this->hasHouse()) {
+            header("Location: setup_house.php");
+            exit();
+        }
+    }
+    
+    // Get all houses (for admin or manager selection)
+    public function getAllHouses() {
+        $sql = "SELECT h.*, u.username as manager_name, 
+                       (SELECT COUNT(*) FROM users WHERE house_id = h.house_id) as total_members,
+                       (SELECT COUNT(*) FROM members WHERE house_id = h.house_id AND status = 'active') as active_members
+                FROM houses h
+                LEFT JOIN users u ON h.created_by = u.user_id
+                ORDER BY h.created_at DESC";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        return mysqli_fetch_all($result, MYSQLI_ASSOC);
+    }
+    // In includes/auth.php, add this method to the Auth class
+    public function getUserHouseId($user_id) {
+        $conn = getConnection();
+        $sql = "SELECT house_id FROM users WHERE user_id = ?";
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $user_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        $user = mysqli_fetch_assoc($result);
+        return $user ? $user['house_id'] : 0;
+    }
+    
+    // Get house members
+    public function getHouseMembers($house_id = null) {
+        if (!$house_id && isset($_SESSION['house_id'])) {
+            $house_id = $_SESSION['house_id'];
+        }
+        
+        if (!$house_id) {
+            return [];
+        }
+        
+        $sql = "SELECT m.*, u.username, u.email as user_email, u.is_active as user_active
+                FROM members m
+                LEFT JOIN users u ON m.member_id = u.member_id
+                WHERE m.house_id = ?
+                ORDER BY m.name";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $house_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        return mysqli_fetch_all($result, MYSQLI_ASSOC);
     }
 }
 ?>
