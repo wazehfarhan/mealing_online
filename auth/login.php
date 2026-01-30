@@ -1,12 +1,23 @@
 <?php
+session_start(); // Add session_start at the beginning
 require_once '../config/database.php';
 
 // Check if already logged in
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
-    if ($_SESSION['role'] === 'manager') {
-        header("Location: ../manager/dashboard.php");
+    // Check if user has a house using Auth class
+    require_once '../includes/auth.php';
+    $auth = new Auth();
+    
+    if ($auth->hasHouse()) {
+        // User has a house, redirect to appropriate dashboard
+        if ($_SESSION['role'] === 'manager') {
+            header("Location: ../manager/dashboard.php");
+        } else {
+            header("Location: ../member/dashboard.php");
+        }
     } else {
-        header("Location: ../member/dashboard.php");
+        // No house, redirect to setup
+        header("Location: ../manager/setup_house.php");
     }
     exit();
 }
@@ -24,11 +35,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Please enter both username and password";
     } else {
         if ($auth->login($username, $password)) {
-            // Redirect based on role
-            if ($_SESSION['role'] === 'manager') {
-                header("Location: ../manager/dashboard.php");
+            // Check if user has a house
+            if ($auth->hasHouse()) {
+                // User has a house, redirect to appropriate dashboard
+                if ($_SESSION['role'] === 'manager') {
+                    header("Location: ../manager/dashboard.php");
+                } else {
+                    header("Location: ../member/dashboard.php");
+                }
             } else {
-                header("Location: ../member/dashboard.php");
+                // No house, redirect to setup
+                if ($_SESSION['role'] === 'manager') {
+                    header("Location: ../manager/setup_house.php");
+                } else {
+                    // Members should join via invite, but redirect to setup anyway
+                    header("Location: ../manager/setup_house.php");
+                }
             }
             exit();
         } else {
@@ -126,6 +148,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
                 <?php unset($_SESSION['success']); endif; ?>
+                
+                <?php if (isset($_SESSION['error'])): ?>
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="fas fa-exclamation-circle me-2"></i><?php echo $_SESSION['error']; ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                <?php unset($_SESSION['error']); endif; ?>
                 
                 <form method="POST" action="">
                     <div class="mb-3">

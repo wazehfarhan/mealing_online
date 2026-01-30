@@ -19,20 +19,12 @@ if (!mysqli_select_db($conn, DB_NAME)) {
     die("Error selecting database: " . mysqli_error($conn));
 }
 
-// Read SQL file
-$sql_file = 'database/meal_system.sql';
-if (!file_exists($sql_file)) {
-    die("SQL file not found: $sql_file");
-}
+// Enable exception handling for mysqli
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
-$sql_content = file_get_contents($sql_file);
-
-// Remove comments and split queries
-$sql_content = preg_replace('/--.*$/m', '', $sql_content);
-$queries = array_filter(array_map('trim', explode(';', $sql_content)));
-
-$success_count = 0;
-$error_count = 0;
+// Check if tables already exist
+$check_tables = mysqli_query($conn, "SHOW TABLES LIKE 'houses'");
+$tables_exist = mysqli_num_rows($check_tables) > 0;
 
 ?>
 <!DOCTYPE html>
@@ -99,6 +91,49 @@ $error_count = 0;
             <p class="mb-0">Meal Management System Installation</p>
         </div>
         
+        <?php if ($tables_exist): ?>
+        <div class="alert alert-warning">
+            <h4><i class="fas fa-exclamation-triangle me-2"></i>Database Already Exists</h4>
+            <p>The database tables already exist. Running setup again may cause issues.</p>
+        </div>
+        
+        <div class="text-center mt-4">
+            <a href="index.php" class="btn btn-setup btn-lg me-3">
+                <i class="fas fa-home me-2"></i>Go to Home
+            </a>
+            <a href="auth/login.php" class="btn btn-success btn-lg">
+                <i class="fas fa-sign-in-alt me-2"></i>Login Now
+            </a>
+            <button type="button" class="btn btn-danger btn-lg" data-bs-toggle="modal" data-bs-target="#resetModal">
+                <i class="fas fa-redo me-2"></i>Reset Database
+            </button>
+        </div>
+        
+        <!-- Reset Modal -->
+        <div class="modal fade" id="resetModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Reset Database</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger">
+                            <strong>Warning:</strong> This will delete all existing data and recreate the database structure.
+                            This action cannot be undone!
+                        </div>
+                        <p>Are you sure you want to reset the database?</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <a href="setup.php?reset=1" class="btn btn-danger">Yes, Reset Database</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <?php else: ?>
+        
         <div class="progress mb-4">
             <div class="progress-bar progress-bar-striped progress-bar-animated" 
                  style="width: 50%">Setting up database...</div>
@@ -106,22 +141,78 @@ $error_count = 0;
         
         <div class="log-box">
             <?php
+            // Check if reset is requested
+            $reset = isset($_GET['reset']) ? $_GET['reset'] : 0;
+            
+            if ($reset == 1 && $tables_exist) {
+                // Drop all tables first
+                echo "<div class='info'>Resetting database...</div>";
+                
+                // Disable foreign key checks
+                mysqli_query($conn, "SET FOREIGN_KEY_CHECKS = 0");
+                
+                // Get all tables
+                $tables_result = mysqli_query($conn, "SHOW TABLES");
+                while ($table_row = mysqli_fetch_array($tables_result)) {
+                    $table = $table_row[0];
+                    $drop_query = "DROP TABLE IF EXISTS `$table`";
+                    if (mysqli_query($conn, $drop_query)) {
+                        echo "<div class='info'>Dropped table: $table</div>";
+                    } else {
+                        echo "<div class='error'>Failed to drop table $table: " . mysqli_error($conn) . "</div>";
+                    }
+                }
+                
+                // Re-enable foreign key checks
+                mysqli_query($conn, "SET FOREIGN_KEY_CHECKS = 1");
+                echo "<hr>";
+            }
+            
+            // Read SQL file
+            $sql_file = 'database/meal_system.sql';
+            if (!file_exists($sql_file)) {
+                die("<div class='error'>SQL file not found: $sql_file</div>");
+            }
+
+            $sql_content = file_get_contents($sql_file);
+            
+            // Remove comments
+            $sql_content = preg_replace('/--.*$/m', '', $sql_content);
+            $sql_content = preg_replace('/\/\*.*?\*\//s', '', $sql_content);
+            
+            // Split queries
+            $queries = array_filter(array_map('trim', explode(';', $sql_content)));
+
+            $success_count = 0;
+            $error_count = 0;
+            $skipped_count = 0;
+
             // Execute queries
             foreach ($queries as $query) {
+                $query = trim($query);
                 if (!empty($query) && strlen($query) > 10) {
+                    // Skip comments and empty lines
+                    if (strpos($query, '/*') === 0 || empty($query)) {
+                        continue;
+                    }
+                    
                     echo "<div class='info'>Executing: " . substr($query, 0, 100) . "...</div>";
                     
-                    if (mysqli_query($conn, $query)) {
-                        echo "<div class='success'>✓ Success</div>";
-                        $success_count++;
-                    } else {
-                        $error_msg = mysqli_error($conn);
+                    try {
+                        if (mysqli_query($conn, $query)) {
+                            echo "<div class='success'>✓ Success</div>";
+                            $success_count++;
+                        }
+                    } catch (Exception $e) {
+                        $error_msg = $e->getMessage();
                         // Skip "already exists" errors
-                        if (strpos($error_msg, 'already exists') === false) {
-                            echo "<div class='error'>✗ Error: " . $error_msg . "</div>";
-                            $error_count++;
-                        } else {
+                        if (strpos($error_msg, 'already exists') !== false || 
+                            strpos($error_msg, "Table '") !== false && strpos($error_msg, "' already exists") !== false) {
                             echo "<div class='info'>✓ Already exists (skipped)</div>";
+                            $skipped_count++;
+                        } else {
+                            echo "<div class='error'>✗ Error: " . htmlspecialchars($error_msg) . "</div>";
+                            $error_count++;
                         }
                     }
                     echo "<hr>";
@@ -129,8 +220,28 @@ $error_count = 0;
                     // Flush output buffer
                     ob_flush();
                     flush();
-                    usleep(100000); // 0.1 second delay
+                    usleep(50000); // 0.05 second delay
                 }
+            }
+            
+            // Check if super admin user exists
+            $check_superadmin = mysqli_query($conn, "SELECT user_id FROM users WHERE username = 'superadmin'");
+            if (mysqli_num_rows($check_superadmin) == 0) {
+                // Create superadmin user with password: password
+                $password = password_hash('password', PASSWORD_DEFAULT);
+                $superadmin_sql = "INSERT INTO users (username, email, password, role, is_active) 
+                                   VALUES ('superadmin', 'superadmin@mealsystem.com', '$password', 'super_admin', 1)";
+                
+                if (mysqli_query($conn, $superadmin_sql)) {
+                    echo "<div class='success'>✓ Created super admin user</div>";
+                    $success_count++;
+                } else {
+                    echo "<div class='error'>✗ Failed to create super admin user: " . mysqli_error($conn) . "</div>";
+                    $error_count++;
+                }
+            } else {
+                echo "<div class='info'>✓ Super admin user already exists</div>";
+                $skipped_count++;
             }
             
             // Check if admin user exists
@@ -142,12 +253,34 @@ $error_count = 0;
                               VALUES ('admin', 'admin@mealsystem.com', '$password', 'manager', 1)";
                 
                 if (mysqli_query($conn, $admin_sql)) {
-                    echo "<div class='success'>✓ Created default admin user</div>";
+                    echo "<div class='success'>✓ Created admin user</div>";
+                    $success_count++;
                 } else {
                     echo "<div class='error'>✗ Failed to create admin user: " . mysqli_error($conn) . "</div>";
+                    $error_count++;
                 }
             } else {
                 echo "<div class='info'>✓ Admin user already exists</div>";
+                $skipped_count++;
+            }
+            
+            // Check if default house exists
+            $check_house = mysqli_query($conn, "SELECT house_id FROM houses WHERE house_code = 'MAIN001'");
+            if (mysqli_num_rows($check_house) == 0) {
+                // Create default house
+                $house_sql = "INSERT INTO houses (house_name, house_code, description, created_by) 
+                              VALUES ('Main House', 'MAIN001', 'Main living house for the system', 1)";
+                
+                if (mysqli_query($conn, $house_sql)) {
+                    echo "<div class='success'>✓ Created default house</div>";
+                    $success_count++;
+                } else {
+                    echo "<div class='error'>✗ Failed to create default house: " . mysqli_error($conn) . "</div>";
+                    $error_count++;
+                }
+            } else {
+                echo "<div class='info'>✓ Default house already exists</div>";
+                $skipped_count++;
             }
             ?>
         </div>
@@ -156,24 +289,25 @@ $error_count = 0;
              style="background-color: <?php echo $error_count > 0 ? '#f8d7da' : '#d4edda'; ?>">
             <h5>Setup Summary:</h5>
             <p>Successful queries: <strong class="success"><?php echo $success_count; ?></strong></p>
+            <p>Skipped (already exists): <strong class="info"><?php echo $skipped_count; ?></strong></p>
             <p>Errors: <strong class="<?php echo $error_count > 0 ? 'error' : 'success'; ?>"><?php echo $error_count; ?></strong></p>
             
             <?php if ($error_count == 0): ?>
             <div class="alert alert-success mt-3">
                 <h4><i class="fas fa-check-circle me-2"></i>Setup Completed Successfully!</h4>
                 <p class="mb-2"><strong>Default Login Credentials:</strong></p>
-                <p class="mb-1">Username: <strong>admin</strong></p>
-                <p class="mb-3">Password: <strong>admin123</strong></p>
+                <p class="mb-1"><strong>Super Admin:</strong> username: <strong>superadmin</strong>, password: <strong>password</strong></p>
+                <p class="mb-3"><strong>Admin:</strong> username: <strong>admin</strong>, password: <strong>admin123</strong></p>
                 
                 <div class="alert alert-warning">
                     <i class="fas fa-exclamation-triangle me-2"></i>
-                    <strong>Important:</strong> Change the default password after first login!
+                    <strong>Important:</strong> Change the default passwords after first login!
                 </div>
             </div>
             <?php else: ?>
             <div class="alert alert-warning mt-3">
                 <h4><i class="fas fa-exclamation-triangle me-2"></i>Setup Completed with Errors</h4>
-                <p>Some tables might already exist. The system may still work properly.</p>
+                <p>Some errors occurred during setup. Check the error messages above.</p>
             </div>
             <?php endif; ?>
         </div>
@@ -187,17 +321,21 @@ $error_count = 0;
             </a>
         </div>
         
+        <?php endif; ?>
+        
         <div class="mt-4 text-center text-muted">
             <small>If you encounter issues, check your database credentials in config/database.php</small>
         </div>
     </div>
     
     <?php
+    if (!$tables_exist): 
     // Update progress bar
     echo "<script>
         document.querySelector('.progress-bar').style.width = '100%';
         document.querySelector('.progress-bar').textContent = 'Setup Complete';
     </script>";
+    endif;
     
     mysqli_close($conn);
     ?>
