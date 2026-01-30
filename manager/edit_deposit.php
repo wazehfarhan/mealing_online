@@ -8,6 +8,10 @@ $functions = new Functions();
 
 $auth->requireRole('manager');
 
+// Get manager's house_id
+$user_id = $_SESSION['user_id'];
+$house_id = $auth->getUserHouseId($user_id);
+
 $page_title = "Edit Deposit";
 
 $conn = getConnection();
@@ -21,20 +25,23 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 
 $deposit_id = intval($_GET['id']);
 
-// Get deposit details
-$sql = "SELECT d.*, m.name as member_name, u.username as created_by_name 
+// Get deposit details with house verification
+$sql = "SELECT d.*, m.name as member_name, 
+               u1.username as created_by_name, 
+               u2.username as updated_by_name
         FROM deposits d 
-        JOIN members m ON d.member_id = m.member_id 
-        LEFT JOIN users u ON d.created_by = u.user_id 
-        WHERE d.deposit_id = ?";
+        JOIN members m ON d.member_id = m.member_id AND d.house_id = m.house_id
+        LEFT JOIN users u1 ON d.created_by = u1.user_id 
+        LEFT JOIN users u2 ON d.updated_by = u2.user_id
+        WHERE d.deposit_id = ? AND d.house_id = ?";
 $stmt = mysqli_prepare($conn, $sql);
-mysqli_stmt_bind_param($stmt, "i", $deposit_id);
+mysqli_stmt_bind_param($stmt, "ii", $deposit_id, $house_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $deposit = mysqli_fetch_assoc($result);
 
 if (!$deposit) {
-    $_SESSION['error'] = "Deposit not found";
+    $_SESSION['error'] = "Deposit not found or unauthorized access";
     header("Location: deposits.php");
     exit();
 }
@@ -42,10 +49,13 @@ if (!$deposit) {
 $error = '';
 $success = '';
 
-// Get all active members
-$members_sql = "SELECT * FROM members WHERE status = 'active' ORDER BY name";
-$members_result = mysqli_query($conn, $members_sql);
-$all_members = mysqli_fetch_all($members_result, MYSQLI_ASSOC);
+// Get all active members for this house
+$members_sql = "SELECT * FROM members WHERE status = 'active' AND house_id = ? ORDER BY name";
+$members_stmt = mysqli_prepare($conn, $members_sql);
+mysqli_stmt_bind_param($members_stmt, "i", $house_id);
+mysqli_stmt_execute($members_stmt);
+$members_result = mysqli_stmt_get_result($members_stmt);
+$all_members = $members_result ? mysqli_fetch_all($members_result, MYSQLI_ASSOC) : [];
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -53,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $amount = floatval($_POST['amount']);
     $deposit_date = mysqli_real_escape_string($conn, $_POST['deposit_date']);
     $description = mysqli_real_escape_string($conn, $_POST['description']);
+    $updated_by = $_SESSION['user_id'];
     
     // Validation
     if (empty($member_id) || $member_id <= 0) {
@@ -61,57 +72,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Deposit date is required";
     } elseif ($amount <= 0) {
         $error = "Amount must be greater than 0";
+    } elseif ($amount > 1000000) {
+        $error = "Amount is too high. Please enter a reasonable amount.";
     } else {
-        // Update deposit with updated_at timestamp
-        $update_sql = "UPDATE deposits SET member_id = ?, amount = ?, deposit_date = ?, 
-                       description = ?, created_by = ?, updated_at = NOW() 
-                       WHERE deposit_id = ?";
-        $update_stmt = mysqli_prepare($conn, $update_sql);
-        mysqli_stmt_bind_param($update_stmt, "idssii", $member_id, $amount, $deposit_date, 
-                              $description, $_SESSION['user_id'], $deposit_id);
+        // Check if member belongs to this house
+        $member_check_sql = "SELECT house_id FROM members WHERE member_id = ? AND house_id = ?";
+        $member_check_stmt = mysqli_prepare($conn, $member_check_sql);
+        mysqli_stmt_bind_param($member_check_stmt, "ii", $member_id, $house_id);
+        mysqli_stmt_execute($member_check_stmt);
+        mysqli_stmt_store_result($member_check_stmt);
         
-        if (mysqli_stmt_execute($update_stmt)) {
-            $success = "Deposit updated successfully!";
-            
-            // Refresh deposit data
-            $sql = "SELECT d.*, m.name as member_name, u.username as created_by_name 
-                    FROM deposits d 
-                    JOIN members m ON d.member_id = m.member_id 
-                    LEFT JOIN users u ON d.created_by = u.user_id 
-                    WHERE d.deposit_id = ?";
-            $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, "i", $deposit_id);
-            mysqli_stmt_execute($stmt);
-            $result = mysqli_stmt_get_result($stmt);
-            $deposit = mysqli_fetch_assoc($result);
+        if (mysqli_stmt_num_rows($member_check_stmt) == 0) {
+            $error = "Selected member does not belong to your house";
         } else {
-            $error = "Error updating deposit: " . mysqli_error($conn);
+            // Update deposit with updated_at timestamp and updated_by
+            $update_sql = "UPDATE deposits SET member_id = ?, amount = ?, deposit_date = ?, 
+                          description = ?, updated_by = ?, updated_at = NOW() 
+                          WHERE deposit_id = ? AND house_id = ?";
+            $update_stmt = mysqli_prepare($conn, $update_sql);
+            mysqli_stmt_bind_param($update_stmt, "idssiii", $member_id, $amount, $deposit_date, 
+                                  $description, $updated_by, $deposit_id, $house_id);
+            
+            if (mysqli_stmt_execute($update_stmt)) {
+                $success = "Deposit updated successfully!";
+                
+                // Refresh deposit data
+                $sql = "SELECT d.*, m.name as member_name, 
+                               u1.username as created_by_name, 
+                               u2.username as updated_by_name
+                        FROM deposits d 
+                        JOIN members m ON d.member_id = m.member_id AND d.house_id = m.house_id
+                        LEFT JOIN users u1 ON d.created_by = u1.user_id 
+                        LEFT JOIN users u2 ON d.updated_by = u2.user_id
+                        WHERE d.deposit_id = ? AND d.house_id = ?";
+                $stmt = mysqli_prepare($conn, $sql);
+                mysqli_stmt_bind_param($stmt, "ii", $deposit_id, $house_id);
+                mysqli_stmt_execute($stmt);
+                $result = mysqli_stmt_get_result($stmt);
+                $deposit = mysqli_fetch_assoc($result);
+            } else {
+                $error = "Error updating deposit: " . mysqli_error($conn);
+            }
         }
     }
 }
 
-// Get monthly deposit total for reference
+// Get monthly deposit total for reference (for this house only)
 $month = date('m', strtotime($deposit['deposit_date']));
 $year = date('Y', strtotime($deposit['deposit_date']));
 $month_start = "$year-$month-01";
 $month_end = date('Y-m-t', strtotime($month_start));
 
-$month_sql = "SELECT SUM(amount) as month_total FROM deposits WHERE deposit_date BETWEEN ? AND ?";
+$month_sql = "SELECT SUM(amount) as month_total FROM deposits 
+              WHERE deposit_date BETWEEN ? AND ? AND house_id = ?";
 $month_stmt = mysqli_prepare($conn, $month_sql);
-mysqli_stmt_bind_param($month_stmt, "ss", $month_start, $month_end);
+mysqli_stmt_bind_param($month_stmt, "ssi", $month_start, $month_end, $house_id);
 mysqli_stmt_execute($month_stmt);
 $month_result = mysqli_stmt_get_result($month_stmt);
 $month_total = mysqli_fetch_assoc($month_result);
 
-// Get member's monthly deposit total
+// Get member's monthly deposit total (for this house only)
 $member_month_sql = "SELECT SUM(amount) as member_month_total 
                      FROM deposits 
-                     WHERE member_id = ? AND deposit_date BETWEEN ? AND ?";
+                     WHERE member_id = ? AND deposit_date BETWEEN ? AND ? AND house_id = ?";
 $member_month_stmt = mysqli_prepare($conn, $member_month_sql);
-mysqli_stmt_bind_param($member_month_stmt, "iss", $deposit['member_id'], $month_start, $month_end);
+mysqli_stmt_bind_param($member_month_stmt, "issi", $deposit['member_id'], $month_start, $month_end, $house_id);
 mysqli_stmt_execute($member_month_stmt);
-$member_month_result = mysqli_stmt_get_result($member_month_stmt); // Fixed: get result set
-$member_month_total = mysqli_fetch_assoc($member_month_result); // Fixed: use result set
+$member_month_result = mysqli_stmt_get_result($member_month_stmt);
+$member_month_total = mysqli_fetch_assoc($member_month_result);
 ?>
 <div class="row">
     <div class="col-lg-6 mx-auto">
@@ -161,13 +189,14 @@ $member_month_total = mysqli_fetch_assoc($member_month_result); // Fixed: use re
                             <div class="input-group">
                                 <span class="input-group-text">৳</span>
                                 <input type="number" class="form-control" id="amount" name="amount" 
-                                       step="0.01" min="0.01" value="<?php echo $deposit['amount']; ?>" required>
+                                       step="0.01" min="0.01" max="1000000" value="<?php echo $deposit['amount']; ?>" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <label for="description" class="form-label">Description</label>
                             <input type="text" class="form-control" id="description" name="description"
-                                   value="<?php echo htmlspecialchars($deposit['description']); ?>">
+                                   value="<?php echo htmlspecialchars($deposit['description']); ?>"
+                                   placeholder="Optional description">
                         </div>
                     </div>
                     
@@ -199,7 +228,9 @@ $member_month_total = mysqli_fetch_assoc($member_month_result); // Fixed: use re
                             <div class="mt-2">
                                 <div class="progress" style="height: 10px;">
                                     <?php 
-                                    $member_percentage = ($member_month_total['member_month_total'] / $month_total['month_total']) * 100;
+                                    $member_total = $member_month_total['member_month_total'] ?: 0;
+                                    $month_total_val = $month_total['month_total'] ?: 0;
+                                    $member_percentage = $month_total_val > 0 ? ($member_total / $month_total_val) * 100 : 0;
                                     if ($member_percentage > 100) $member_percentage = 100;
                                     ?>
                                     <div class="progress-bar bg-success" role="progressbar" 
@@ -243,17 +274,11 @@ $member_month_total = mysqli_fetch_assoc($member_month_result); // Fixed: use re
                         <p><strong>Created By:</strong> <?php echo $deposit['created_by_name'] ?: 'System'; ?></p>
                         <p><strong>Created At:</strong> <?php echo date('M d, Y h:i A', strtotime($deposit['created_at'])); ?></p>
                         
-                        <?php 
-                        // Safely check and display updated_at if it exists and is different from created_at
-                        $show_updated = isset($deposit['updated_at']) && 
-                                       !empty($deposit['updated_at']) && 
-                                       $deposit['updated_at'] !== null &&
-                                       strtotime($deposit['updated_at']) > 0 &&
-                                       $deposit['created_at'] != $deposit['updated_at'];
-                        
-                        if ($show_updated): 
-                        ?>
+                        <?php if (!empty($deposit['updated_at']) && $deposit['updated_at'] != $deposit['created_at']): ?>
                         <p><strong>Last Updated:</strong> <?php echo date('M d, Y h:i A', strtotime($deposit['updated_at'])); ?></p>
+                        <?php if (!empty($deposit['updated_by_name'])): ?>
+                        <p><strong>Updated By:</strong> <?php echo $deposit['updated_by_name']; ?></p>
+                        <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -281,6 +306,19 @@ $(document).ready(function() {
     
     // Auto-focus amount field
     $('#amount').focus();
+    
+    // Show warning if amount is being increased significantly
+    let originalAmount = <?php echo $deposit['amount']; ?>;
+    $('#amount').on('change', function() {
+        let newAmount = parseFloat($(this).val());
+        if (!isNaN(newAmount) && newAmount > originalAmount * 1.5) {
+            if (confirm('You are increasing the amount significantly (more than 50%). Are you sure this is correct?')) {
+                return true;
+            } else {
+                $(this).val(originalAmount.toFixed(2));
+            }
+        }
+    });
 });
 </script>
 
