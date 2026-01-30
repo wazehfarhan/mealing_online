@@ -1,14 +1,42 @@
 <?php
-require_once __DIR__ . '/../config/database.php';
+// In header.php, add this check at the beginning:
+
 // Check if user is logged in
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: ../auth/login.php");
     exit();
 }
 
+// Check if user has a house (for house-dependent pages)
+$excluded_pages = ['setup_house.php', 'logout.php'];
+$current_page = basename($_SERVER['PHP_SELF']);
+
+if (!in_array($current_page, $excluded_pages)) {
+    if (!isset($_SESSION['house_id'])) {
+        // Check database for house_id
+        require_once __DIR__ . '/../config/database.php';
+        $conn = getConnection();
+        
+        $sql = "SELECT house_id FROM users WHERE user_id = ?";
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $_SESSION['user_id']);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        if ($row = mysqli_fetch_assoc($result) && $row['house_id']) {
+            $_SESSION['house_id'] = $row['house_id'];
+        } else {
+            // No house, redirect to setup
+            header("Location: setup_house.php");
+            exit();
+        }
+    }
+}
+
 $page_title = isset($page_title) ? $page_title : 'Dashboard';
 ?>
 <!DOCTYPE html>
+<!-- Rest of your header.php HTML -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
