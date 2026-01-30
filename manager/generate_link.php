@@ -12,41 +12,56 @@ $page_title = "Generate Join Link";
 
 $conn = getConnection();
 
+// Get current user's house
+if (!isset($_SESSION['house_id'])) {
+    die('<div class="alert alert-danger">No house assigned. Please set up or join a house first.</div>');
+}
+$house_id = $_SESSION['house_id'];
+
 $error = '';
 $success = '';
 $join_url = '';
 
-// Get all members without accounts
+// Get all members without accounts for this house
 $sql = "SELECT m.*, u.user_id 
         FROM members m 
         LEFT JOIN users u ON m.member_id = u.member_id 
-        WHERE m.status = 'active' AND u.user_id IS NULL 
+        WHERE m.house_id = ? AND m.status = 'active' AND u.user_id IS NULL 
         ORDER BY m.name ASC";
-$result = mysqli_query($conn, $sql);
+$stmt = mysqli_prepare($conn, $sql);
+mysqli_stmt_bind_param($stmt, "i", $house_id);
+mysqli_stmt_execute($stmt);
+$result = mysqli_stmt_get_result($stmt);
 $members_without_accounts = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
-// Get members with expired tokens
+// Get members with expired tokens for this house
 $sql = "SELECT m.*, u.user_id 
         FROM members m 
         LEFT JOIN users u ON m.member_id = u.member_id 
-        WHERE m.status = 'active' 
+        WHERE m.house_id = ? AND m.status = 'active' 
         AND m.join_token IS NOT NULL 
         AND m.token_expiry < NOW() 
         AND u.user_id IS NULL 
         ORDER BY m.name ASC";
-$result = mysqli_query($conn, $sql);
+$stmt = mysqli_prepare($conn, $sql);
+mysqli_stmt_bind_param($stmt, "i", $house_id);
+mysqli_stmt_execute($stmt);
+$result = mysqli_stmt_get_result($stmt);
 $members_expired_tokens = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
-// Get members with active tokens
+// Get members with active tokens for this house
 $sql = "SELECT m.*, u.user_id 
         FROM members m 
         LEFT JOIN users u ON m.member_id = u.member_id 
-        WHERE m.status = 'active' 
+        WHERE m.house_id = ? AND m.status = 'active' 
         AND m.join_token IS NOT NULL 
         AND m.token_expiry >= NOW() 
         AND u.user_id IS NULL 
         ORDER BY m.token_expiry ASC";
-$result = mysqli_query($conn, $sql);
+$stmt = mysqli_prepare($conn, $sql);
+mysqli_stmt_bind_param($stmt, "i", $house_id);
+mysqli_stmt_execute($stmt);
+$result = mysqli_stmt_get_result($stmt);
 $members_active_tokens = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
 // Handle form submission
@@ -54,16 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['member_id'])) {
         $member_id = intval($_POST['member_id']);
         
-        // Get member details
-        $member_sql = "SELECT * FROM members WHERE member_id = ? AND status = 'active'";
+        // Verify member belongs to this house
+        $member_sql = "SELECT * FROM members WHERE member_id = ? AND house_id = ? AND status = 'active'";
         $member_stmt = mysqli_prepare($conn, $member_sql);
-        mysqli_stmt_bind_param($member_stmt, "i", $member_id);
+        mysqli_stmt_bind_param($member_stmt, "ii", $member_id, $house_id);
         mysqli_stmt_execute($member_stmt);
         $member_result = mysqli_stmt_get_result($member_stmt);
         $member = mysqli_fetch_assoc($member_result);
         
         if (!$member) {
-            $error = "Member not found or inactive";
+            $error = "Member not found or doesn't belong to your house";
         } else {
             // Check if member already has account
             $check_sql = "SELECT user_id FROM users WHERE member_id = ?";
@@ -80,9 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $token_expiry = date('Y-m-d H:i:s', strtotime('+7 days'));
                 
                 // Update member with new token
-                $update_sql = "UPDATE members SET join_token = ?, token_expiry = ? WHERE member_id = ?";
+                $update_sql = "UPDATE members SET join_token = ?, token_expiry = ? WHERE member_id = ? AND house_id = ?";
                 $update_stmt = mysqli_prepare($conn, $update_sql);
-                mysqli_stmt_bind_param($update_stmt, "ssi", $new_token, $token_expiry, $member_id);
+                mysqli_stmt_bind_param($update_stmt, "ssii", $new_token, $token_expiry, $member_id, $house_id);
                 
                 if (mysqli_stmt_execute($update_stmt)) {
                     // Create join URL
@@ -91,24 +106,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     $success = "Join link generated successfully for " . htmlspecialchars($member['name']) . "!";
                     
-                    // Refresh member lists
+                    // Refresh member lists for this house
                     $sql = "SELECT m.*, u.user_id 
                             FROM members m 
                             LEFT JOIN users u ON m.member_id = u.member_id 
-                            WHERE m.status = 'active' AND u.user_id IS NULL 
+                            WHERE m.house_id = ? AND m.status = 'active' AND u.user_id IS NULL 
                             ORDER BY m.name ASC";
-                    $result = mysqli_query($conn, $sql);
+                    $stmt = mysqli_prepare($conn, $sql);
+                    mysqli_stmt_bind_param($stmt, "i", $house_id);
+                    mysqli_stmt_execute($stmt);
+                    $result = mysqli_stmt_get_result($stmt);
                     $members_without_accounts = mysqli_fetch_all($result, MYSQLI_ASSOC);
                     
                     $sql = "SELECT m.*, u.user_id 
                             FROM members m 
                             LEFT JOIN users u ON m.member_id = u.member_id 
-                            WHERE m.status = 'active' 
+                            WHERE m.house_id = ? AND m.status = 'active' 
                             AND m.join_token IS NOT NULL 
                             AND m.token_expiry >= NOW() 
                             AND u.user_id IS NULL 
                             ORDER BY m.token_expiry ASC";
-                    $result = mysqli_query($conn, $sql);
+                    $stmt = mysqli_prepare($conn, $sql);
+                    mysqli_stmt_bind_param($stmt, "i", $house_id);
+                    mysqli_stmt_execute($stmt);
+                    $result = mysqli_stmt_get_result($stmt);
                     $members_active_tokens = mysqli_fetch_all($result, MYSQLI_ASSOC);
                 } else {
                     $error = "Error generating join link: " . mysqli_error($conn);
@@ -116,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif (isset($_POST['generate_all'])) {
-        // Generate links for all members without accounts
+        // Generate links for all members without accounts for this house
         $generated_count = 0;
         $error_messages = [];
         
@@ -130,10 +151,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $new_token = bin2hex(random_bytes(32));
             $token_expiry = date('Y-m-d H:i:s', strtotime('+7 days'));
             
-            // Update member
-            $update_sql = "UPDATE members SET join_token = ?, token_expiry = ? WHERE member_id = ?";
+            // Update member for this house
+            $update_sql = "UPDATE members SET join_token = ?, token_expiry = ? WHERE member_id = ? AND house_id = ?";
             $update_stmt = mysqli_prepare($conn, $update_sql);
-            mysqli_stmt_bind_param($update_stmt, "ssi", $new_token, $token_expiry, $member['member_id']);
+            mysqli_stmt_bind_param($update_stmt, "ssii", $new_token, $token_expiry, $member['member_id'], $house_id);
             
             if (mysqli_stmt_execute($update_stmt)) {
                 $generated_count++;
@@ -145,24 +166,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($generated_count > 0) {
             $success = "Generated join links for $generated_count members successfully!";
             
-            // Refresh lists
+            // Refresh lists for this house
             $sql = "SELECT m.*, u.user_id 
                     FROM members m 
                     LEFT JOIN users u ON m.member_id = u.member_id 
-                    WHERE m.status = 'active' AND u.user_id IS NULL 
+                    WHERE m.house_id = ? AND m.status = 'active' AND u.user_id IS NULL 
                     ORDER BY m.name ASC";
-            $result = mysqli_query($conn, $sql);
+            $stmt = mysqli_prepare($conn, $sql);
+            mysqli_stmt_bind_param($stmt, "i", $house_id);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
             $members_without_accounts = mysqli_fetch_all($result, MYSQLI_ASSOC);
             
             $sql = "SELECT m.*, u.user_id 
                     FROM members m 
                     LEFT JOIN users u ON m.member_id = u.member_id 
-                    WHERE m.status = 'active' 
+                    WHERE m.house_id = ? AND m.status = 'active' 
                     AND m.join_token IS NOT NULL 
                     AND m.token_expiry >= NOW() 
                     AND u.user_id IS NULL 
                     ORDER BY m.token_expiry ASC";
-            $result = mysqli_query($conn, $sql);
+            $stmt = mysqli_prepare($conn, $sql);
+            mysqli_stmt_bind_param($stmt, "i", $house_id);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
             $members_active_tokens = mysqli_fetch_all($result, MYSQLI_ASSOC);
         } else {
             $error = "No new links were generated. " . implode(" ", $error_messages);
@@ -180,6 +207,9 @@ $total_active_tokens = count($members_active_tokens);
         <div class="card shadow">
             <div class="card-header bg-white py-3">
                 <h5 class="mb-0"><i class="fas fa-link me-2"></i>Generate Member Join Links</h5>
+                <?php if (isset($_SESSION['house_name'])): ?>
+                <small class="text-muted">House: <?php echo htmlspecialchars($_SESSION['house_name']); ?></small>
+                <?php endif; ?>
             </div>
             <div class="card-body">
                 <?php if ($error): ?>
@@ -238,6 +268,7 @@ $total_active_tokens = count($members_active_tokens);
                     </div>
                 </div>
                 
+                <?php if ($total_without_accounts > 0): ?>
                 <!-- Generate for Specific Member -->
                 <div class="card border-primary mb-4">
                     <div class="card-header bg-white">
@@ -276,7 +307,6 @@ $total_active_tokens = count($members_active_tokens);
                 </div>
                 
                 <!-- Generate for All Members -->
-                <?php if ($total_without_accounts > 0): ?>
                 <div class="card border-success mb-4">
                     <div class="card-header bg-white">
                         <h6 class="mb-0"><i class="fas fa-users me-2"></i>Generate for All Members</h6>
@@ -297,6 +327,11 @@ $total_active_tokens = count($members_active_tokens);
                         </form>
                     </div>
                 </div>
+                <?php else: ?>
+                <div class="alert alert-success mb-4">
+                    <i class="fas fa-check-circle me-2"></i>
+                    Great! All members in your house already have accounts. No join links need to be generated.
+                </div>
                 <?php endif; ?>
                 
                 <!-- Members with Active Links -->
@@ -304,6 +339,7 @@ $total_active_tokens = count($members_active_tokens);
                 <div class="card border-warning mb-4">
                     <div class="card-header bg-white">
                         <h6 class="mb-0"><i class="fas fa-clock me-2"></i>Members with Active Join Links</h6>
+                        <small class="text-muted">Links expire in 7 days</small>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
@@ -340,7 +376,10 @@ $total_active_tokens = count($members_active_tokens);
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <?php echo date('M d, Y', strtotime($member['token_expiry'] . ' -7 days')); ?>
+                                            <?php 
+                                            $generated_date = date('Y-m-d H:i:s', strtotime($member['token_expiry'] . ' -7 days'));
+                                            echo date('M d, Y', strtotime($generated_date));
+                                            ?>
                                         </td>
                                         <td>
                                             <?php if ($days_left > 0): ?>
@@ -364,12 +403,59 @@ $total_active_tokens = count($members_active_tokens);
                                                         <i class="fas fa-sync"></i>
                                                     </button>
                                                 </form>
+                                                <button type="button" class="btn btn-secondary" 
+                                                        onclick="showLinkDetails('<?php echo $member_join_url; ?>', '<?php echo addslashes($member['name']); ?>', '<?php echo $member['token_expiry']; ?>')"
+                                                        title="View Details">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+                
+                <!-- Expired Links -->
+                <?php if ($total_expired_tokens > 0): ?>
+                <div class="card border-danger mb-4">
+                    <div class="card-header bg-white">
+                        <h6 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Expired Join Links</h6>
+                        <small class="text-muted">Need to be regenerated</small>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            The following <?php echo $total_expired_tokens; ?> member(s) have expired join links. 
+                            Generate new links for them if they still need to create accounts.
+                        </div>
+                        
+                        <div class="row">
+                            <?php foreach ($members_expired_tokens as $member): ?>
+                            <div class="col-md-6 mb-2">
+                                <div class="card border-danger">
+                                    <div class="card-body p-3">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="mb-0"><?php echo htmlspecialchars($member['name']); ?></h6>
+                                                <?php if ($member['phone']): ?>
+                                                <small class="text-muted"><?php echo $member['phone']; ?></small>
+                                                <?php endif; ?>
+                                            </div>
+                                            <form method="POST" action="" class="mb-0">
+                                                <input type="hidden" name="member_id" value="<?php echo $member['member_id']; ?>">
+                                                <button type="submit" class="btn btn-danger btn-sm">
+                                                    <i class="fas fa-sync me-1"></i>Regenerate
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
                         </div>
                     </div>
                 </div>
@@ -440,9 +526,36 @@ function copyMemberLink(link, memberName) {
     
     document.body.removeChild(tempInput);
 }
+
+function showLinkDetails(link, memberName, expiryDate) {
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    const diffTime = expiry - now;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((diffTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    
+    let message = 'Join Link Details:\n\n';
+    message += 'Member: ' + memberName + '\n';
+    message += 'Link: ' + link + '\n';
+    message += 'Expires: ' + expiry.toLocaleString() + '\n';
+    message += 'Time Remaining: ';
+    
+    if (diffDays > 0) {
+        message += diffDays + ' days, ' + diffHours + ' hours';
+    } else if (diffHours > 0) {
+        message += diffHours + ' hours';
+    } else {
+        message += 'Expired';
+    }
+    
+    alert(message);
+}
 </script>
 
 <?php 
+if (isset($stmt)) {
+    mysqli_stmt_close($stmt);
+}
 mysqli_close($conn);
 require_once '../includes/footer.php'; 
 ?>
