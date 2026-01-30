@@ -1,128 +1,65 @@
+-- Meal Management System Database Schema
+-- Version: 1.0
+-- Created: 2026-01-28
+
+-- Drop database if exists (optional - uncomment if needed)
+-- DROP DATABASE IF EXISTS proper_system;
+
 -- Create database if not exists
 CREATE DATABASE IF NOT EXISTS meal_system 
 CHARACTER SET utf8mb4 
 COLLATE utf8mb4_unicode_ci;
 
+-- Use the database
 USE meal_system;
 
--- phpMyAdmin SQL Dump
--- version 5.2.1
--- https://www.phpmyadmin.net/
---
--- Host: localhost
--- Generation Time: Jan 29, 2026 at 07:41 PM
--- Server version: 10.4.28-MariaDB
--- PHP Version: 8.2.4
-
-SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
-START TRANSACTION;
-SET time_zone = "+00:00";
-
-
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!40101 SET NAMES utf8mb4 */;
-
---
--- Database: `meal_system`
---
-
+-- --------------------------------------------------------
+-- Table structure for table `houses`
 -- --------------------------------------------------------
 
---
--- Table structure for table `deposits`
---
-
-CREATE TABLE `deposits` (
-  `deposit_id` int(11) NOT NULL,
-  `member_id` int(11) NOT NULL,
-  `amount` decimal(10,2) NOT NULL,
-  `deposit_date` date NOT NULL,
-  `description` varchar(255) DEFAULT NULL,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NULL DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
---
--- Dumping data for table `deposits`
---
-
-INSERT INTO `deposits` (`deposit_id`, `member_id`, `amount`, `deposit_date`, `description`, `created_by`, `created_at`, `updated_at`) VALUES
-(16, 12, 100.00, '2026-01-20', '', 2, '2026-01-29 14:53:39', NULL),
-(17, 11, 2500.00, '2026-01-25', '', 2, '2026-01-29 14:56:22', '2026-01-29 14:56:45'),
-(18, 12, 1000.00, '2026-01-22', '', 2, '2026-01-29 17:06:11', NULL);
-
--- --------------------------------------------------------
-
---
--- Table structure for table `expenses`
---
-
-CREATE TABLE `expenses` (
-  `expense_id` int(11) NOT NULL,
-  `amount` decimal(10,2) NOT NULL,
-  `category` enum('Rice','Fish','Meat','Vegetables','Gas','Internet','Utility','Others') NOT NULL DEFAULT 'Others',
+CREATE TABLE `houses` (
+  `house_id` int(11) NOT NULL AUTO_INCREMENT,
+  `house_name` varchar(100) NOT NULL,
+  `house_code` varchar(20) NOT NULL UNIQUE,
   `description` text DEFAULT NULL,
-  `expense_date` date NOT NULL,
-  `created_by` int(11) NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
---
--- Dumping data for table `expenses`
---
-
-INSERT INTO `expenses` (`expense_id`, `amount`, `category`, `description`, `expense_date`, `created_by`, `created_at`, `updated_at`) VALUES
-(13, 100.00, 'Meat', '', '2026-01-29', 2, '2026-01-29 13:58:38', '2026-01-29 14:39:11'),
-(14, 300.00, 'Vegetables', '', '2026-01-29', 2, '2026-01-29 13:58:45', '2026-01-29 14:39:11'),
-(15, 200.00, 'Utility', '', '2026-01-29', 2, '2026-01-29 13:58:52', '2026-01-29 14:39:11'),
-(16, 150.00, 'Vegetables', '', '2026-01-29', 2, '2026-01-29 13:58:59', '2026-01-29 14:39:11'),
-(17, 1200.00, 'Internet', '', '2026-01-29', 2, '2026-01-29 13:59:14', '2026-01-29 14:39:11'),
-(18, 450.00, 'Gas', '', '2026-01-29', 2, '2026-01-29 13:59:22', '2026-01-29 14:40:12'),
-(19, 1000.00, 'Rice', '', '2026-01-18', 2, '2026-01-29 17:06:45', '2026-01-29 17:06:45');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `meals`
---
-
-CREATE TABLE `meals` (
-  `meal_id` int(11) NOT NULL,
-  `member_id` int(11) NOT NULL,
-  `meal_date` date NOT NULL,
-  `meal_count` decimal(4,2) NOT NULL DEFAULT 0.00,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `created_by` int(11) DEFAULT NULL,
-  `updated_by` int(11) DEFAULT NULL,
-  `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `is_active` tinyint(1) DEFAULT 1,
+  PRIMARY KEY (`house_id`),
+  UNIQUE KEY `unique_house_code` (`house_code`),
+  KEY `created_by` (`created_by`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `meals`
---
-
-INSERT INTO `meals` (`meal_id`, `member_id`, `meal_date`, `meal_count`, `created_at`, `created_by`, `updated_by`, `updated_at`) VALUES
-(25, 12, '2026-01-11', 3.00, '2026-01-29 14:51:20', 2, NULL, NULL),
-(26, 11, '2026-01-11', 3.00, '2026-01-29 14:51:20', 2, NULL, NULL),
-(27, 12, '2026-01-14', 1.00, '2026-01-29 14:51:29', 2, NULL, NULL),
-(28, 11, '2026-01-14', 2.00, '2026-01-29 14:51:29', 2, NULL, NULL),
-(29, 12, '2026-01-15', 1.00, '2026-01-29 14:51:39', 2, NULL, '2026-01-29 14:51:53'),
-(30, 11, '2026-01-15', 1.00, '2026-01-29 14:51:39', 2, NULL, '2026-01-29 14:51:53'),
-(31, 12, '2026-01-22', 3.00, '2026-01-29 17:07:05', 2, NULL, NULL),
-(32, 11, '2026-01-22', 2.00, '2026-01-29 17:07:05', 2, NULL, NULL);
-
+-- --------------------------------------------------------
+-- Table structure for table `users`
 -- --------------------------------------------------------
 
---
+CREATE TABLE `users` (
+  `user_id` int(11) NOT NULL AUTO_INCREMENT,
+  `username` varchar(50) NOT NULL,
+  `email` varchar(100) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `role` enum('super_admin','manager','member') NOT NULL DEFAULT 'member',
+  `house_id` int(11) DEFAULT NULL,
+  `member_id` int(11) DEFAULT NULL,
+  `last_login` datetime DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `is_active` tinyint(1) DEFAULT 1,
+  PRIMARY KEY (`user_id`),
+  UNIQUE KEY `username` (`username`),
+  UNIQUE KEY `email` (`email`),
+  KEY `idx_username` (`username`),
+  KEY `idx_role` (`role`),
+  KEY `house_id` (`house_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
 -- Table structure for table `members`
---
+-- --------------------------------------------------------
 
 CREATE TABLE `members` (
-  `member_id` int(11) NOT NULL,
+  `member_id` int(11) NOT NULL AUTO_INCREMENT,
+  `house_id` int(11) NOT NULL,
   `name` varchar(100) NOT NULL,
   `phone` varchar(20) DEFAULT NULL,
   `email` varchar(100) DEFAULT NULL,
@@ -131,42 +68,85 @@ CREATE TABLE `members` (
   `created_by` int(11) DEFAULT NULL,
   `join_token` varchar(100) DEFAULT NULL,
   `token_expiry` datetime DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`member_id`),
+  UNIQUE KEY `join_token` (`join_token`),
+  KEY `idx_status` (`status`),
+  KEY `created_by` (`created_by`),
+  KEY `house_id` (`house_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `members`
---
-
-INSERT INTO `members` (`member_id`, `name`, `phone`, `email`, `join_date`, `status`, `created_by`, `join_token`, `token_expiry`, `created_at`) VALUES
-(11, 'jubaida', '1122', 'jubaida@gmail.com', '2026-01-29', 'active', 2, 'ebe13471237d3a87e06fa8ba458c9ea33a2b2f5275df799b12979197ac24b545', '2026-02-05 15:48:27', '2026-01-29 14:48:27'),
-(12, 'anik', '3344', 'anik@gmail.com', '2026-01-22', 'active', 2, '2c202c3a610b0a1f3d3a26df8c84dd12c6f568699104868cf82a2afbb77e42fe', '2026-02-05 15:48:39', '2026-01-29 14:48:39');
-
+-- --------------------------------------------------------
+-- Table structure for table `expenses`
 -- --------------------------------------------------------
 
---
--- Table structure for table `monthly_member_details`
---
+CREATE TABLE `expenses` (
+  `expense_id` int(11) NOT NULL AUTO_INCREMENT,
+  `house_id` int(11) NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `category` enum('Rice','Fish','Meat','Vegetables','Gas','Internet','Utility','Others') NOT NULL DEFAULT 'Others',
+  `description` text DEFAULT NULL,
+  `expense_date` date NOT NULL,
+  `created_by` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`expense_id`),
+  KEY `idx_expense_date` (`expense_date`),
+  KEY `idx_category` (`category`),
+  KEY `created_by` (`created_by`),
+  KEY `house_id` (`house_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `monthly_member_details` (
-  `detail_id` int(11) NOT NULL,
-  `summary_id` int(11) NOT NULL,
+-- --------------------------------------------------------
+-- Table structure for table `meals`
+-- --------------------------------------------------------
+
+CREATE TABLE `meals` (
+  `meal_id` int(11) NOT NULL AUTO_INCREMENT,
+  `house_id` int(11) NOT NULL,
   `member_id` int(11) NOT NULL,
-  `total_meals` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `total_deposits` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `total_cost` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `balance` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `meal_date` date NOT NULL,
+  `meal_count` decimal(4,2) NOT NULL DEFAULT 0.00,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `created_by` int(11) DEFAULT NULL,
+  `updated_by` int(11) DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`meal_id`),
+  UNIQUE KEY `unique_member_meal` (`house_id`, `member_id`, `meal_date`),
+  KEY `idx_meal_date` (`meal_date`),
+  KEY `created_by` (`created_by`),
+  KEY `fk_meals_updated_by` (`updated_by`),
+  KEY `house_id` (`house_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
+-- Table structure for table `deposits`
+-- --------------------------------------------------------
 
---
+CREATE TABLE `deposits` (
+  `deposit_id` int(11) NOT NULL AUTO_INCREMENT,
+  `house_id` int(11) NOT NULL,
+  `member_id` int(11) NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `deposit_date` date NOT NULL,
+  `description` varchar(255) DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`deposit_id`),
+  KEY `idx_deposit_date` (`deposit_date`),
+  KEY `member_id` (`member_id`),
+  KEY `created_by` (`created_by`),
+  KEY `house_id` (`house_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
 -- Table structure for table `monthly_summary`
---
+-- --------------------------------------------------------
 
 CREATE TABLE `monthly_summary` (
-  `summary_id` int(11) NOT NULL,
+  `summary_id` int(11) NOT NULL AUTO_INCREMENT,
+  `house_id` int(11) NOT NULL,
   `month_year` date NOT NULL,
   `total_meals` decimal(10,2) NOT NULL DEFAULT 0.00,
   `total_expenses` decimal(10,2) NOT NULL DEFAULT 0.00,
@@ -174,201 +154,158 @@ CREATE TABLE `monthly_summary` (
   `is_closed` tinyint(1) DEFAULT 0,
   `closed_by` int(11) DEFAULT NULL,
   `closed_at` timestamp NULL DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`summary_id`),
+  UNIQUE KEY `unique_month` (`house_id`, `month_year`),
+  KEY `closed_by` (`closed_by`),
+  KEY `house_id` (`house_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
+-- Table structure for table `monthly_member_details`
+-- --------------------------------------------------------
 
---
--- Table structure for table `users`
---
-
-CREATE TABLE `users` (
-  `user_id` int(11) NOT NULL,
-  `username` varchar(50) NOT NULL,
-  `email` varchar(100) NOT NULL,
-  `password` varchar(255) NOT NULL,
-  `role` enum('manager','member') NOT NULL DEFAULT 'member',
-  `member_id` int(11) DEFAULT NULL,
-  `last_login` datetime DEFAULT NULL,
+CREATE TABLE `monthly_member_details` (
+  `detail_id` int(11) NOT NULL AUTO_INCREMENT,
+  `summary_id` int(11) NOT NULL,
+  `member_id` int(11) NOT NULL,
+  `total_meals` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `total_deposits` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `total_cost` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `balance` decimal(10,2) NOT NULL DEFAULT 0.00,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `is_active` tinyint(1) DEFAULT 1
+  PRIMARY KEY (`detail_id`),
+  UNIQUE KEY `unique_member_summary` (`summary_id`, `member_id`),
+  KEY `member_id` (`member_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `users`
---
+-- --------------------------------------------------------
+-- Foreign Key Constraints
+-- --------------------------------------------------------
 
-INSERT INTO `users` (`user_id`, `username`, `email`, `password`, `role`, `member_id`, `last_login`, `created_at`, `is_active`) VALUES
-(1, 'admin', 'admin@mealsystem.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'manager', NULL, NULL, '2026-01-28 21:22:25', 1),
-(2, 'farhan', 'wzullah.farhan@gmail.com', '$2y$10$eBdStkTyHSYajZB7SDcg8eOHjOxYV/pp5trlziWIgAeJaKfDpSJk.', 'manager', NULL, '2026-01-29 17:24:04', '2026-01-28 22:18:51', 1);
+-- Houses table constraints
+ALTER TABLE `houses`
+  ADD CONSTRAINT `houses_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL;
 
---
--- Indexes for dumped tables
---
-
---
--- Indexes for table `deposits`
---
-ALTER TABLE `deposits`
-  ADD PRIMARY KEY (`deposit_id`),
-  ADD KEY `idx_deposit_date` (`deposit_date`),
-  ADD KEY `member_id` (`member_id`),
-  ADD KEY `created_by` (`created_by`);
-
---
--- Indexes for table `expenses`
---
-ALTER TABLE `expenses`
-  ADD PRIMARY KEY (`expense_id`),
-  ADD KEY `idx_expense_date` (`expense_date`),
-  ADD KEY `idx_category` (`category`),
-  ADD KEY `created_by` (`created_by`);
-
---
--- Indexes for table `meals`
---
-ALTER TABLE `meals`
-  ADD PRIMARY KEY (`meal_id`),
-  ADD UNIQUE KEY `unique_member_meal` (`member_id`,`meal_date`),
-  ADD KEY `idx_meal_date` (`meal_date`),
-  ADD KEY `created_by` (`created_by`),
-  ADD KEY `fk_meals_updated_by` (`updated_by`);
-
---
--- Indexes for table `members`
---
-ALTER TABLE `members`
-  ADD PRIMARY KEY (`member_id`),
-  ADD UNIQUE KEY `join_token` (`join_token`),
-  ADD KEY `idx_status` (`status`),
-  ADD KEY `created_by` (`created_by`);
-
---
--- Indexes for table `monthly_member_details`
---
-ALTER TABLE `monthly_member_details`
-  ADD PRIMARY KEY (`detail_id`),
-  ADD UNIQUE KEY `unique_member_summary` (`summary_id`,`member_id`),
-  ADD KEY `member_id` (`member_id`);
-
---
--- Indexes for table `monthly_summary`
---
-ALTER TABLE `monthly_summary`
-  ADD PRIMARY KEY (`summary_id`),
-  ADD UNIQUE KEY `unique_month` (`month_year`),
-  ADD KEY `closed_by` (`closed_by`);
-
---
--- Indexes for table `users`
---
+-- Users table constraints
 ALTER TABLE `users`
-  ADD PRIMARY KEY (`user_id`),
-  ADD UNIQUE KEY `username` (`username`),
-  ADD UNIQUE KEY `email` (`email`),
-  ADD KEY `idx_username` (`username`),
-  ADD KEY `idx_role` (`role`);
+  ADD CONSTRAINT `users_ibfk_1` FOREIGN KEY (`house_id`) REFERENCES `houses` (`house_id`) ON DELETE SET NULL;
 
---
--- AUTO_INCREMENT for dumped tables
---
-
---
--- AUTO_INCREMENT for table `deposits`
---
-ALTER TABLE `deposits`
-  MODIFY `deposit_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
-
---
--- AUTO_INCREMENT for table `expenses`
---
-ALTER TABLE `expenses`
-  MODIFY `expense_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
-
---
--- AUTO_INCREMENT for table `meals`
---
-ALTER TABLE `meals`
-  MODIFY `meal_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=33;
-
---
--- AUTO_INCREMENT for table `members`
---
+-- Members table constraints
 ALTER TABLE `members`
-  MODIFY `member_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
+  ADD CONSTRAINT `members_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `members_ibfk_2` FOREIGN KEY (`house_id`) REFERENCES `houses` (`house_id`) ON DELETE CASCADE;
 
---
--- AUTO_INCREMENT for table `monthly_member_details`
---
-ALTER TABLE `monthly_member_details`
-  MODIFY `detail_id` int(11) NOT NULL AUTO_INCREMENT;
+-- Expenses table constraints
+ALTER TABLE `expenses`
+  ADD CONSTRAINT `expenses_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `expenses_ibfk_2` FOREIGN KEY (`house_id`) REFERENCES `houses` (`house_id`) ON DELETE CASCADE;
 
---
--- AUTO_INCREMENT for table `monthly_summary`
---
-ALTER TABLE `monthly_summary`
-  MODIFY `summary_id` int(11) NOT NULL AUTO_INCREMENT;
+-- Meals table constraints
+ALTER TABLE `meals`
+  ADD CONSTRAINT `fk_meals_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `meals_ibfk_1` FOREIGN KEY (`member_id`) REFERENCES `members` (`member_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `meals_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `meals_ibfk_3` FOREIGN KEY (`house_id`) REFERENCES `houses` (`house_id`) ON DELETE CASCADE;
 
---
--- AUTO_INCREMENT for table `users`
---
-ALTER TABLE `users`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
-
---
--- Constraints for dumped tables
---
-
---
--- Constraints for table `deposits`
---
+-- Deposits table constraints
 ALTER TABLE `deposits`
   ADD CONSTRAINT `deposits_ibfk_1` FOREIGN KEY (`member_id`) REFERENCES `members` (`member_id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `deposits_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL;
+  ADD CONSTRAINT `deposits_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `deposits_ibfk_3` FOREIGN KEY (`house_id`) REFERENCES `houses` (`house_id`) ON DELETE CASCADE;
 
---
--- Constraints for table `expenses`
---
-ALTER TABLE `expenses`
-  ADD CONSTRAINT `expenses_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE CASCADE;
+-- Monthly summary table constraints
+ALTER TABLE `monthly_summary`
+  ADD CONSTRAINT `monthly_summary_ibfk_1` FOREIGN KEY (`closed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `monthly_summary_ibfk_2` FOREIGN KEY (`house_id`) REFERENCES `houses` (`house_id`) ON DELETE CASCADE;
 
---
--- Constraints for table `meals`
---
-ALTER TABLE `meals`
-  ADD CONSTRAINT `fk_meals_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`),
-  ADD CONSTRAINT `meals_ibfk_1` FOREIGN KEY (`member_id`) REFERENCES `members` (`member_id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `meals_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL;
-
---
--- Constraints for table `members`
---
-ALTER TABLE `members`
-  ADD CONSTRAINT `members_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL;
-
---
--- Constraints for table `monthly_member_details`
---
+-- Monthly member details table constraints
 ALTER TABLE `monthly_member_details`
   ADD CONSTRAINT `monthly_member_details_ibfk_1` FOREIGN KEY (`summary_id`) REFERENCES `monthly_summary` (`summary_id`) ON DELETE CASCADE,
   ADD CONSTRAINT `monthly_member_details_ibfk_2` FOREIGN KEY (`member_id`) REFERENCES `members` (`member_id`) ON DELETE CASCADE;
 
---
--- Constraints for table `monthly_summary`
---
-ALTER TABLE `monthly_summary`
-  ADD CONSTRAINT `monthly_summary_ibfk_1` FOREIGN KEY (`closed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL;
+-- --------------------------------------------------------
+-- Insert default super admin user
+-- Password: password (hashed with bcrypt)
+-- --------------------------------------------------------
+
+INSERT INTO `users` (`username`, `email`, `password`, `role`, `is_active`) VALUES
+('superadmin', 'superadmin@mealsystem.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'super_admin', 1);
+
+-- --------------------------------------------------------
+-- Insert default house for testing
+-- --------------------------------------------------------
+
+INSERT INTO `houses` (`house_name`, `house_code`, `description`, `created_by`) VALUES
+('Main House', 'MAIN001', 'Main living house for the system', 1);
+
+-- --------------------------------------------------------
+-- Insert default admin user
+-- Password: admin123 (hashed with bcrypt)
+-- --------------------------------------------------------
+
+INSERT INTO `users` (`username`, `email`, `password`, `role`, `house_id`, `is_active`) VALUES
+('admin', 'admin@mealsystem.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'manager', 1, 1);
+
+-- --------------------------------------------------------
+-- Database triggers (optional)
+-- --------------------------------------------------------
+
+-- Trigger to update updated_at timestamp for deposits
+DELIMITER $$
+CREATE TRIGGER `deposits_before_update`
+BEFORE UPDATE ON `deposits`
+FOR EACH ROW
+BEGIN
+    SET NEW.updated_at = CURRENT_TIMESTAMP();
+END$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+-- Create database user for the application
+-- Note: This part might need adjustment based on your hosting environment
+-- --------------------------------------------------------
+
+-- Uncomment and modify these lines if you want to create a dedicated database user
+/*
+CREATE USER 'meal_app'@'localhost' IDENTIFIED BY 'StrongPassword123!';
+GRANT ALL PRIVILEGES ON proper_system.* TO 'meal_app'@'localhost';
+FLUSH PRIVILEGES;
+*/
+
+-- --------------------------------------------------------
+-- Create views for reporting (optional)
+-- --------------------------------------------------------
+
+-- View for monthly report
+CREATE VIEW `v_monthly_report` AS
+SELECT 
+    ms.summary_id,
+    ms.house_id,
+    DATE_FORMAT(ms.month_year, '%Y-%m') as month_year,
+    ms.total_meals,
+    ms.total_expenses,
+    ms.meal_rate,
+    COUNT(DISTINCT mmd.member_id) as total_members,
+    SUM(mmd.balance) as total_balance
+FROM monthly_summary ms
+LEFT JOIN monthly_member_details mmd ON ms.summary_id = mmd.summary_id
+GROUP BY ms.summary_id, ms.house_id, ms.month_year, ms.total_meals, ms.total_expenses, ms.meal_rate;
+
+-- View for member details with house information
+CREATE VIEW `v_member_details` AS
+SELECT 
+    m.member_id,
+    m.house_id,
+    m.name,
+    m.phone,
+    m.email,
+    m.join_date,
+    m.status,
+    h.house_name,
+    h.house_code
+FROM members m
+JOIN houses h ON m.house_id = h.house_id
+WHERE h.is_active = 1;
+
 COMMIT;
-
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
-
-
-
-
-
-
-
-
