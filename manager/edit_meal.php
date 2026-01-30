@@ -8,6 +8,10 @@ $functions = new Functions();
 
 $auth->requireRole('manager');
 
+// Get manager's house_id
+$user_id = $_SESSION['user_id'];
+$house_id = $auth->getUserHouseId($user_id);
+
 $page_title = "Edit Meal Entry";
 
 $conn = getConnection();
@@ -21,23 +25,26 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 
 $meal_id = intval($_GET['id']);
 
-// Get meal details - simplified query without updated_by if column doesn't exist
+// Get meal details - with house verification
 $sql = "SELECT m.*, 
                mb.name as member_name, 
                mb.member_id,
-               uc.username as created_by_username
+               mb.house_id as member_house_id,
+               uc.username as created_by_username,
+               uu.username as updated_by_username
         FROM meals m 
-        JOIN members mb ON m.member_id = mb.member_id 
-        LEFT JOIN users uc ON m.created_by = uc.user_id
-        WHERE m.meal_id = ?";
+        JOIN members mb ON m.member_id = mb.member_id AND m.house_id = mb.house_id 
+        LEFT JOIN users uc ON m.created_by = uc.user_id 
+        LEFT JOIN users uu ON m.updated_by = uu.user_id
+        WHERE m.meal_id = ? AND m.house_id = ?";
 $stmt = mysqli_prepare($conn, $sql);
-mysqli_stmt_bind_param($stmt, "i", $meal_id);
+mysqli_stmt_bind_param($stmt, "ii", $meal_id, $house_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $meal = mysqli_fetch_assoc($result);
 
 if (!$meal) {
-    $_SESSION['error'] = "Meal entry not found";
+    $_SESSION['error'] = "Meal entry not found or unauthorized access";
     header("Location: meals.php");
     exit();
 }
@@ -50,55 +57,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $meal_date = mysqli_real_escape_string($conn, $_POST['meal_date']);
     $meal_count = floatval($_POST['meal_count']);
     $member_id = intval($_POST['member_id']);
+    $user_id = $_SESSION['user_id'];
     
     // Validation
     if (empty($meal_date)) {
         $error = "Meal date is required";
     } elseif ($meal_count <= 0) {
         $error = "Meal count must be greater than 0";
+    } elseif ($meal_count > 3) {
+        $error = "Meal count cannot exceed 3 meals";
     } else {
-        // Check if another entry exists for same member and date
-        $check_sql = "SELECT meal_id FROM meals WHERE member_id = ? AND meal_date = ? AND meal_id != ?";
-        $check_stmt = mysqli_prepare($conn, $check_sql);
-        mysqli_stmt_bind_param($check_stmt, "isi", $member_id, $meal_date, $meal_id);
-        mysqli_stmt_execute($check_stmt);
-        mysqli_stmt_store_result($check_stmt);
+        // Check if member belongs to the same house
+        $member_check_sql = "SELECT house_id FROM members WHERE member_id = ? AND house_id = ?";
+        $member_check_stmt = mysqli_prepare($conn, $member_check_sql);
+        mysqli_stmt_bind_param($member_check_stmt, "ii", $member_id, $house_id);
+        mysqli_stmt_execute($member_check_stmt);
+        mysqli_stmt_store_result($member_check_stmt);
         
-        if (mysqli_stmt_num_rows($check_stmt) > 0) {
-            $error = "Meal entry already exists for this member on selected date";
+        if (mysqli_stmt_num_rows($member_check_stmt) == 0) {
+            $error = "Selected member does not belong to your house";
         } else {
-            // Update meal entry - check if updated_by column exists
-            $update_sql = "UPDATE meals SET member_id = ?, meal_date = ?, meal_count = ?, updated_at = NOW() WHERE meal_id = ?";
-            $update_stmt = mysqli_prepare($conn, $update_sql);
-            mysqli_stmt_bind_param($update_stmt, "isdi", $member_id, $meal_date, $meal_count, $meal_id);
+            // Check if another entry exists for same member, date, and house
+            $check_sql = "SELECT meal_id FROM meals WHERE member_id = ? AND meal_date = ? AND house_id = ? AND meal_id != ?";
+            $check_stmt = mysqli_prepare($conn, $check_sql);
+            mysqli_stmt_bind_param($check_stmt, "isii", $member_id, $meal_date, $house_id, $meal_id);
+            mysqli_stmt_execute($check_stmt);
+            mysqli_stmt_store_result($check_stmt);
             
-            if (mysqli_stmt_execute($update_stmt)) {
-                $success = "Meal entry updated successfully!";
-                
-                // Refresh meal data
-                $sql = "SELECT m.*, 
-                               mb.name as member_name, 
-                               mb.member_id,
-                               uc.username as created_by_username
-                        FROM meals m 
-                        JOIN members mb ON m.member_id = mb.member_id 
-                        LEFT JOIN users uc ON m.created_by = uc.user_id
-                        WHERE m.meal_id = ?";
-                $stmt = mysqli_prepare($conn, $sql);
-                mysqli_stmt_bind_param($stmt, "i", $meal_id);
-                mysqli_stmt_execute($stmt);
-                $result = mysqli_stmt_get_result($stmt);
-                $meal = mysqli_fetch_assoc($result);
+            if (mysqli_stmt_num_rows($check_stmt) > 0) {
+                $error = "Meal entry already exists for this member on selected date";
             } else {
-                $error = "Error updating meal entry: " . mysqli_error($conn);
+                // Update meal entry
+                $update_sql = "UPDATE meals SET member_id = ?, meal_date = ?, meal_count = ?, 
+                               updated_by = ?, updated_at = NOW() 
+                               WHERE meal_id = ? AND house_id = ?";
+                $update_stmt = mysqli_prepare($conn, $update_sql);
+                mysqli_stmt_bind_param($update_stmt, "isdiii", $member_id, $meal_date, $meal_count, $user_id, $meal_id, $house_id);
+                
+                if (mysqli_stmt_execute($update_stmt)) {
+                    $success = "Meal entry updated successfully!";
+                    
+                    // Refresh meal data
+                    $sql = "SELECT m.*, 
+                                   mb.name as member_name, 
+                                   mb.member_id,
+                                   mb.house_id as member_house_id,
+                                   uc.username as created_by_username,
+                                   uu.username as updated_by_username
+                            FROM meals m 
+                            JOIN members mb ON m.member_id = mb.member_id AND m.house_id = mb.house_id 
+                            LEFT JOIN users uc ON m.created_by = uc.user_id 
+                            LEFT JOIN users uu ON m.updated_by = uu.user_id
+                            WHERE m.meal_id = ? AND m.house_id = ?";
+                    $stmt = mysqli_prepare($conn, $sql);
+                    mysqli_stmt_bind_param($stmt, "ii", $meal_id, $house_id);
+                    mysqli_stmt_execute($stmt);
+                    $result = mysqli_stmt_get_result($stmt);
+                    $meal = mysqli_fetch_assoc($result);
+                } else {
+                    $error = "Error updating meal entry: " . mysqli_error($conn);
+                }
             }
         }
     }
 }
 
-// Get all active members
-$members_sql = "SELECT * FROM members WHERE status = 'active' ORDER BY name";
-$members_result = mysqli_query($conn, $members_sql);
+// Get all active members for this house
+$members_sql = "SELECT * FROM members WHERE status = 'active' AND house_id = ? ORDER BY name";
+$members_stmt = mysqli_prepare($conn, $members_sql);
+mysqli_stmt_bind_param($members_stmt, "i", $house_id);
+mysqli_stmt_execute($members_stmt);
+$members_result = mysqli_stmt_get_result($members_stmt);
 $all_members = mysqli_fetch_all($members_result, MYSQLI_ASSOC);
 ?>
 <div class="row">
@@ -163,15 +192,15 @@ $all_members = mysqli_fetch_all($members_result, MYSQLI_ASSOC);
                             $month_start = "$year-$month-01";
                             $month_end = date('Y-m-t', strtotime($month_start));
                             
-                            // Get member's monthly stats
+                            // Get member's monthly stats for this house
                             $stats_sql = "SELECT 
                                 SUM(meal_count) as month_total,
                                 COUNT(*) as month_entries,
                                 AVG(meal_count) as month_avg
                                 FROM meals 
-                                WHERE member_id = ? AND meal_date BETWEEN ? AND ?";
+                                WHERE member_id = ? AND meal_date BETWEEN ? AND ? AND house_id = ?";
                             $stats_stmt = mysqli_prepare($conn, $stats_sql);
-                            mysqli_stmt_bind_param($stats_stmt, "iss", $meal['member_id'], $month_start, $month_end);
+                            mysqli_stmt_bind_param($stats_stmt, "issi", $meal['member_id'], $month_start, $month_end, $house_id);
                             mysqli_stmt_execute($stats_stmt);
                             $stats_result = mysqli_stmt_get_result($stats_stmt);
                             $stats = mysqli_fetch_assoc($stats_result);
@@ -226,11 +255,11 @@ $all_members = mysqli_fetch_all($members_result, MYSQLI_ASSOC);
                                 System
                             <?php endif; ?>
                         </p>
-                        <?php 
-                        // Check if updated_at exists and is not null
-                        if (isset($meal['updated_at']) && !empty($meal['updated_at']) && $meal['updated_at'] != $meal['created_at']): 
-                        ?>
-                        <p><strong>Updated At:</strong> <?php echo date('M d, Y h:i A', strtotime($meal['updated_at'])); ?></p>
+                        <?php if (!empty($meal['updated_at']) && $meal['updated_at'] != $meal['created_at']): ?>
+                        <p><strong>Last Updated:</strong> <?php echo date('M d, Y h:i A', strtotime($meal['updated_at'])); ?></p>
+                        <?php if (!empty($meal['updated_by_username'])): ?>
+                        <p><strong>Updated By:</strong> <?php echo htmlspecialchars($meal['updated_by_username']); ?></p>
+                        <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>

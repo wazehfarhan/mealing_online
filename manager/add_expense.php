@@ -10,6 +10,10 @@ $functions = new Functions();
 
 $auth->requireRole('manager');
 
+// Get manager's house_id
+$user_id = $_SESSION['user_id'];
+$house_id = $auth->getUserHouseId($user_id);
+
 $page_title = "Add New Expense";
 
 $conn = getConnection();
@@ -26,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $category = mysqli_real_escape_string($conn, $_POST['category']);
     $description = mysqli_real_escape_string($conn, $_POST['description']);
     $expense_date = mysqli_real_escape_string($conn, $_POST['expense_date']);
+    $created_by = $_SESSION['user_id'];
     
     // Validation
     if (empty($expense_date)) {
@@ -35,21 +40,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (empty($category)) {
         $error = "Category is required";
     } else {
-        // Insert new expense
-        $insert_sql = "INSERT INTO expenses (amount, category, description, expense_date, created_by, created_at) 
-                       VALUES (?, ?, ?, ?, ?, NOW())";
+        // Insert new expense with house_id
+        $insert_sql = "INSERT INTO expenses (house_id, amount, category, description, expense_date, created_by, created_at) 
+                       VALUES (?, ?, ?, ?, ?, ?, NOW())";
         $insert_stmt = mysqli_prepare($conn, $insert_sql);
-        mysqli_stmt_bind_param($insert_stmt, "dsssi", $amount, $category, $description, 
-                               $expense_date, $_SESSION['user_id']);
+        mysqli_stmt_bind_param($insert_stmt, "idsssi", $house_id, $amount, $category, $description, 
+                               $expense_date, $created_by);
         
         if (mysqli_stmt_execute($insert_stmt)) {
             $success = "Expense added successfully!";
             
             // Clear form fields on success
-            $amount = 0;
-            $category = '';
-            $description = '';
-            $expense_date = '';
+            $_POST = array();
         } else {
             $error = "Error adding expense: " . mysqli_error($conn);
         }
@@ -119,15 +121,16 @@ require_once '../includes/header.php';
                     </div>
                     
                     <?php if (isset($_POST['expense_date']) && !empty($_POST['expense_date'])): 
-                        // Get monthly expense total for reference
+                        // Get monthly expense total for reference (for this house only)
                         $month = date('m', strtotime($_POST['expense_date']));
                         $year = date('Y', strtotime($_POST['expense_date']));
                         $month_start = "$year-$month-01";
                         $month_end = date('Y-m-t', strtotime($month_start));
                         
-                        $month_sql = "SELECT SUM(amount) as month_total FROM expenses WHERE expense_date BETWEEN ? AND ?";
+                        $month_sql = "SELECT SUM(amount) as month_total FROM expenses 
+                                     WHERE expense_date BETWEEN ? AND ? AND house_id = ?";
                         $month_stmt = mysqli_prepare($conn, $month_sql);
-                        mysqli_stmt_bind_param($month_stmt, "ss", $month_start, $month_end);
+                        mysqli_stmt_bind_param($month_stmt, "ssi", $month_start, $month_end, $house_id);
                         mysqli_stmt_execute($month_stmt);
                         $month_result = mysqli_stmt_get_result($month_stmt);
                         $month_total = mysqli_fetch_assoc($month_result);
@@ -154,7 +157,9 @@ require_once '../includes/header.php';
                             <div class="mt-2">
                                 <?php 
                                 $new_amount = isset($_POST['amount']) ? $_POST['amount'] : 0;
-                                $percentage = ($new_amount / ($month_total['month_total'] + $new_amount)) * 100;
+                                $current_total = $month_total['month_total'] ?: 0;
+                                $new_total = $current_total + $new_amount;
+                                $percentage = $new_total > 0 ? ($new_amount / $new_total) * 100 : 0;
                                 if ($percentage > 100) $percentage = 100;
                                 ?>
                                 <div class="progress" style="height: 10px;">
@@ -191,10 +196,18 @@ require_once '../includes/header.php';
             </div>
             <div class="card-body">
                 <?php 
-                // Get recent 5 expenses
-                $recent_sql = "SELECT * FROM expenses ORDER BY expense_date DESC, created_at DESC LIMIT 5";
-                $recent_result = mysqli_query($conn, $recent_sql);
-                $recent_expenses = mysqli_fetch_all($recent_result, MYSQLI_ASSOC);
+                // Get recent 5 expenses for this house only
+                $recent_sql = "SELECT e.*, u.username as created_by_name 
+                              FROM expenses e 
+                              LEFT JOIN users u ON e.created_by = u.user_id 
+                              WHERE e.house_id = ? 
+                              ORDER BY e.expense_date DESC, e.created_at DESC 
+                              LIMIT 5";
+                $recent_stmt = mysqli_prepare($conn, $recent_sql);
+                mysqli_stmt_bind_param($recent_stmt, "i", $house_id);
+                mysqli_stmt_execute($recent_stmt);
+                $recent_result = mysqli_stmt_get_result($recent_stmt);
+                $recent_expenses = $recent_result ? mysqli_fetch_all($recent_result, MYSQLI_ASSOC) : [];
                 ?>
                 
                 <?php if (empty($recent_expenses)): ?>
@@ -213,6 +226,9 @@ require_once '../includes/header.php';
                             <?php if ($recent['description']): ?>
                             <div class="small text-muted"><?php echo htmlspecialchars($recent['description']); ?></div>
                             <?php endif; ?>
+                            <div class="small text-muted">
+                                <i class="fas fa-user"></i> <?php echo $recent['created_by_name'] ?: 'System'; ?>
+                            </div>
                         </div>
                         <div class="text-end">
                             <div class="fw-bold text-warning"><?php echo $functions->formatCurrency($recent['amount']); ?></div>
@@ -268,6 +284,12 @@ $(document).ready(function() {
     if (!$('#expense_date').val()) {
         $('#expense_date').val('<?php echo date('Y-m-d'); ?>');
     }
+    
+    // Update monthly summary when date or amount changes
+    $('#expense_date, #amount').on('change', function() {
+        // Submit form via AJAX or just let user submit normally
+        // For now, we'll rely on form submission
+    });
 });
 </script>
 

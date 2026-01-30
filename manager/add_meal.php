@@ -7,14 +7,21 @@ $auth = new Auth();
 $functions = new Functions();
 $auth->requireRole('manager');
 
+// Get manager's house_id
+$user_id = $_SESSION['user_id'];
+$house_id = $auth->getUserHouseId($user_id);
+
 $page_title = "Add Meal Entry";
 $conn = getConnection();
 $error = '';
 $success = '';
 
-// Get all active members
-$sql = "SELECT * FROM members WHERE status = 'active' ORDER BY name ASC";
-$result = mysqli_query($conn, $sql);
+// Get all active members for this house
+$sql = "SELECT * FROM members WHERE status = 'active' AND house_id = ? ORDER BY name ASC";
+$stmt = mysqli_prepare($conn, $sql);
+mysqli_stmt_bind_param($stmt, "i", $house_id);
+mysqli_stmt_execute($stmt);
+$result = mysqli_stmt_get_result($stmt);
 $members = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
 // Handle form submission
@@ -29,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $success_count = 0;
         $error_messages = [];
+        $user_id = $_SESSION['user_id'];
         
         foreach ($members as $member) {
             $member_id = $member['member_id'];
@@ -39,29 +47,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 continue;
             }
             
-            // Check if entry already exists for this date
-            $check_sql = "SELECT meal_id FROM meals WHERE member_id = ? AND meal_date = ?";
+            // Check if entry already exists for this date and house
+            $check_sql = "SELECT meal_id FROM meals WHERE member_id = ? AND meal_date = ? AND house_id = ?";
             $check_stmt = mysqli_prepare($conn, $check_sql);
-            mysqli_stmt_bind_param($check_stmt, "is", $member_id, $meal_date);
+            mysqli_stmt_bind_param($check_stmt, "isi", $member_id, $meal_date, $house_id);
             mysqli_stmt_execute($check_stmt);
             mysqli_stmt_store_result($check_stmt);
             
             if (mysqli_stmt_num_rows($check_stmt) > 0) {
                 // Update existing entry
-                $sql = "UPDATE meals SET meal_count = ?, created_by = ? WHERE member_id = ? AND meal_date = ?";
+                $sql = "UPDATE meals SET meal_count = ?, updated_by = ?, updated_at = NOW() 
+                        WHERE member_id = ? AND meal_date = ? AND house_id = ?";
                 $stmt = mysqli_prepare($conn, $sql);
-                mysqli_stmt_bind_param($stmt, "diis", $meal_count, $_SESSION['user_id'], $member_id, $meal_date);
+                mysqli_stmt_bind_param($stmt, "diisi", $meal_count, $user_id, $member_id, $meal_date, $house_id);
             } else {
-                // Insert new entry - FIXED: Changed "isd" to "isdi" to match 4 parameters
-                $sql = "INSERT INTO meals (member_id, meal_date, meal_count, created_by) VALUES (?, ?, ?, ?)";
+                // Insert new entry
+                $sql = "INSERT INTO meals (house_id, member_id, meal_date, meal_count, created_by) 
+                        VALUES (?, ?, ?, ?, ?)";
                 $stmt = mysqli_prepare($conn, $sql);
-                mysqli_stmt_bind_param($stmt, "isdi", $member_id, $meal_date, $meal_count, $_SESSION['user_id']);
+                mysqli_stmt_bind_param($stmt, "iisdi", $house_id, $member_id, $meal_date, $meal_count, $user_id);
             }
             
             if (mysqli_stmt_execute($stmt)) {
                 $success_count++;
             } else {
-                $error_messages[] = "Error saving meal for " . $member['name'];
+                $error_messages[] = "Error saving meal for " . $member['name'] . ": " . mysqli_error($conn);
             }
             
             // Close statements
@@ -162,28 +172,28 @@ $yesterday = date('Y-m-d', strtotime('-1 day'));
                                 </thead>
                                 <tbody>
                                     <?php foreach ($members as $member): 
-                                        // Get yesterday's meal
-                                        $yesterday_sql = "SELECT meal_count FROM meals WHERE member_id = ? AND meal_date = ?";
+                                        // Get yesterday's meal for this house
+                                        $yesterday_sql = "SELECT meal_count FROM meals WHERE member_id = ? AND meal_date = ? AND house_id = ?";
                                         $yesterday_stmt = mysqli_prepare($conn, $yesterday_sql);
-                                        mysqli_stmt_bind_param($yesterday_stmt, "is", $member['member_id'], $yesterday);
+                                        mysqli_stmt_bind_param($yesterday_stmt, "isi", $member['member_id'], $yesterday, $house_id);
                                         mysqli_stmt_execute($yesterday_stmt);
                                         $yesterday_result = mysqli_stmt_get_result($yesterday_stmt);
                                         $yesterday_meal = mysqli_fetch_assoc($yesterday_result);
                                         
-                                        // Get last 7 days average
+                                        // Get last 7 days average for this house
                                         $week_ago = date('Y-m-d', strtotime('-7 days'));
-                                        $avg_sql = "SELECT AVG(meal_count) as avg_meals FROM meals WHERE member_id = ? AND meal_date BETWEEN ? AND ?";
+                                        $avg_sql = "SELECT AVG(meal_count) as avg_meals FROM meals WHERE member_id = ? AND meal_date BETWEEN ? AND ? AND house_id = ?";
                                         $avg_stmt = mysqli_prepare($conn, $avg_sql);
-                                        mysqli_stmt_bind_param($avg_stmt, "iss", $member['member_id'], $week_ago, $yesterday);
+                                        mysqli_stmt_bind_param($avg_stmt, "issi", $member['member_id'], $week_ago, $yesterday, $house_id);
                                         mysqli_stmt_execute($avg_stmt);
                                         $avg_result = mysqli_stmt_get_result($avg_stmt);
                                         $avg_meals = mysqli_fetch_assoc($avg_result);
                                         
-                                        // Get this month total
+                                        // Get this month total for this house
                                         $month_start = date('Y-m-01');
-                                        $month_total_sql = "SELECT SUM(meal_count) as month_total FROM meals WHERE member_id = ? AND meal_date >= ?";
+                                        $month_total_sql = "SELECT SUM(meal_count) as month_total FROM meals WHERE member_id = ? AND meal_date >= ? AND house_id = ?";
                                         $month_total_stmt = mysqli_prepare($conn, $month_total_sql);
-                                        mysqli_stmt_bind_param($month_total_stmt, "is", $member['member_id'], $month_start);
+                                        mysqli_stmt_bind_param($month_total_stmt, "isi", $member['member_id'], $month_start, $house_id);
                                         mysqli_stmt_execute($month_total_stmt);
                                         $month_total_result = mysqli_stmt_get_result($month_total_stmt);
                                         $month_total = mysqli_fetch_assoc($month_total_result);
@@ -267,9 +277,9 @@ $yesterday = date('Y-m-d', strtotime('-1 day'));
                         <h6 class="text-muted mb-2">Yesterday's Total Meals</h6>
                         <h3 class="text-success mb-0">
                             <?php 
-                            $yesterday_sql = "SELECT SUM(meal_count) as total FROM meals WHERE meal_date = ?";
+                            $yesterday_sql = "SELECT SUM(meal_count) as total FROM meals WHERE meal_date = ? AND house_id = ?";
                             $yesterday_stmt = mysqli_prepare($conn, $yesterday_sql);
-                            mysqli_stmt_bind_param($yesterday_stmt, "s", $yesterday);
+                            mysqli_stmt_bind_param($yesterday_stmt, "si", $yesterday, $house_id);
                             mysqli_stmt_execute($yesterday_stmt);
                             $yesterday_result = mysqli_stmt_get_result($yesterday_stmt);
                             $yesterday_total = mysqli_fetch_assoc($yesterday_result);
@@ -287,9 +297,9 @@ $yesterday = date('Y-m-d', strtotime('-1 day'));
                         <h6 class="text-muted mb-2">This Month Total</h6>
                         <h3 class="text-warning mb-0">
                             <?php 
-                            $month_sql = "SELECT SUM(meal_count) as total FROM meals WHERE meal_date >= ?";
+                            $month_sql = "SELECT SUM(meal_count) as total FROM meals WHERE meal_date >= ? AND house_id = ?";
                             $month_stmt = mysqli_prepare($conn, $month_sql);
-                            mysqli_stmt_bind_param($month_stmt, "s", $month_start);
+                            mysqli_stmt_bind_param($month_stmt, "si", $month_start, $house_id);
                             mysqli_stmt_execute($month_stmt);
                             $month_result = mysqli_stmt_get_result($month_stmt);
                             $month_total = mysqli_fetch_assoc($month_result);

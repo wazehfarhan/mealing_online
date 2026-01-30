@@ -17,6 +17,10 @@ $functions = new Functions();
 // Only manager can access
 $auth->requireRole('manager');
 
+// Get manager's house_id
+$user_id = $_SESSION['user_id'];
+$house_id = $auth->getUserHouseId($user_id);
+
 $page_title = "All Expenses";
 
 $conn = getConnection();
@@ -47,9 +51,23 @@ if ($filter_category) {
 if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $expense_id = intval($_GET['delete']);
     
-    $delete_sql = "DELETE FROM expenses WHERE expense_id = ?";
+    // Verify the expense belongs to manager's house
+    $verify_sql = "SELECT house_id FROM expenses WHERE expense_id = ?";
+    $verify_stmt = mysqli_prepare($conn, $verify_sql);
+    mysqli_stmt_bind_param($verify_stmt, "i", $expense_id);
+    mysqli_stmt_execute($verify_stmt);
+    $verify_result = mysqli_stmt_get_result($verify_stmt);
+    $expense = mysqli_fetch_assoc($verify_result);
+    
+    if (!$expense || $expense['house_id'] != $house_id) {
+        $_SESSION['error'] = "Unauthorized access or expense not found";
+        header("Location: expenses.php");
+        exit();
+    }
+    
+    $delete_sql = "DELETE FROM expenses WHERE expense_id = ? AND house_id = ?";
     $delete_stmt = mysqli_prepare($conn, $delete_sql);
-    mysqli_stmt_bind_param($delete_stmt, "i", $expense_id);
+    mysqli_stmt_bind_param($delete_stmt, "ii", $expense_id, $house_id);
     
     if (mysqli_stmt_execute($delete_stmt)) {
         $_SESSION['success'] = "Expense deleted successfully";
@@ -77,9 +95,9 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
 require_once __DIR__ . '/../includes/header.php';
 
 // Build WHERE clause for queries using MySQL functions for flexible filtering
-$where_conditions = ["1=1"];
-$params = [];
-$param_types = "";
+$where_conditions = ["e.house_id = ?"];
+$params = [$house_id];
+$param_types = "i";
 
 if ($filter_month) {
     $where_conditions[] = "MONTH(e.expense_date) = ?";
@@ -123,11 +141,12 @@ $offset = ($page - 1) * $per_page;
 $total_pages = ceil($total_records / $per_page);
 
 // =========================
-// FETCH EXPENSES
+// FETCH EXPENSES - UPDATED: now includes updated_by
 // =========================
-$sql = "SELECT e.*, u.username as created_by_name 
+$sql = "SELECT e.*, u.username as created_by_name, u2.username as updated_by_name
         FROM expenses e 
         LEFT JOIN users u ON e.created_by = u.user_id 
+        LEFT JOIN users u2 ON e.updated_by = u2.user_id
         WHERE $where_clause 
         ORDER BY e.expense_date DESC, e.created_at DESC 
         LIMIT ? OFFSET ?";
@@ -386,6 +405,7 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                                 <th>Description</th>
                                 <th class="text-end">Amount</th>
                                 <th>Created By</th>
+                                <th>Last Updated</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -402,7 +422,20 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                                 </td>
                                 <td><?php echo htmlspecialchars($expense['description'] ?: '-'); ?></td>
                                 <td class="text-end"><strong class="text-warning"><?php echo $functions->formatCurrency($expense['amount']); ?></strong></td>
-                                <td><?php echo $expense['created_by_name'] ?: 'System'; ?></td>
+                                <td>
+                                    <?php echo $expense['created_by_name'] ?: 'System'; ?>
+                                    <br>
+                                    <small class="text-muted"><?php echo date('M d, Y', strtotime($expense['created_at'])); ?></small>
+                                </td>
+                                <td>
+                                    <?php if ($expense['updated_at'] && $expense['updated_at'] != $expense['created_at']): ?>
+                                        <?php echo $expense['updated_by_name'] ?: 'System'; ?>
+                                        <br>
+                                        <small class="text-muted"><?php echo date('M d, Y h:i A', strtotime($expense['updated_at'])); ?></small>
+                                    <?php else: ?>
+                                        <span class="text-muted">Not updated</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <div class="btn-group btn-group-sm" role="group">
                                         <a href="edit_expense.php?id=<?php echo $expense['expense_id']; ?>" class="btn btn-warning" title="Edit">

@@ -8,6 +8,10 @@ $functions = new Functions();
 
 $auth->requireRole('manager');
 
+// Get manager's house_id
+$user_id = $_SESSION['user_id'];
+$house_id = $auth->getUserHouseId($user_id);
+
 $page_title = "Edit Expense";
 
 $conn = getConnection();
@@ -21,19 +25,20 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 
 $expense_id = intval($_GET['id']);
 
-// Get expense details
-$sql = "SELECT e.*, u.username as created_by_name 
+// Get expense details with house verification
+$sql = "SELECT e.*, u.username as created_by_name, u2.username as updated_by_name
         FROM expenses e 
         LEFT JOIN users u ON e.created_by = u.user_id 
-        WHERE e.expense_id = ?";
+        LEFT JOIN users u2 ON e.updated_by = u2.user_id
+        WHERE e.expense_id = ? AND e.house_id = ?";
 $stmt = mysqli_prepare($conn, $sql);
-mysqli_stmt_bind_param($stmt, "i", $expense_id);
+mysqli_stmt_bind_param($stmt, "ii", $expense_id, $house_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $expense = mysqli_fetch_assoc($result);
 
 if (!$expense) {
-    $_SESSION['error'] = "Expense not found";
+    $_SESSION['error'] = "Expense not found or unauthorized access";
     header("Location: expenses.php");
     exit();
 }
@@ -50,6 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $category = mysqli_real_escape_string($conn, $_POST['category']);
     $description = mysqli_real_escape_string($conn, $_POST['description']);
     $expense_date = mysqli_real_escape_string($conn, $_POST['expense_date']);
+    $updated_by = $_SESSION['user_id'];
     
     // Validation
     if (empty($expense_date)) {
@@ -58,22 +64,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Amount must be greater than 0";
     } elseif (empty($category)) {
         $error = "Category is required";
+    } elseif ($amount > 1000000) {
+        $error = "Amount is too high. Please enter a reasonable amount.";
     } else {
         // Update expense
-        $update_sql = "UPDATE expenses SET amount = ?, category = ?, description = ?, expense_date = ?, created_by = ? WHERE expense_id = ?";
+        $update_sql = "UPDATE expenses SET amount = ?, category = ?, description = ?, 
+                      expense_date = ?, updated_by = ?, updated_at = NOW() 
+                      WHERE expense_id = ? AND house_id = ?";
         $update_stmt = mysqli_prepare($conn, $update_sql);
-        mysqli_stmt_bind_param($update_stmt, "dsssii", $amount, $category, $description, $expense_date, $_SESSION['user_id'], $expense_id);
+        mysqli_stmt_bind_param($update_stmt, "dsssiii", $amount, $category, $description, 
+                              $expense_date, $updated_by, $expense_id, $house_id);
         
         if (mysqli_stmt_execute($update_stmt)) {
             $success = "Expense updated successfully!";
             
             // Refresh expense data
-            $sql = "SELECT e.*, u.username as created_by_name 
+            $sql = "SELECT e.*, u.username as created_by_name, u2.username as updated_by_name
                     FROM expenses e 
                     LEFT JOIN users u ON e.created_by = u.user_id 
-                    WHERE e.expense_id = ?";
+                    LEFT JOIN users u2 ON e.updated_by = u2.user_id
+                    WHERE e.expense_id = ? AND e.house_id = ?";
             $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, "i", $expense_id);
+            mysqli_stmt_bind_param($stmt, "ii", $expense_id, $house_id);
             mysqli_stmt_execute($stmt);
             $result = mysqli_stmt_get_result($stmt);
             $expense = mysqli_fetch_assoc($result);
@@ -83,15 +95,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Get monthly expense total for reference
+// Get monthly expense total for reference (for this house only)
 $month = date('m', strtotime($expense['expense_date']));
 $year = date('Y', strtotime($expense['expense_date']));
 $month_start = "$year-$month-01";
 $month_end = date('Y-m-t', strtotime($month_start));
 
-$month_sql = "SELECT SUM(amount) as month_total FROM expenses WHERE expense_date BETWEEN ? AND ?";
+$month_sql = "SELECT SUM(amount) as month_total FROM expenses 
+             WHERE expense_date BETWEEN ? AND ? AND house_id = ?";
 $month_stmt = mysqli_prepare($conn, $month_sql);
-mysqli_stmt_bind_param($month_stmt, "ss", $month_start, $month_end);
+mysqli_stmt_bind_param($month_stmt, "ssi", $month_start, $month_end, $house_id);
 mysqli_stmt_execute($month_stmt);
 $month_result = mysqli_stmt_get_result($month_stmt);
 $month_total = mysqli_fetch_assoc($month_result);
@@ -123,7 +136,7 @@ $month_total = mysqli_fetch_assoc($month_result);
                             <div class="input-group">
                                 <span class="input-group-text">৳</span>
                                 <input type="number" class="form-control" id="amount" name="amount" 
-                                       step="0.01" min="0.01" value="<?php echo $expense['amount']; ?>" required>
+                                       step="0.01" min="0.01" max="1000000" value="<?php echo $expense['amount']; ?>" required>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -149,7 +162,8 @@ $month_total = mysqli_fetch_assoc($month_result);
                         <div class="col-md-6">
                             <label for="description" class="form-label">Description</label>
                             <input type="text" class="form-control" id="description" name="description"
-                                   value="<?php echo htmlspecialchars($expense['description']); ?>">
+                                   value="<?php echo htmlspecialchars($expense['description']); ?>"
+                                   placeholder="Optional description">
                         </div>
                     </div>
                     
@@ -175,7 +189,9 @@ $month_total = mysqli_fetch_assoc($month_result);
                             <div class="mt-2">
                                 <div class="progress" style="height: 10px;">
                                     <?php 
-                                    $percentage = ($expense['amount'] / $month_total['month_total']) * 100;
+                                    $current_total = $month_total['month_total'] ?: 0;
+                                    $this_expense = $expense['amount'];
+                                    $percentage = $current_total > 0 ? ($this_expense / $current_total) * 100 : 0;
                                     if ($percentage > 100) $percentage = 100;
                                     ?>
                                     <div class="progress-bar bg-warning" role="progressbar" 
@@ -222,8 +238,11 @@ $month_total = mysqli_fetch_assoc($month_result);
                     <div class="col-md-6">
                         <p><strong>Created By:</strong> <?php echo $expense['created_by_name'] ?: 'System'; ?></p>
                         <p><strong>Created At:</strong> <?php echo date('M d, Y h:i A', strtotime($expense['created_at'])); ?></p>
-                        <?php if ($expense['created_at'] != $expense['updated_at']): ?>
+                        <?php if (!empty($expense['updated_at']) && $expense['updated_at'] != $expense['created_at']): ?>
                         <p><strong>Last Updated:</strong> <?php echo date('M d, Y h:i A', strtotime($expense['updated_at'])); ?></p>
+                        <?php if (!empty($expense['updated_by_name'])): ?>
+                        <p><strong>Updated By:</strong> <?php echo $expense['updated_by_name']; ?></p>
+                        <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -268,6 +287,19 @@ $(document).ready(function() {
     
     // Auto-focus amount field
     $('#amount').focus();
+    
+    // Show warning if amount is being increased significantly
+    let originalAmount = <?php echo $expense['amount']; ?>;
+    $('#amount').on('change', function() {
+        let newAmount = parseFloat($(this).val());
+        if (!isNaN(newAmount) && newAmount > originalAmount * 1.5) {
+            if (confirm('You are increasing the amount significantly (more than 50%). Are you sure this is correct?')) {
+                return true;
+            } else {
+                $(this).val(originalAmount.toFixed(2));
+            }
+        }
+    });
 });
 </script>
 

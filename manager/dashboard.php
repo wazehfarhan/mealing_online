@@ -1,32 +1,41 @@
 <?php
+// dashboard.php - Add at the beginning
+session_start();
+require_once '../config/database.php';
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
-require_once '../includes/header.php';
 
 $auth = new Auth();
-$functions = new Functions();
-
 $auth->requireRole('manager');
 
-$page_title = "Manager Dashboard";
-$stats = $functions->getDashboardStats();
-
-// Get recent meals
+$user_id = $_SESSION['user_id'];
 $conn = getConnection();
-$sql = "SELECT m.*, mb.name FROM meals m 
-        JOIN members mb ON m.member_id = mb.member_id 
-        ORDER BY m.meal_date DESC, m.created_at DESC LIMIT 10";
-$result = mysqli_query($conn, $sql);
-$recent_meals = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
-// Get recent expenses
-$sql = "SELECT * FROM expenses ORDER BY expense_date DESC, created_at DESC LIMIT 5";
-$result = mysqli_query($conn, $sql);
-$recent_expenses = mysqli_fetch_all($result, MYSQLI_ASSOC);
+// Check if user has a house
+$sql = "SELECT house_id FROM users WHERE user_id = ?";
+$stmt = mysqli_prepare($conn, $sql);
+mysqli_stmt_bind_param($stmt, "i", $user_id);
+mysqli_stmt_execute($stmt);
+$result = mysqli_stmt_get_result($stmt);
+$user_data = mysqli_fetch_assoc($result);
 
-// Get expense breakdown for current month
-$expense_breakdown = $functions->getExpenseBreakdown(date('m'), date('Y'));
+// If no house, redirect to setup
+if (!$user_data || !$user_data['house_id']) {
+    $_SESSION['redirect_to'] = 'dashboard.php';
+    header("Location: setup_house.php");
+    exit();
+}
+
+// Set house_id
+$house_id = $user_data['house_id'];
+$_SESSION['house_id'] = $house_id;
+
+// Rest of your dashboard.php code...
+$page_title = "Dashboard";
+require_once '../includes/header.php';
 ?>
+
+<!-- Your existing dashboard HTML/PHP code -->
 <div class="row">
     <!-- Stats Cards -->
     <div class="col-xl-3 col-md-6 mb-4">

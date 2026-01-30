@@ -12,26 +12,57 @@ $page_title = "Reports";
 
 $conn = getConnection();
 
+// Get current user's house from session
+$house_id = $_SESSION['house_id'] ?? null;
+$user_id = $_SESSION['user_id'] ?? null;
+
+// Validate house_id
+if (!$house_id) {
+    // Try to get house_id from database using Auth class
+    $house_info = $auth->getUserHouseInfo($user_id);
+    
+    if ($house_info && !empty($house_info['house_id'])) {
+        $house_id = $house_info['house_id'];
+        // Update session
+        $_SESSION['house_id'] = $house_id;
+        $_SESSION['house_name'] = $house_info['house_name'] ?? null;
+        $_SESSION['house_code'] = $house_info['house_code'] ?? null;
+    } else {
+        // No house found, redirect to setup
+        echo '<div class="alert alert-warning">No house assigned. Please set up or join a house first.</div>';
+        echo '<a href="setup_house.php" class="btn btn-primary">Set Up House</a>';
+        exit();
+    }
+}
+
 // Get current month and year
 $current_month = date('m');
 $current_year = date('Y');
 
-// Get available years for reports
-$years_sql = "SELECT DISTINCT YEAR(meal_date) as year FROM meals 
-              UNION SELECT DISTINCT YEAR(expense_date) as year FROM expenses 
-              UNION SELECT DISTINCT YEAR(deposit_date) as year FROM deposits 
+// Get available years for reports (filtered by house)
+$years_sql = "SELECT DISTINCT YEAR(meal_date) as year FROM meals WHERE house_id = ?
+              UNION SELECT DISTINCT YEAR(expense_date) as year FROM expenses WHERE house_id = ?
+              UNION SELECT DISTINCT YEAR(deposit_date) as year FROM deposits WHERE house_id = ?
               ORDER BY year DESC";
-$years_result = mysqli_query($conn, $years_sql);
+$stmt = mysqli_prepare($conn, $years_sql);
+mysqli_stmt_bind_param($stmt, 'iii', $house_id, $house_id, $house_id);
+mysqli_stmt_execute($stmt);
+$years_result = mysqli_stmt_get_result($stmt);
 $available_years = mysqli_fetch_all($years_result, MYSQLI_ASSOC);
 
-// Calculate current month statistics
-$stats = $functions->getDashboardStats($current_month, $current_year);
+// If no years found, show empty array
+if (!$available_years) {
+    $available_years = [['year' => $current_year]];
+}
 
-// Get expense breakdown for current month
-$expense_breakdown = $functions->getExpenseBreakdown($current_month, $current_year);
+// Calculate current month statistics for this house
+$stats = $functions->getDashboardStats($current_month, $current_year, $house_id);
 
-// Get member-wise report for current month
-$monthly_report = $functions->calculateMonthlyReport($current_month, $current_year);
+// Get expense breakdown for current month for this house
+$expense_breakdown = $functions->getExpenseBreakdown($current_month, $current_year, $house_id);
+
+// Get member-wise report for current month for this house
+$monthly_report = $functions->calculateMonthlyReport($current_month, $current_year, $house_id);
 
 // Calculate totals
 $total_deposits = 0;
@@ -39,17 +70,34 @@ $total_cost = 0;
 $total_balance = 0;
 $credit_count = 0;
 $due_count = 0;
+$total_members = 0;
 
-foreach ($monthly_report as $member) {
-    $total_deposits += $member['total_deposits'];
-    $total_cost += $member['member_cost'];
-    $total_balance += $member['balance'];
-    
-    if ($member['balance'] >= 0) {
-        $credit_count++;
-    } else {
-        $due_count++;
+if ($monthly_report && is_array($monthly_report)) {
+    foreach ($monthly_report as $member) {
+        $total_deposits += $member['total_deposits'];
+        $total_cost += $member['member_cost'];
+        $total_balance += $member['balance'];
+        
+        if ($member['balance'] >= 0) {
+            $credit_count++;
+        } else {
+            $due_count++;
+        }
     }
+    $total_members = count($monthly_report);
+}
+
+// Get house information
+$house_sql = "SELECT house_name, house_code FROM houses WHERE house_id = ? AND is_active = 1";
+$stmt = mysqli_prepare($conn, $house_sql);
+mysqli_stmt_bind_param($stmt, 'i', $house_id);
+mysqli_stmt_execute($stmt);
+$house_result = mysqli_stmt_get_result($stmt);
+$house_info = mysqli_fetch_assoc($house_result);
+
+// If house info not found, show error
+if (!$house_info) {
+    die('<div class="alert alert-danger">Error: House information not found or inactive. Please contact administrator.</div>');
 }
 ?>
 <div class="row mb-4">
@@ -57,7 +105,10 @@ foreach ($monthly_report as $member) {
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <h4 class="page-title mb-0">Reports & Analytics</h4>
-                <p class="text-muted mb-0">Comprehensive financial and meal reports</p>
+                <p class="text-muted mb-0">House: <strong><?php echo htmlspecialchars($house_info['house_name']); ?></strong> (Code: <?php echo htmlspecialchars($house_info['house_code']); ?>) | Reports for <?php echo date('F Y'); ?></p>
+            </div>
+            <div class="text-end">
+                <small class="text-muted">Total Members: <?php echo $total_members; ?></small>
             </div>
         </div>
     </div>
@@ -69,7 +120,7 @@ foreach ($monthly_report as $member) {
         <div class="card border-primary">
             <div class="card-body text-center">
                 <h6 class="text-muted mb-2">Total Expenses</h6>
-                <h3 class="text-primary mb-0"><?php echo $functions->formatCurrency($stats['total_expenses']); ?></h3>
+                <h3 class="text-primary mb-0"><?php echo $functions->formatCurrency($stats['total_expenses'] ?? 0); ?></h3>
                 <small class="text-muted">For <?php echo date('F Y'); ?></small>
             </div>
         </div>
@@ -79,7 +130,7 @@ foreach ($monthly_report as $member) {
         <div class="card border-success">
             <div class="card-body text-center">
                 <h6 class="text-muted mb-2">Total Meals</h6>
-                <h3 class="text-success mb-0"><?php echo number_format($stats['total_meals'], 2); ?></h3>
+                <h3 class="text-success mb-0"><?php echo number_format($stats['total_meals'] ?? 0, 2); ?></h3>
                 <small class="text-muted">For <?php echo date('F Y'); ?></small>
             </div>
         </div>
@@ -89,7 +140,7 @@ foreach ($monthly_report as $member) {
         <div class="card border-warning">
             <div class="card-body text-center">
                 <h6 class="text-muted mb-2">Meal Rate</h6>
-                <h3 class="text-warning mb-0"><?php echo $functions->formatCurrency($stats['meal_rate']); ?></h3>
+                <h3 class="text-warning mb-0"><?php echo $functions->formatCurrency($stats['meal_rate'] ?? 0); ?></h3>
                 <small class="text-muted">Per meal</small>
             </div>
         </div>
@@ -116,6 +167,8 @@ foreach ($monthly_report as $member) {
             </div>
             <div class="card-body">
                 <form method="GET" action="monthly_report.php" class="row g-3">
+                    <input type="hidden" name="house_id" value="<?php echo $house_id; ?>">
+                    
                     <div class="col-md-6">
                         <label for="month" class="form-label">Month</label>
                         <select name="month" id="month" class="form-select" required>
@@ -175,14 +228,14 @@ foreach ($monthly_report as $member) {
                 <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-chart-pie me-2"></i>Expense Breakdown (<?php echo date('F Y'); ?>)</h6>
             </div>
             <div class="card-body">
-                <?php if (empty($expense_breakdown['breakdown'])): ?>
-                <div class="text-center text-muted py-3">No expenses this month</div>
+                <?php if (empty($expense_breakdown['breakdown']) || !is_array($expense_breakdown['breakdown'])): ?>
+                <div class="text-center text-muted py-3">No expenses recorded this month</div>
                 <?php else: ?>
                 <div class="row">
                     <div class="col-7">
                         <div class="list-group list-group-flush">
                             <?php foreach ($expense_breakdown['breakdown'] as $item): 
-                                $percentage = $expense_breakdown['total'] > 0 ? ($item['total'] / $expense_breakdown['total'] * 100) : 0;
+                                $percentage = ($expense_breakdown['total'] ?? 0) > 0 ? ($item['total'] / $expense_breakdown['total'] * 100) : 0;
                             ?>
                             <div class="list-group-item d-flex justify-content-between align-items-center px-0">
                                 <div>
@@ -206,7 +259,7 @@ foreach ($monthly_report as $member) {
                 <div class="mt-3 pt-3 border-top">
                     <div class="d-flex justify-content-between">
                         <strong>Total Expenses:</strong>
-                        <strong><?php echo $functions->formatCurrency($expense_breakdown['total']); ?></strong>
+                        <strong><?php echo $functions->formatCurrency($expense_breakdown['total'] ?? 0); ?></strong>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -237,6 +290,9 @@ foreach ($monthly_report as $member) {
                                     <small class="text-muted">With Due</small>
                                 </div>
                             </div>
+                            <div class="mt-2">
+                                <small>Total Active Members: <strong><?php echo $total_members; ?></strong></small>
+                            </div>
                         </div>
                     </div>
                     
@@ -256,9 +312,9 @@ foreach ($monthly_report as $member) {
                     <div class="col-md-4">
                         <div class="text-center p-3">
                             <h6 class="text-muted mb-2">Meal Statistics</h6>
-                            <p class="mb-1"><strong>Total Meals:</strong> <?php echo number_format($stats['total_meals'], 2); ?></p>
-                            <p class="mb-1"><strong>Total Expenses:</strong> <?php echo $functions->formatCurrency($stats['total_expenses']); ?></p>
-                            <p class="mb-0"><strong>Meal Rate:</strong> <?php echo $functions->formatCurrency($stats['meal_rate']); ?></p>
+                            <p class="mb-1"><strong>Total Meals:</strong> <?php echo number_format($stats['total_meals'] ?? 0, 2); ?></p>
+                            <p class="mb-1"><strong>Total Expenses:</strong> <?php echo $functions->formatCurrency($stats['total_expenses'] ?? 0); ?></p>
+                            <p class="mb-0"><strong>Meal Rate:</strong> <?php echo $functions->formatCurrency($stats['meal_rate'] ?? 0); ?></p>
                         </div>
                     </div>
                 </div>
@@ -277,12 +333,17 @@ foreach ($monthly_report as $member) {
             </div>
             <div class="card-body">
                 <form method="GET" action="member_report.php" class="row g-3 mb-4">
+                    <input type="hidden" name="house_id" value="<?php echo $house_id; ?>">
+                    
                     <div class="col-md-6">
                         <label for="member_id" class="form-label">Select Member</label>
                         <?php
-                        $members_sql = "SELECT * FROM members WHERE status = 'active' ORDER BY name";
-                        $members_result = mysqli_query($conn, $members_sql);
-    
+                        $members_sql = "SELECT * FROM members WHERE house_id = ? AND status = 'active' ORDER BY name";
+                        $stmt = mysqli_prepare($conn, $members_sql);
+                        mysqli_stmt_bind_param($stmt, 'i', $house_id);
+                        mysqli_stmt_execute($stmt);
+                        $members_result = mysqli_stmt_get_result($stmt);
+
                         if ($members_result) {
                             $all_members = mysqli_fetch_all($members_result, MYSQLI_ASSOC);
                         } else {
@@ -360,9 +421,10 @@ foreach ($monthly_report as $member) {
                                 <i class="fas fa-file-csv fa-2x text-success mb-3"></i>
                                 <h6>CSV Exports</h6>
                                 <div class="d-grid gap-2">
-                                    <a href="export_meals.php?format=csv" class="btn btn-outline-success btn-sm">Export Meals</a>
-                                    <a href="export_expenses.php?format=csv" class="btn btn-outline-success btn-sm mt-1">Export Expenses</a>
-                                    <a href="export_deposits.php?format=csv" class="btn btn-outline-success btn-sm mt-1">Export Deposits</a>
+                                    <a href="export_meals.php?format=csv&house_id=<?php echo $house_id; ?>" class="btn btn-outline-success btn-sm">Export Meals</a>
+                                    <a href="export_expenses.php?format=csv&house_id=<?php echo $house_id; ?>" class="btn btn-outline-success btn-sm mt-1">Export Expenses</a>
+                                    <a href="export_deposits.php?format=csv&house_id=<?php echo $house_id; ?>" class="btn btn-outline-success btn-sm mt-1">Export Deposits</a>
+                                    <a href="export_members.php?format=csv&house_id=<?php echo $house_id; ?>" class="btn btn-outline-success btn-sm mt-1">Export Members</a>
                                 </div>
                             </div>
                         </div>
@@ -374,10 +436,10 @@ foreach ($monthly_report as $member) {
                                 <i class="fas fa-file-pdf fa-2x text-danger mb-3"></i>
                                 <h6>PDF Reports</h6>
                                 <div class="d-grid gap-2">
-                                    <a href="monthly_report.php?month=<?php echo $current_month; ?>&year=<?php echo $current_year; ?>&format=pdf" 
+                                    <a href="monthly_report.php?month=<?php echo $current_month; ?>&year=<?php echo $current_year; ?>&house_id=<?php echo $house_id; ?>&format=pdf" 
                                        class="btn btn-outline-danger btn-sm">Monthly Report</a>
-                                    <a href="export_members.php?format=pdf" class="btn btn-outline-danger btn-sm mt-1">Members List</a>
-                                    <a href="export_financial.php?format=pdf" class="btn btn-outline-danger btn-sm mt-1">Financial Summary</a>
+                                    <a href="export_members.php?format=pdf&house_id=<?php echo $house_id; ?>" class="btn btn-outline-danger btn-sm mt-1">Members List</a>
+                                    <a href="export_financial.php?format=pdf&house_id=<?php echo $house_id; ?>" class="btn btn-outline-danger btn-sm mt-1">Financial Summary</a>
                                 </div>
                             </div>
                         </div>
@@ -394,6 +456,86 @@ foreach ($monthly_report as $member) {
                             <li>Check member reports regularly for due amounts</li>
                             <li>Compare monthly trends using the available years</li>
                         </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header bg-white py-3">
+                <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-history me-2"></i>Recent Activity</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="mb-3">Recent Meals (Last 7 Days)</h6>
+                        <?php
+                        $recent_meals_sql = "SELECT m.name, ml.meal_date, ml.meal_count 
+                                            FROM meals ml 
+                                            JOIN members m ON ml.member_id = m.member_id 
+                                            WHERE ml.house_id = ? AND ml.meal_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) 
+                                            ORDER BY ml.meal_date DESC, ml.created_at DESC 
+                                            LIMIT 10";
+                        $stmt = mysqli_prepare($conn, $recent_meals_sql);
+                        mysqli_stmt_bind_param($stmt, 'i', $house_id);
+                        mysqli_stmt_execute($stmt);
+                        $recent_meals = mysqli_stmt_get_result($stmt);
+                        
+                        if (mysqli_num_rows($recent_meals) > 0): ?>
+                            <div class="list-group list-group-flush">
+                                <?php while ($meal = mysqli_fetch_assoc($recent_meals)): ?>
+                                <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                    <div>
+                                        <small><?php echo date('M d', strtotime($meal['meal_date'])); ?></small>
+                                        <div class="fw-bold"><?php echo htmlspecialchars($meal['name']); ?></div>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="badge bg-success"><?php echo $meal['meal_count']; ?> meals</span>
+                                    </div>
+                                </div>
+                                <?php endwhile; ?>
+                            </div>
+                        <?php else: ?>
+                            <p class="text-muted">No meals recorded in the last 7 days</p>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6 class="mb-3">Recent Deposits (Last 7 Days)</h6>
+                        <?php
+                        $recent_deposits_sql = "SELECT m.name, d.amount, d.deposit_date 
+                                               FROM deposits d 
+                                               JOIN members m ON d.member_id = m.member_id 
+                                               WHERE d.house_id = ? AND d.deposit_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) 
+                                               ORDER BY d.deposit_date DESC, d.created_at DESC 
+                                               LIMIT 10";
+                        $stmt = mysqli_prepare($conn, $recent_deposits_sql);
+                        mysqli_stmt_bind_param($stmt, 'i', $house_id);
+                        mysqli_stmt_execute($stmt);
+                        $recent_deposits = mysqli_stmt_get_result($stmt);
+                        
+                        if (mysqli_num_rows($recent_deposits) > 0): ?>
+                            <div class="list-group list-group-flush">
+                                <?php while ($deposit = mysqli_fetch_assoc($recent_deposits)): ?>
+                                <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                    <div>
+                                        <small><?php echo date('M d', strtotime($deposit['deposit_date'])); ?></small>
+                                        <div class="fw-bold"><?php echo htmlspecialchars($deposit['name']); ?></div>
+                                    </div>
+                                    <div class="text-end">
+                                        <span class="badge bg-info"><?php echo $functions->formatCurrency($deposit['amount']); ?></span>
+                                    </div>
+                                </div>
+                                <?php endwhile; ?>
+                            </div>
+                        <?php else: ?>
+                            <p class="text-muted">No deposits recorded in the last 7 days</p>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -420,7 +562,7 @@ function getCategoryColor($category) {
 
 <script>
 // Expense Pie Chart
-<?php if (!empty($expense_breakdown['breakdown'])): ?>
+<?php if (!empty($expense_breakdown['breakdown']) && is_array($expense_breakdown['breakdown'])): ?>
 $(document).ready(function() {
     const ctx = document.getElementById('expensePieChart').getContext('2d');
     const expensePieChart = new Chart(ctx, {
@@ -480,6 +622,9 @@ document.getElementById('year').value = '<?php echo $current_year; ?>';
 </script>
 
 <?php 
+if (isset($stmt)) {
+    mysqli_stmt_close($stmt);
+}
 mysqli_close($conn);
 require_once '../includes/footer.php'; 
 ?>

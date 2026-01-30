@@ -12,6 +12,10 @@ $functions = new Functions();
 
 $auth->requireRole('manager');
 
+// Get manager's house_id
+$user_id = $_SESSION['user_id'];
+$house_id = $auth->getUserHouseId($user_id);
+
 $page_title = "All Meal Entries";
 
 $conn = getConnection();
@@ -25,9 +29,23 @@ $filter_member = isset($_GET['member']) ? intval($_GET['member']) : 0;
 if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $meal_id = intval($_GET['delete']);
     
-    $delete_sql = "DELETE FROM meals WHERE meal_id = ?";
+    // First, verify the meal belongs to manager's house
+    $verify_sql = "SELECT house_id FROM meals WHERE meal_id = ?";
+    $verify_stmt = mysqli_prepare($conn, $verify_sql);
+    mysqli_stmt_bind_param($verify_stmt, "i", $meal_id);
+    mysqli_stmt_execute($verify_stmt);
+    $verify_result = mysqli_stmt_get_result($verify_stmt);
+    $meal = mysqli_fetch_assoc($verify_result);
+    
+    if (!$meal || $meal['house_id'] != $house_id) {
+        $_SESSION['error'] = "Unauthorized access or meal not found";
+        header("Location: meals.php");
+        exit();
+    }
+    
+    $delete_sql = "DELETE FROM meals WHERE meal_id = ? AND house_id = ?";
     $delete_stmt = mysqli_prepare($conn, $delete_sql);
-    mysqli_stmt_bind_param($delete_stmt, "i", $meal_id);
+    mysqli_stmt_bind_param($delete_stmt, "ii", $meal_id, $house_id);
     
     if (mysqli_stmt_execute($delete_stmt)) {
         $_SESSION['success'] = "Meal entry deleted successfully";
@@ -63,9 +81,9 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
 require_once '../includes/header.php';
 
 // Build query for meals
-$where_conditions = ["1=1"];
-$params = [];
-$param_types = "";
+$where_conditions = ["m.house_id = ?"];
+$params = [$house_id];
+$param_types = "i";
 
 if ($filter_month > 0 && $filter_year > 0) {
     $month_start = "$filter_year-" . str_pad($filter_month, 2, '0', STR_PAD_LEFT) . "-01";
@@ -84,7 +102,7 @@ if ($filter_member > 0) {
 
 $where_clause = implode(" AND ", $where_conditions);
 
-// Get total records - Create separate params for this query
+// Get total records
 $count_params = $params;
 $count_param_types = $param_types;
 
@@ -108,10 +126,13 @@ $total_pages = ceil($total_records / $per_page);
 $list_params = $params;
 $list_param_types = $param_types;
 
-$sql = "SELECT m.*, mb.name as member_name, u.username as created_by_name 
+$sql = "SELECT m.*, mb.name as member_name, 
+               u1.username as created_by_name, 
+               u2.username as updated_by_name 
         FROM meals m 
-        JOIN members mb ON m.member_id = mb.member_id 
-        LEFT JOIN users u ON m.created_by = u.user_id 
+        JOIN members mb ON m.member_id = mb.member_id AND m.house_id = mb.house_id 
+        LEFT JOIN users u1 ON m.created_by = u1.user_id 
+        LEFT JOIN users u2 ON m.updated_by = u2.user_id 
         WHERE $where_clause 
         ORDER BY m.meal_date DESC, m.created_at DESC 
         LIMIT ? OFFSET ?";
@@ -128,12 +149,15 @@ mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $meals = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
-// Get all active members for filter
-$members_sql = "SELECT * FROM members WHERE status = 'active' ORDER BY name";
-$members_result = mysqli_query($conn, $members_sql);
+// Get all active members for filter (only from manager's house)
+$members_sql = "SELECT * FROM members WHERE status = 'active' AND house_id = ? ORDER BY name";
+$members_stmt = mysqli_prepare($conn, $members_sql);
+mysqli_stmt_bind_param($members_stmt, "i", $house_id);
+mysqli_stmt_execute($members_stmt);
+$members_result = mysqli_stmt_get_result($members_stmt);
 $all_members = $members_result ? mysqli_fetch_all($members_result, MYSQLI_ASSOC) : [];
 
-// Calculate summary - use the original params (without pagination)
+// Calculate summary
 $summary_sql = "SELECT 
                 COUNT(DISTINCT m.member_id) as unique_members,
                 SUM(m.meal_count) as total_meals,
@@ -311,7 +335,7 @@ $summary = $summary_result ? mysqli_fetch_assoc($summary_result) : [
                                 <th>Member</th>
                                 <th class="text-center">Meal Count</th>
                                 <th>Created By</th>
-                                <th>Created At</th>
+                                <th>Last Updated</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -333,8 +357,20 @@ $summary = $summary_result ? mysqli_fetch_assoc($summary_result) : [
                                         <?php echo $meal['meal_count']; ?>
                                     </span>
                                 </td>
-                                <td><?php echo $meal['created_by_name'] ?: 'System'; ?></td>
-                                <td><?php echo date('M d, Y h:i A', strtotime($meal['created_at'])); ?></td>
+                                <td>
+                                    <?php echo $meal['created_by_name'] ?: 'System'; ?>
+                                    <br>
+                                    <small class="text-muted"><?php echo date('M d, Y', strtotime($meal['created_at'])); ?></small>
+                                </td>
+                                <td>
+                                    <?php if ($meal['updated_at']): ?>
+                                        <?php echo $meal['updated_by_name'] ?: 'System'; ?>
+                                        <br>
+                                        <small class="text-muted"><?php echo date('M d, Y h:i A', strtotime($meal['updated_at'])); ?></small>
+                                    <?php else: ?>
+                                        <span class="text-muted">Not updated</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <div class="btn-group btn-group-sm" role="group">
                                         <a href="edit_meal.php?id=<?php echo $meal['meal_id']; ?>" 
