@@ -193,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['member_id'] = $member_id;
                         
                         $_SESSION['success'] = "Successfully joined house: <strong>" . htmlspecialchars($house['house_name']) . "</strong>";
-                        header("Location: settings.php");
+                        header("Location: ../member/dashboard.php");
                         exit();
                     } else {
                         throw new Exception("Error joining house: " . mysqli_error($conn));
