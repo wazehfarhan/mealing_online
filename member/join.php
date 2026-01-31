@@ -1,4 +1,6 @@
 <?php
+// member/join.php - FIXED VERSION
+session_start(); // Add session start
 require_once '../config/database.php';
 
 $conn = getConnection();
@@ -7,13 +9,17 @@ $error = '';
 $success = '';
 $show_form = false;
 $member_name = '';
+$house_id = null;
 
 // Handle token from GET
 if (isset($_GET['token'])) {
     $token = mysqli_real_escape_string($conn, $_GET['token']);
     
-    // Check token validity
-    $sql = "SELECT * FROM members WHERE join_token = ? AND token_expiry > NOW() AND status = 'active'";
+    // Check token validity - join with house information
+    $sql = "SELECT m.*, h.house_id, h.house_name 
+            FROM members m 
+            JOIN houses h ON m.house_id = h.house_id 
+            WHERE m.join_token = ? AND m.token_expiry > NOW() AND m.status = 'active'";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "s", $token);
     mysqli_stmt_execute($stmt);
@@ -22,11 +28,14 @@ if (isset($_GET['token'])) {
     if ($row = mysqli_fetch_assoc($result)) {
         $member_id = $row['member_id'];
         $member_name = $row['name'];
+        $house_id = $row['house_id'];
+        $house_name = $row['house_name'];
         $show_form = true;
         
         // Store in session for form submission
         $_SESSION['join_token'] = $token;
         $_SESSION['join_member_id'] = $member_id;
+        $_SESSION['join_house_id'] = $house_id;
     } else {
         $error = "Invalid or expired join link. Please contact your manager for a new link.";
     }
@@ -40,8 +49,9 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $token = $_SESSION['join_token'] ?? '';
     $member_id = $_SESSION['join_member_id'] ?? 0;
+    $house_id = $_SESSION['join_house_id'] ?? 0;
     
-    if (empty($token) || $member_id == 0) {
+    if (empty($token) || $member_id == 0 || $house_id == 0) {
         $error = "Invalid session. Please use the join link again.";
     } elseif (empty($username) || empty($email) || empty($password)) {
         $error = "All fields are required";
@@ -63,24 +73,53 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Hash password
             $hashed_password = password_hash($password, PASSWORD_DEFAULT);
             
-            // Create user account
-            $insert_sql = "INSERT INTO users (username, email, password, role, member_id) VALUES (?, ?, ?, 'member', ?)";
+            // Create user account with house_id and role
+            $insert_sql = "INSERT INTO users (username, email, password, role, house_id, member_id) 
+                          VALUES (?, ?, ?, 'member', ?, ?)";
             $stmt = mysqli_prepare($conn, $insert_sql);
-            mysqli_stmt_bind_param($stmt, "sssi", $username, $email, $hashed_password, $member_id);
+            mysqli_stmt_bind_param($stmt, "sssii", $username, $email, $hashed_password, $house_id, $member_id);
             
             if (mysqli_stmt_execute($stmt)) {
-                // Clear join token
-                $update_sql = "UPDATE members SET join_token = NULL, token_expiry = NULL WHERE member_id = ?";
-                $update_stmt = mysqli_prepare($conn, $update_sql);
-                mysqli_stmt_bind_param($update_stmt, "i", $member_id);
+                $user_id = mysqli_insert_id($conn);
+                
+                // Update member record with user_id
+                $update_member_sql = "UPDATE members SET user_id = ? WHERE member_id = ?";
+                $update_stmt = mysqli_prepare($conn, $update_member_sql);
+                mysqli_stmt_bind_param($update_stmt, "ii", $user_id, $member_id);
                 mysqli_stmt_execute($update_stmt);
                 
-                // Clear session
+                // Clear join token
+                $update_token_sql = "UPDATE members SET join_token = NULL, token_expiry = NULL WHERE member_id = ?";
+                $update_token_stmt = mysqli_prepare($conn, $update_token_sql);
+                mysqli_stmt_bind_param($update_token_stmt, "i", $member_id);
+                mysqli_stmt_execute($update_token_stmt);
+                
+                // Auto-login the user
+                $_SESSION['logged_in'] = true;
+                $_SESSION['user_id'] = $user_id;
+                $_SESSION['username'] = $username;
+                $_SESSION['role'] = 'member';
+                $_SESSION['house_id'] = $house_id;
+                $_SESSION['member_id'] = $member_id;
+                
+                // Clear session variables
                 unset($_SESSION['join_token']);
                 unset($_SESSION['join_member_id']);
+                unset($_SESSION['join_house_id']);
                 
-                $success = "Account created successfully! You can now login.";
-                $show_form = false;
+                // Get house name for success message
+                $house_sql = "SELECT house_name FROM houses WHERE house_id = ?";
+                $house_stmt = mysqli_prepare($conn, $house_sql);
+                mysqli_stmt_bind_param($house_stmt, "i", $house_id);
+                mysqli_stmt_execute($house_stmt);
+                $house_result = mysqli_stmt_get_result($house_stmt);
+                $house_data = mysqli_fetch_assoc($house_result);
+                $house_name = $house_data['house_name'] ?? '';
+                
+                // Set success message and redirect
+                $_SESSION['success'] = "Account created successfully! Welcome to " . htmlspecialchars($house_name) . ".";
+                header("Location: dashboard.php");
+                exit();
             } else {
                 $error = "Error creating account: " . mysqli_error($conn);
             }
@@ -163,11 +202,13 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <?php endif; ?>
                 
-                <?php if ($show_form): ?>
+                <?php if ($show_form && isset($house_name)): ?>
                 <div class="member-info">
                     <h5><i class="fas fa-user-check me-2"></i>Joining as:</h5>
                     <p class="mb-1"><strong>Name:</strong> <?php echo htmlspecialchars($member_name); ?></p>
-                    <p class="mb-0"><strong>Link expires:</strong> 7 days from invitation</p>
+                    <p class="mb-1"><strong>House:</strong> <?php echo htmlspecialchars($house_name); ?></p>
+                    <p class="mb-0"><strong>Role:</strong> Member</p>
+                    <p class="mb-0"><small><i class="fas fa-info-circle me-1"></i>Link expires: 7 days from invitation</small></p>
                 </div>
                 
                 <form method="POST" action="">
@@ -175,9 +216,11 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <label for="username" class="form-label">Choose Username *</label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-user"></i></span>
-                            <input type="text" class="form-control" id="username" name="username" required>
+                            <input type="text" class="form-control" id="username" name="username" 
+                                   required minlength="3" maxlength="50"
+                                   pattern="[a-zA-Z0-9_]+" title="Only letters, numbers and underscore allowed">
                         </div>
-                        <div class="form-text">This will be your login username</div>
+                        <div class="form-text">3-50 characters, letters, numbers and underscore only</div>
                     </div>
                     
                     <div class="mb-3">
@@ -186,23 +229,32 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <span class="input-group-text"><i class="fas fa-envelope"></i></span>
                             <input type="email" class="form-control" id="email" name="email" required>
                         </div>
+                        <div class="form-text">Will be used for notifications and password recovery</div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="password" class="form-label">Password *</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                            <input type="password" class="form-control" id="password" name="password" required>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="password" class="form-label">Password *</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                <input type="password" class="form-control" id="password" name="password" 
+                                       required minlength="6">
+                            </div>
                         </div>
-                        <div class="form-text">Minimum 6 characters</div>
+                        
+                        <div class="col-md-6 mb-4">
+                            <label for="confirm_password" class="form-label">Confirm Password *</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                <input type="password" class="form-control" id="confirm_password" 
+                                       name="confirm_password" required minlength="6">
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="mb-4">
-                        <label for="confirm_password" class="form-label">Confirm Password *</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
-                        </div>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        After creating your account, you'll be automatically logged in and redirected to the member dashboard.
                     </div>
                     
                     <div class="d-grid">
@@ -217,7 +269,7 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <i class="fas fa-arrow-left me-1"></i>Back to Login
                     </a>
                 </div>
-                <?php elseif (!$success): ?>
+                <?php elseif (!$success && !$show_form): ?>
                 <div class="text-center py-4">
                     <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
                     <h4>Invalid Join Link</h4>
@@ -232,5 +284,23 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Password validation
+        document.addEventListener('DOMContentLoaded', function() {
+            const password = document.getElementById('password');
+            const confirmPassword = document.getElementById('confirm_password');
+            
+            function validatePasswords() {
+                if (password.value !== confirmPassword.value) {
+                    confirmPassword.setCustomValidity("Passwords do not match");
+                } else {
+                    confirmPassword.setCustomValidity("");
+                }
+            }
+            
+            password.addEventListener('change', validatePasswords);
+            confirmPassword.addEventListener('keyup', validatePasswords);
+        });
+    </script>
 </body>
 </html>
