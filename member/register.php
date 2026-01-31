@@ -1,9 +1,6 @@
 <?php
+require_once '../config/database.php';
 require_once '../includes/auth.php';
-require_once '../includes/functions.php';
-
-$auth = new Auth();
-$functions = new Functions();
 
 // Check if already logged in
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
@@ -15,114 +12,45 @@ if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
     exit();
 }
 
-$page_title = "Join House";
-
-$conn = getConnection();
-
+$auth = new Auth();
 $error = '';
 $success = '';
 $token = $_GET['token'] ?? '';
-$member_info = null;
-$house_info = null;
+$tokenData = null;
 
-// If token is provided, validate it
+// If token is provided in URL, validate it
 if (!empty($token)) {
-    $sql = "SELECT m.*, h.house_name, h.house_code, h.description as house_description
-            FROM members m 
-            JOIN houses h ON m.house_id = h.house_id 
-            WHERE m.join_token = ? AND m.token_expiry > NOW() AND m.status = 'active' 
-            AND h.is_active = 1";
-    $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, "s", $token);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    
-    if (mysqli_num_rows($result) === 1) {
-        $member_info = mysqli_fetch_assoc($result);
-        $house_info = [
-            'house_name' => $member_info['house_name'],
-            'house_code' => $member_info['house_code'],
-            'description' => $member_info['house_description']
-        ];
-        
-        // Check if this member already has a user account
-        $check_sql = "SELECT user_id FROM users WHERE member_id = ?";
-        $check_stmt = mysqli_prepare($conn, $check_sql);
-        mysqli_stmt_bind_param($check_stmt, "i", $member_info['member_id']);
-        mysqli_stmt_execute($check_stmt);
-        mysqli_stmt_store_result($check_stmt);
-        
-        if (mysqli_stmt_num_rows($check_stmt) > 0) {
-            $error = "This member already has an account. Please login instead.";
-            $token = '';
-            $member_info = null;
-        }
-    } else {
+    $tokenData = $auth->validateJoinToken($token);
+    if (!$tokenData) {
         $error = "Invalid or expired join link. Please request a new one from your house manager.";
-        $token = '';
+        $token = ''; // Clear invalid token
     }
 }
 
-// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Check if it's a token validation form (first step)
     if (isset($_POST['validate_token'])) {
-        $input_token = trim($_POST['join_token'] ?? '');
+        $inputToken = $_POST['join_token'] ?? '';
         
-        if (empty($input_token)) {
+        if (empty($inputToken)) {
             $error = "Please enter the join token";
         } else {
-            // Extract token if full URL is pasted
-            if (strpos($input_token, 'token=') !== false) {
-                $parts = parse_url($input_token);
-                if (isset($parts['query'])) {
-                    parse_str($parts['query'], $query_params);
-                    $input_token = $query_params['token'] ?? $input_token;
-                }
-            }
-            
-            // Validate the token
-            $sql = "SELECT m.*, h.house_name, h.house_code, h.description as house_description
-                    FROM members m 
-                    JOIN houses h ON m.house_id = h.house_id 
-                    WHERE m.join_token = ? AND m.token_expiry > NOW() AND m.status = 'active' 
-                    AND h.is_active = 1";
-            $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, "s", $input_token);
-            mysqli_stmt_execute($stmt);
-            $result = mysqli_stmt_get_result($stmt);
-            
-            if (mysqli_num_rows($result) === 1) {
-                $member_info = mysqli_fetch_assoc($result);
-                $house_info = [
-                    'house_name' => $member_info['house_name'],
-                    'house_code' => $member_info['house_code'],
-                    'description' => $member_info['house_description']
-                ];
-                
-                // Check if this member already has a user account
-                $check_sql = "SELECT user_id FROM users WHERE member_id = ?";
-                $check_stmt = mysqli_prepare($conn, $check_sql);
-                mysqli_stmt_bind_param($check_stmt, "i", $member_info['member_id']);
-                mysqli_stmt_execute($check_stmt);
-                mysqli_stmt_store_result($check_stmt);
-                
-                if (mysqli_stmt_num_rows($check_stmt) > 0) {
-                    $error = "This member already has an account. Please login instead.";
-                    $member_info = null;
-                } else {
-                    $token = $input_token;
-                    $success = "Valid join link! You're joining: <strong>" . htmlspecialchars($member_info['house_name']) . "</strong>";
-                }
+            $tokenData = $auth->validateJoinToken($inputToken);
+            if ($tokenData) {
+                $token = $inputToken;
+                $success = "Valid token! You're joining: <strong>" . htmlspecialchars($tokenData['house_name']) . "</strong>";
             } else {
                 $error = "Invalid or expired join token. Please check with your house manager.";
             }
         }
     }
+    // Check if it's the registration form (second step)
     elseif (isset($_POST['register'])) {
-        $username = trim($_POST['username'] ?? '');
-        $email = trim($_POST['email'] ?? '');
+        $username = $_POST['username'] ?? '';
+        $email = $_POST['email'] ?? '';
         $password = $_POST['password'] ?? '';
         $confirm_password = $_POST['confirm_password'] ?? '';
+        $phone = $_POST['phone'] ?? '';
         $token = $_POST['token'] ?? '';
         
         // Validation
@@ -134,178 +62,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Passwords do not match";
         } elseif (strlen($password) < 6) {
             $error = "Password must be at least 6 characters";
+        } elseif (!empty($phone) && !preg_match('/^[0-9+\-\s]{10,15}$/', $phone)) {
+            $error = "Invalid phone number format";
         } elseif (empty($token)) {
             $error = "Join token is required";
         } else {
-            // Start transaction
-            mysqli_begin_transaction($conn);
+            // Register user with token
+            $result = $auth->registerWithToken($username, $email, $password, $token, $phone);
             
-            try {
-                // Validate token again
-                $sql = "SELECT m.* FROM members m 
-                        WHERE m.join_token = ? AND m.token_expiry > NOW() AND m.status = 'active'";
-                $stmt = mysqli_prepare($conn, $sql);
-                mysqli_stmt_bind_param($stmt, "s", $token);
-                mysqli_stmt_execute($stmt);
-                $result = mysqli_stmt_get_result($stmt);
-                $member_info = mysqli_fetch_assoc($result);
-                
-                if (!$member_info) {
-                    throw new Exception("Invalid or expired token");
-                }
-                
-                // Check if username/email already exists
-                $check_sql = "SELECT user_id FROM users WHERE username = ? OR email = ?";
-                $check_stmt = mysqli_prepare($conn, $check_sql);
-                mysqli_stmt_bind_param($check_stmt, "ss", $username, $email);
-                mysqli_stmt_execute($check_stmt);
-                mysqli_stmt_store_result($check_stmt);
-                
-                if (mysqli_stmt_num_rows($check_stmt) > 0) {
-                    throw new Exception("Username or email already exists");
-                }
-                
-                // Hash password
-                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-                
-                // Create user account
-                $insert_sql = "INSERT INTO users (username, email, password, role, house_id, member_id, is_active) 
-                              VALUES (?, ?, ?, 'member', ?, ?, 1)";
-                $insert_stmt = mysqli_prepare($conn, $insert_sql);
-                mysqli_stmt_bind_param($insert_stmt, "sssii", $username, $email, $hashed_password, 
-                                      $member_info['house_id'], $member_info['member_id']);
-                
-                if (!mysqli_stmt_execute($insert_stmt)) {
-                    throw new Exception("Failed to create user account: " . mysqli_error($conn));
-                }
-                
-                $user_id = mysqli_insert_id($conn);
-                
-                // Update member with email and phone from form if they were empty
-                if (empty($member_info['email']) || empty($member_info['phone'])) {
-                    $update_fields = [];
-                    $update_values = [];
-                    $types = "";
-                    
-                    if (empty($member_info['email'])) {
-                        $update_fields[] = "email = ?";
-                        $update_values[] = $email;
-                        $types .= "s";
-                    }
-                    
-                    $phone = $_POST['phone'] ?? '';
-                    if (empty($member_info['phone']) && !empty($phone)) {
-                        $update_fields[] = "phone = ?";
-                        $update_values[] = $phone;
-                        $types .= "s";
-                    }
-                    
-                    if (!empty($update_fields)) {
-                        $update_values[] = $member_info['member_id'];
-                        $types .= "i";
-                        
-                        $update_sql = "UPDATE members SET " . implode(", ", $update_fields) . " WHERE member_id = ?";
-                        $update_stmt = mysqli_prepare($conn, $update_sql);
-                        mysqli_stmt_bind_param($update_stmt, $types, ...$update_values);
-                        
-                        if (!mysqli_stmt_execute($update_stmt)) {
-                            throw new Exception("Failed to update member information");
-                        }
-                    }
-                }
-                
-                // Clear the join token
-                $clear_sql = "UPDATE members SET join_token = NULL, token_expiry = NULL WHERE member_id = ?";
-                $clear_stmt = mysqli_prepare($conn, $clear_sql);
-                mysqli_stmt_bind_param($clear_stmt, "i", $member_info['member_id']);
-                
-                if (!mysqli_stmt_execute($clear_stmt)) {
-                    throw new Exception("Failed to clear join token");
-                }
-                
-                // Get house information for session
-                $house_sql = "SELECT house_name, house_code FROM houses WHERE house_id = ?";
-                $house_stmt = mysqli_prepare($conn, $house_sql);
-                mysqli_stmt_bind_param($house_stmt, "i", $member_info['house_id']);
-                mysqli_stmt_execute($house_stmt);
-                $house_result = mysqli_stmt_get_result($house_stmt);
-                $house_data = mysqli_fetch_assoc($house_result);
-                
-                // Commit transaction
-                mysqli_commit($conn);
-                
-                // Set session variables
-                $_SESSION['user_id'] = $user_id;
-                $_SESSION['username'] = $username;
-                $_SESSION['email'] = $email;
-                $_SESSION['role'] = 'member';
-                $_SESSION['member_id'] = $member_info['member_id'];
-                $_SESSION['house_id'] = $member_info['house_id'];
-                $_SESSION['house_name'] = $house_data['house_name'] ?? '';
-                $_SESSION['house_code'] = $house_data['house_code'] ?? '';
-                $_SESSION['logged_in'] = true;
-                
-                // Update last login
-                $update_login_sql = "UPDATE users SET last_login = NOW() WHERE user_id = ?";
-                $update_login_stmt = mysqli_prepare($conn, $update_login_sql);
-                mysqli_stmt_bind_param($update_login_stmt, "i", $user_id);
-                mysqli_stmt_execute($update_login_stmt);
-                
+            if ($result['success']) {
                 $success = "Registration successful! Redirecting to dashboard...";
-                
-                // Redirect after 3 seconds
+                // Redirect to member dashboard after 2 seconds
                 echo '<script>
                     setTimeout(function() {
                         window.location.href = "dashboard.php";
-                    }, 3000);
+                    }, 2000);
                 </script>';
-                
-            } catch (Exception $e) {
-                mysqli_rollback($conn);
-                $error = "Registration failed: " . $e->getMessage();
+            } else {
+                $error = "Registration failed: " . $result['error'];
             }
         }
     }
 }
 
-// Include header without navigation (since user isn't logged in yet)
+// If token is invalid, reset tokenData
+if (!empty($token) && !$tokenData) {
+    $token = '';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $page_title; ?> - Meal Management System</title>
+    <title>Join as Member - Meal Management System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             padding: 20px;
         }
-        .join-container {
-            max-width: 600px;
+        .register-container {
+            max-width: 550px;
             margin: 0 auto;
         }
-        .join-card {
+        .register-card {
             background: white;
             border-radius: 15px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             overflow: hidden;
         }
-        .join-header {
-            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+        .register-header {
+            background: linear-gradient(135deg, #27ae60 0%, #219653 100%);
             color: white;
             padding: 30px;
             text-align: center;
         }
-        .join-body {
+        .register-body {
             padding: 30px;
         }
-        .btn-join {
+        .btn-register {
             background: linear-gradient(135deg, #27ae60 0%, #219653 100%);
             border: none;
             padding: 12px;
@@ -313,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             transition: all 0.3s;
             width: 100%;
         }
-        .btn-join:hover {
+        .btn-register:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 20px rgba(39, 174, 96, 0.3);
         }
@@ -402,21 +222,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body>
-    <div class="join-container">
-        <div class="join-card">
-            <div class="join-header">
-                <h3><i class="fas fa-user-plus me-2"></i>Join House as Member</h3>
-                <p class="mb-0">Use the join link provided by your house manager</p>
+    <div class="register-container">
+        <div class="register-card">
+            <div class="register-header">
+                <h3><i class="fas fa-user-plus me-2"></i>Join as Member</h3>
+                <p class="mb-0">Connect to your house using the provided join link</p>
             </div>
             
-            <div class="join-body">
+            <div class="register-body">
                 <!-- Step Indicator -->
                 <div class="step-indicator">
                     <div class="step <?php echo empty($token) ? 'active' : 'completed'; ?>">
                         <div class="step-number">1</div>
                         <div class="step-label">Enter Token</div>
                     </div>
-                    <div class="step <?php echo !empty($token) && $member_info ? 'active' : ''; ?>">
+                    <div class="step <?php echo !empty($token) ? 'active' : ''; ?>">
                         <div class="step-number">2</div>
                         <div class="step-label">Create Account</div>
                     </div>
@@ -436,7 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <?php endif; ?>
                 
-                <?php if (empty($token) || !$member_info): ?>
+                <?php if (empty($token)): ?>
                 <!-- Step 1: Token Entry Form -->
                 <form method="POST" action="">
                     <div class="mb-4">
@@ -445,7 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <span class="input-group-text"><i class="fas fa-key"></i></span>
                             <input type="text" class="form-control" id="join_token" name="join_token" 
                                    placeholder="Enter the token or paste the full join link" required
-                                   value="<?php echo isset($_POST['join_token']) ? htmlspecialchars($_POST['join_token']) : (isset($_GET['token']) ? htmlspecialchars($_GET['token']) : ''); ?>">
+                                   value="<?php echo isset($_POST['join_token']) ? htmlspecialchars($_POST['join_token']) : ''; ?>">
                         </div>
                         <div class="form-text">
                             <i class="fas fa-info-circle me-1"></i>
@@ -468,14 +288,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             Contact your house manager to get an invitation link.
                         </p>
                         <div class="mt-3">
-                            <a href="../auth/login.php" class="text-decoration-none">
-                                <i class="fas fa-sign-in-alt me-2"></i>
-                                Already have an account? Login here
-                            </a>
-                        </div>
-                        <div class="mt-2">
                             <a href="../auth/register.php" class="text-decoration-none">
-                                <i class="fas fa-user-plus me-2"></i>
+                                <i class="fas fa-arrow-left me-2"></i>
                                 Register as Manager instead?
                             </a>
                         </div>
@@ -484,12 +298,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 <?php else: ?>
                 <!-- Step 2: Registration Form -->
-                <?php if ($member_info && $house_info): ?>
+                <?php if ($tokenData): ?>
                 <div class="house-info">
                     <h5><i class="fas fa-home me-2"></i>Joining House</h5>
-                    <p class="mb-1"><strong>House:</strong> <?php echo htmlspecialchars($house_info['house_name']); ?></p>
-                    <p class="mb-1"><strong>House Code:</strong> <?php echo htmlspecialchars($house_info['house_code']); ?></p>
-                    <p class="mb-0"><strong>Your Name:</strong> <?php echo htmlspecialchars($member_info['name']); ?></p>
+                    <p class="mb-1"><strong>House:</strong> <?php echo htmlspecialchars($tokenData['house_name']); ?></p>
+                    <p class="mb-1"><strong>House Code:</strong> <?php echo htmlspecialchars($tokenData['house_code']); ?></p>
+                    <p class="mb-0"><strong>Your Name:</strong> <?php echo htmlspecialchars($tokenData['name']); ?></p>
                 </div>
                 <?php endif; ?>
                 
@@ -513,12 +327,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-envelope"></i></span>
                                 <input type="email" class="form-control" id="email" name="email"
-                                       value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : (isset($member_info['email']) ? htmlspecialchars($member_info['email']) : ''); ?>"
-                                       <?php echo isset($member_info['email']) && !empty($member_info['email']) ? 'readonly' : 'required'; ?>>
+                                       value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>"
+                                       required>
                             </div>
-                            <?php if (isset($member_info['email']) && !empty($member_info['email'])): ?>
-                            <div class="form-text text-muted">Email already set by manager</div>
-                            <?php endif; ?>
                         </div>
                     </div>
                     
@@ -555,23 +366,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-phone"></i></span>
                             <input type="text" class="form-control" id="phone" name="phone"
-                                   value="<?php echo isset($_POST['phone']) ? htmlspecialchars($_POST['phone']) : (isset($member_info['phone']) ? htmlspecialchars($member_info['phone']) : ''); ?>"
-                                   <?php echo isset($member_info['phone']) && !empty($member_info['phone']) ? 'readonly' : ''; ?>
+                                   value="<?php echo isset($_POST['phone']) ? htmlspecialchars($_POST['phone']) : ''; ?>"
                                    placeholder="+1 (555) 123-4567">
                         </div>
-                        <?php if (isset($member_info['phone']) && !empty($member_info['phone'])): ?>
-                        <div class="form-text text-muted">Phone already set by manager</div>
-                        <?php endif; ?>
                     </div>
                     
                     <div class="d-grid mb-3">
-                        <button type="submit" name="register" class="btn btn-join btn-lg">
+                        <button type="submit" name="register" class="btn btn-register btn-lg">
                             <i class="fas fa-user-plus me-2"></i>Complete Registration
                         </button>
                     </div>
                     
                     <div class="text-center">
-                        <a href="join.php" class="text-decoration-none">
+                        <a href="register.php" class="text-decoration-none">
                             <i class="fas fa-arrow-left me-2"></i>
                             Back to token entry
                         </a>
@@ -657,67 +464,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             firstField.focus();
         }
         
-        // Auto-extract token if full URL is pasted
+        // Auto-extract token from URL if it's a full URL
         const joinTokenInput = document.getElementById('join_token');
         if (joinTokenInput) {
-            // If token is in URL parameters, use it
+            // Get token from URL parameters
             const urlParams = new URLSearchParams(window.location.search);
             const urlToken = urlParams.get('token');
             
-            if (urlToken && !joinTokenInput.value) {
+            if (urlToken) {
                 joinTokenInput.value = urlToken;
-            }
-            
-            // Also handle manual pasting
-            joinTokenInput.addEventListener('input', function() {
-                const value = this.value;
-                // If it looks like a URL with token parameter
-                if (value.includes('token=')) {
-                    try {
-                        const url = new URL(value);
-                        const token = url.searchParams.get('token');
-                        if (token) {
-                            this.value = token;
-                        }
-                    } catch (e) {
-                        // Not a valid URL, try manual extraction
+            } else {
+                // Try to extract token from any text (if someone pastes full URL)
+                joinTokenInput.addEventListener('input', function() {
+                    const value = this.value;
+                    // If it looks like a URL, extract token
+                    if (value.includes('token=')) {
                         const tokenMatch = value.match(/token=([^&]+)/);
                         if (tokenMatch) {
                             this.value = tokenMatch[1];
                         }
                     }
-                }
-            });
-        }
-        
-        // Auto-generate username from name if available
-        const usernameInput = document.getElementById('username');
-        if (usernameInput && !usernameInput.value) {
-            // Try to generate username from member name (if we have it)
-            const memberName = '<?php echo isset($member_info["name"]) ? addslashes($member_info["name"]) : ""; ?>';
-            if (memberName) {
-                // Convert to lowercase, remove spaces and special characters
-                let suggestedUsername = memberName.toLowerCase()
-                    .replace(/[^a-z0-9]/g, '')
-                    .substring(0, 20);
-                
-                if (suggestedUsername) {
-                    usernameInput.placeholder = suggestedUsername;
-                    // usernameInput.value = suggestedUsername; // Uncomment to auto-fill
-                }
+                });
             }
         }
     </script>
 </body>
 </html>
-
-<?php
-// Close database connection
-if (isset($stmt)) {
-    mysqli_stmt_close($stmt);
-}
-if (isset($check_stmt)) {
-    mysqli_stmt_close($check_stmt);
-}
-mysqli_close($conn);
-?>

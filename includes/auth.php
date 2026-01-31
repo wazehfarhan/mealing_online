@@ -624,5 +624,200 @@ class Auth {
         
         return mysqli_fetch_all($result, MYSQLI_ASSOC);
     }
+    /**
+ * Generate join token for a member
+ */
+public function generateJoinToken($member_id, $house_id) {
+    // Generate unique token
+    $token = bin2hex(random_bytes(32));
+    $expiry = date('Y-m-d H:i:s', strtotime('+7 days'));
+    
+    $sql = "UPDATE members SET join_token = ?, token_expiry = ? WHERE member_id = ? AND house_id = ?";
+    $stmt = mysqli_prepare($this->conn, $sql);
+    mysqli_stmt_bind_param($stmt, "ssii", $token, $expiry, $member_id, $house_id);
+    
+    if (mysqli_stmt_execute($stmt)) {
+        // Generate join link
+        $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]";
+        return $base_url . "/member/register.php?token=" . $token;
+    }
+    
+    return false;
+}
+
+/**
+ * Validate join token
+ */
+public function validateJoinToken($token) {
+    $sql = "SELECT m.*, h.house_name, h.house_code 
+            FROM members m 
+            JOIN houses h ON m.house_id = h.house_id 
+            WHERE m.join_token = ? AND m.token_expiry > NOW() AND m.status = 'active'";
+    
+    $stmt = mysqli_prepare($this->conn, $sql);
+    mysqli_stmt_bind_param($stmt, "s", $token);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    
+    if (mysqli_num_rows($result) === 1) {
+        return mysqli_fetch_assoc($result);
+    }
+    
+    return false;
+}
+
+/**
+ * Complete member registration with token
+ */
+public function registerWithToken($username, $email, $password, $token, $phone = '') {
+    // Validate token first
+    $tokenData = $this->validateJoinToken($token);
+    if (!$tokenData) {
+        return ['success' => false, 'error' => 'Invalid or expired token'];
+    }
+    
+    // Check if username/email exists
+    if ($this->usernameExists($username) || $this->emailExists($email)) {
+        return ['success' => false, 'error' => 'Username or email already exists'];
+    }
+    
+    // Hash password
+    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+    
+    // Start transaction
+    mysqli_begin_transaction($this->conn);
+    
+    try {
+        // Insert user with house_id and member_id
+        $sql = "INSERT INTO users (username, email, password, role, house_id, member_id, is_active) 
+                VALUES (?, ?, ?, 'member', ?, ?, 1)";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "sssii", $username, $email, $hashed_password, 
+                              $tokenData['house_id'], $tokenData['member_id']);
+        
+        if (!mysqli_stmt_execute($stmt)) {
+            throw new Exception("Failed to create user: " . mysqli_error($this->conn));
+        }
+        
+        $user_id = mysqli_insert_id($this->conn);
+        
+        // Update member with email and phone if not set
+        if (empty($tokenData['email']) || empty($tokenData['phone'])) {
+            $sql = "UPDATE members SET email = ?, phone = ? WHERE member_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "ssi", $email, $phone, $tokenData['member_id']);
+            mysqli_stmt_execute($stmt);
+        }
+        
+        // Clear the join token
+        $sql = "UPDATE members SET join_token = NULL, token_expiry = NULL WHERE member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $tokenData['member_id']);
+        mysqli_stmt_execute($stmt);
+        
+        mysqli_commit($this->conn);
+        
+        // Set session
+        $_SESSION['user_id'] = $user_id;
+        $_SESSION['username'] = $username;
+        $_SESSION['email'] = $email;
+        $_SESSION['role'] = 'member';
+        $_SESSION['member_id'] = $tokenData['member_id'];
+        $_SESSION['house_id'] = $tokenData['house_id'];
+        $_SESSION['house_name'] = $tokenData['house_name'];
+        $_SESSION['house_code'] = $tokenData['house_code'];
+        $_SESSION['logged_in'] = true;
+        
+        return [
+            'success' => true,
+            'user_id' => $user_id,
+            'member_id' => $tokenData['member_id'],
+            'house_id' => $tokenData['house_id']
+        ];
+        
+    } catch (Exception $e) {
+        mysqli_rollback($this->conn);
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Check if username exists
+ */
+private function usernameExists($username) {
+    $sql = "SELECT user_id FROM users WHERE username = ?";
+    $stmt = mysqli_prepare($this->conn, $sql);
+    mysqli_stmt_bind_param($stmt, "s", $username);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_store_result($stmt);
+    
+    return mysqli_stmt_num_rows($stmt) > 0;
+}
+
+/**
+ * Check if email exists
+ */
+private function emailExists($email) {
+    $sql = "SELECT user_id FROM users WHERE email = ?";
+    $stmt = mysqli_prepare($this->conn, $sql);
+    mysqli_stmt_bind_param($stmt, "s", $email);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_store_result($stmt);
+    
+    return mysqli_stmt_num_rows($stmt) > 0;
+}
+
+/**
+ * Set user session with proper data
+ */
+private function setUserSession($userData) {
+    $_SESSION['user_id'] = $userData['user_id'];
+    $_SESSION['username'] = $userData['username'];
+    $_SESSION['email'] = $userData['email'];
+    $_SESSION['role'] = $userData['role'];
+    $_SESSION['logged_in'] = true;
+    
+    if (isset($userData['house_id'])) {
+        $_SESSION['house_id'] = $userData['house_id'];
+    }
+    if (isset($userData['member_id'])) {
+        $_SESSION['member_id'] = $userData['member_id'];
+    }
+    if (isset($userData['house_name'])) {
+        $_SESSION['house_name'] = $userData['house_name'];
+    }
+    if (isset($userData['full_name'])) {
+        $_SESSION['full_name'] = $userData['full_name'];
+    }
+}
+
+/**
+ * Get members without user accounts
+ */
+public function getMembersWithoutUsers($house_id = null) {
+    if (!$house_id && isset($_SESSION['house_id'])) {
+        $house_id = $_SESSION['house_id'];
+    }
+    
+    if (!$house_id) {
+        return [];
+    }
+    
+    $sql = "SELECT m.* 
+            FROM members m 
+            LEFT JOIN users u ON m.member_id = u.member_id 
+            WHERE m.house_id = ? 
+            AND m.status = 'active' 
+            AND u.user_id IS NULL 
+            AND (m.join_token IS NULL OR m.token_expiry < NOW())
+            ORDER BY m.name";
+    
+    $stmt = mysqli_prepare($this->conn, $sql);
+    mysqli_stmt_bind_param($stmt, "i", $house_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    
+    return mysqli_fetch_all($result, MYSQLI_ASSOC);
+}
 }
 ?>
