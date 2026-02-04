@@ -260,7 +260,7 @@ public function getDeveloperInfo() {
             'location' => 'Bangladesh'
         ),
         'profiles' => array(
-            'github' => 'https://github.com/w2zfrhn',
+            'github' => 'https://github.com/wazehfarhan',
             'linkedin' => 'https://www.linkedin.com/in/w2zfrhn'
         ),
         'quote' => 'Driven by curiosity, powered by code, and focused on building meaningful software.'

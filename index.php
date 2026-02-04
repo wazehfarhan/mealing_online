@@ -27,6 +27,24 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['logged_in']) && $_SESSION['l
 $stats = $functions->getSystemStats();
 $developerInfo = $functions->getDeveloperInfo();
 
+// Helper function to assign color classes to skills
+function getSkillColorClass($skill) {
+    $colors = [
+        'C' => 'bg-c', 'C++' => 'bg-cpp', 'Java' => 'bg-java', 
+        'C#' => 'bg-csharp', 'JavaScript' => 'bg-js', 'SQL' => 'bg-sql',
+        'HTML' => 'bg-html', 'CSS' => 'bg-css', 'PHP' => 'bg-php',
+        '.NET' => 'bg-dotnet', 'MySQL' => 'bg-mysql',
+        'OOP' => 'bg-oop', 'Data Structures' => 'bg-ds',
+        'Algorithms' => 'bg-algo', 'Database Management' => 'bg-db',
+        'CRUD Operations' => 'bg-crud',
+        'Full-Stack Web Development' => 'bg-fullstack',
+        'AWS Cloud Engineering' => 'bg-aws',
+        'AI & Machine Learning' => 'bg-ai'
+    ];
+    
+    return $colors[$skill] ?? 'bg-secondary';
+}
+
 // Format money
 $total_money = $stats['total_money_managed'] ?? 0;
 if ($total_money >= 1000000) {
@@ -214,144 +232,173 @@ if ($total_money >= 1000000) {
             100% { transform: rotate(360deg); }
         }
         
-        /* Developer Section */
+        /* Developer Section Improvements */
         .developer-section {
             background: linear-gradient(135deg, 
-                rgba(33, 37, 41, 0.95) 0%, 
-                rgba(52, 58, 64, 0.95) 100%);
+                rgba(33, 37, 41, 1) 0%, 
+                rgba(52, 58, 64, 0.98) 100%);
             color: white;
             position: relative;
             overflow: hidden;
         }
-        
-        .developer-section::before {
+
+        .developer-section::after {
             content: '';
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320"><path fill="%234e73df" fill-opacity="0.1" d="M0,224L48,213.3C96,203,192,181,288,181.3C384,181,480,203,576,202.7C672,203,768,181,864,165.3C960,149,1056,139,1152,149.3C1248,160,1344,192,1392,208L1440,224L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path></svg>');
-            background-size: cover;
-            background-position: center;
-            opacity: 0.3;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(78, 115, 223, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(28, 200, 138, 0.1) 0%, transparent 50%);
+            pointer-events: none;
         }
-        
+
         .developer-card {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
             transition: all 0.3s ease;
+            height: 100%;
         }
-        
+
         .developer-card:hover {
             transform: translateY(-5px);
-            border-color: var(--primary);
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+            border-color: rgba(78, 115, 223, 0.3);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            background: rgba(255, 255, 255, 0.08);
         }
-        
+
+        /* Skill Badge Colors */
         .skill-badge {
-            background: linear-gradient(45deg, var(--primary), var(--info));
-            color: white;
-            padding: 8px 15px;
+            padding: 6px 12px;
             border-radius: 20px;
-            font-size: 0.85rem;
-            margin: 5px;
-            display: inline-block;
-            transition: all 0.3s ease;
-        }
-        
-        .skill-badge:hover {
-            transform: scale(1.05);
-            box-shadow: 0 5px 15px rgba(78, 115, 223, 0.3);
-        }
-        
-        .project-card {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-            transition: all 0.3s ease;
-            border-left: 5px solid var(--primary);
-        }
-        
-        .project-card:hover {
-            transform: translateX(10px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-        }
-        
-        .timeline {
-            position: relative;
-            padding-left: 30px;
-        }
-        
-        .timeline::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 3px;
-            background: linear-gradient(to bottom, var(--primary), var(--success));
-        }
-        
-        .timeline-item {
-            position: relative;
-            margin-bottom: 30px;
-        }
-        
-        .timeline-item::before {
-            content: '';
-            position: absolute;
-            left: -33px;
-            top: 5px;
-            width: 15px;
-            height: 15px;
-            border-radius: 50%;
-            background: var(--primary);
-            border: 3px solid white;
-            box-shadow: 0 0 0 4px var(--primary);
-        }
-        
-        .quote-box {
-            background: linear-gradient(135deg, var(--primary), var(--info));
+            font-size: 0.8rem;
+            font-weight: 500;
             color: white;
-            border-radius: 15px;
-            padding: 30px;
-            position: relative;
-            overflow: hidden;
+            transition: all 0.3s ease;
+            border: none;
+            display: inline-block;
+            margin: 3px;
         }
-        
+
+        .skill-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Specific skill colors */
+        .bg-c { background: linear-gradient(45deg, #A8B9CC, #6495ED); }
+        .bg-cpp { background: linear-gradient(45deg, #00599C, #659AD2); }
+        .bg-java { background: linear-gradient(45deg, #007396, #ED8B00); }
+        .bg-csharp { background: linear-gradient(45deg, #239120, #68217A); }
+        .bg-js { background: linear-gradient(45deg, #F7DF1E, #F0DB4F); color: #000; }
+        .bg-sql { background: linear-gradient(45deg, #00758F, #F29111); }
+        .bg-html { background: linear-gradient(45deg, #E34F26, #F06529); }
+        .bg-css { background: linear-gradient(45deg, #1572B6, #33A9DC); }
+        .bg-php { background: linear-gradient(45deg, #777BB4, #8993BE); }
+        .bg-dotnet { background: linear-gradient(45deg, #512BD4, #68217A); }
+        .bg-mysql { background: linear-gradient(45deg, #4479A1, #F29111); }
+        .bg-oop { background: linear-gradient(45deg, #4CAF50, #8BC34A); }
+        .bg-ds { background: linear-gradient(45deg, #FF5722, #FF9800); }
+        .bg-algo { background: linear-gradient(45deg, #2196F3, #03A9F4); }
+        .bg-db { background: linear-gradient(45deg, #673AB7, #9575CD); }
+        .bg-crud { background: linear-gradient(45deg, #009688, #4DB6AC); }
+        .bg-fullstack { background: linear-gradient(45deg, #FF6B6B, #4ECDC4); }
+        .bg-aws { background: linear-gradient(45deg, #FF9900, #232F3E); }
+        .bg-ai { background: linear-gradient(45deg, #FF4081, #7B1FA2); }
+
+        /* Project Cards */
+        .project-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            border-left: 4px solid var(--primary);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+
+        .project-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            background: white;
+        }
+
+        .project-card h6 {
+            color: #2c3e50;
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 0.95rem;
+        }
+
+        .project-card .text-muted {
+            color: #6c757d !important;
+            line-height: 1.4;
+            font-size: 0.85rem;
+        }
+
+        /* Quote Box */
+        .quote-box {
+            background: linear-gradient(135deg, 
+                rgba(78, 115, 223, 0.2), 
+                rgba(28, 200, 138, 0.2));
+            border-radius: 10px;
+            border-left: 4px solid var(--primary);
+            position: relative;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
         .quote-box::before {
             content: '"';
             position: absolute;
-            top: -30px;
-            left: 20px;
-            font-size: 120px;
-            opacity: 0.2;
+            top: -15px;
+            left: 15px;
+            font-size: 60px;
+            opacity: 0.3;
             font-family: serif;
-        }
-        
-        .social-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(255, 255, 255, 0.1);
             color: white;
-            font-size: 1.5rem;
-            transition: all 0.3s ease;
-            margin: 0 10px;
         }
-        
-        .social-icon:hover {
-            transform: translateY(-5px);
-            background: var(--primary);
-            color: white;
-            text-decoration: none;
+
+        /* Contact Info */
+        .bg-dark {
+            background: rgba(0, 0, 0, 0.2) !important;
+            border-radius: 8px;
+        }
+
+        .bg-dark p {
+            color: rgba(255, 255, 255, 0.9) !important;
+        }
+
+        /* Badge colors for project domains */
+        .badge {
+            padding: 8px 12px;
+            font-weight: 500;
+            border-radius: 20px;
+            margin: 2px;
+        }
+
+        /* Improved text visibility */
+        .text-light {
+            color: rgba(255, 255, 255, 0.9) !important;
+        }
+
+        .text-info {
+            color: #4dc0ff !important;
+        }
+
+        /* Section headers */
+        h4.text-white, h5.text-white, h6.text-white {
+            color: white !important;
+            font-weight: 600;
+        }
+
+        /* Gradient background for profile icon */
+        .bg-gradient-primary {
+            background: linear-gradient(135deg, var(--primary), var(--info));
         }
         
         .feature-icon {
@@ -406,6 +453,19 @@ if ($total_money >= 1000000) {
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+        }
+        
+        /* Social icons */
+        .social-btn {
+            padding: 8px 16px;
+            border-radius: 20px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .social-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
     </style>
 </head>
@@ -574,108 +634,196 @@ if ($total_money >= 1000000) {
     <section id="developer" class="developer-section py-5">
         <div class="container">
             <div class="text-center mb-5">
-                <h2 class="fw-bold text-white mb-3">Meet The Developer</h2>
-                <p class="text-light">Built with passion by a software engineering student</p>
+                <h2 class="fw-bold text-white mb-3 animate__animated animate__fadeInDown">Meet The Developer</h2>
+                <p class="text-light mb-4 animate__animated animate__fadeInDown animate__delay-1s">Building scalable solutions with passion and precision</p>
+                <div class="d-flex justify-content-center gap-3">
+                    <a href="<?php echo $developerInfo['profiles']['github']; ?>" class="btn btn-outline-light btn-sm" target="_blank">
+                        <i class="bi bi-github me-2"></i>GitHub
+                    </a>
+                    <a href="<?php echo $developerInfo['profiles']['linkedin']; ?>" class="btn btn-outline-light btn-sm" target="_blank">
+                        <i class="bi bi-linkedin me-2"></i>LinkedIn
+                    </a>
+                    <button class="btn btn-outline-light btn-sm" onclick="showContactInfo()">
+                        <i class="bi bi-envelope me-2"></i>Contact
+                    </button>
+                </div>
             </div>
             
-            <div class="row mb-5">
-                <div class="col-lg-4 mb-4">
-                    <div class="developer-card p-4 h-100">
-                        <div class="text-center mb-4">
-                            <div class="rounded-circle bg-primary d-inline-flex align-items-center justify-content-center" style="width: 120px; height: 120px;">
-                                <i class="bi bi-code-slash text-white fs-1"></i>
+            <div class="row g-4">
+                <!-- Profile Card -->
+                <div class="col-lg-4">
+                    <div class="developer-card p-4 h-100 animate__animated animate__fadeInLeft">
+                        <div class="d-flex align-items-center mb-4">
+                            <div class="rounded-circle bg-gradient-primary d-flex align-items-center justify-content-center me-3" 
+                                 style="width: 70px; height: 70px;">
+                                <i class="bi bi-code-slash text-white fs-4"></i>
                             </div>
-                            <h3 class="text-white mt-3"><?php echo $developerInfo['name']; ?></h3>
-                            <p class="text-light"><?php echo $developerInfo['title']; ?></p>
+                            <div>
+                                <h4 class="text-white mb-1"><?php echo $developerInfo['name']; ?></h4>
+                                <p class="text-light small mb-0"><?php echo $developerInfo['title']; ?></p>
+                            </div>
                         </div>
-                        <p class="text-light"><?php echo $developerInfo['bio']; ?></p>
                         
-                        <div class="mt-4">
-                            <h5 class="text-white mb-3">Contact</h5>
-                            <p class="text-light mb-1">
-                                <i class="bi bi-envelope me-2"></i>
-                                <?php echo $developerInfo['contact']['email']; ?>
+                        <div class="mb-4">
+                            <h5 class="text-white mb-3"><i class="bi bi-person-badge me-2"></i>About Me</h5>
+                            <p class="text-light" style="line-height: 1.6;">
+                                <?php echo $developerInfo['bio']; ?> 
+                                I enjoy solving real-world problems through clean, scalable, and efficient code.
                             </p>
-                            <p class="text-light mb-1">
-                                <i class="bi bi-telephone me-2"></i>
-                                <?php echo $developerInfo['contact']['phone']; ?>
-                            </p>
-                            <p class="text-light">
-                                <i class="bi bi-geo-alt me-2"></i>
-                                <?php echo $developerInfo['contact']['location']; ?>
-                            </p>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h5 class="text-white mb-3"><i class="bi bi-mortarboard me-2"></i>Education</h5>
+                            <div class="bg-dark rounded p-3">
+                                <h6 class="text-info mb-2"><?php echo $developerInfo['education']['degree']; ?></h6>
+                                <p class="text-light small mb-1">
+                                    <i class="bi bi-building me-1"></i>
+                                    <?php echo $developerInfo['education']['university']; ?>
+                                </p>
+                                <p class="text-light small mb-1">
+                                    <i class="bi bi-calendar me-1"></i>
+                                    <?php echo $developerInfo['education']['semester']; ?>
+                                </p>
+                                <p class="text-light small">
+                                    <i class="bi bi-id-card me-1"></i>
+                                    ID: <?php echo $developerInfo['education']['student_id']; ?>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div class="quote-box">
+                            <i class="bi bi-quote text-white fs-1 opacity-25"></i>
+                            <p class="text-white mb-0 fst-italic"><?php echo $developerInfo['quote']; ?></p>
                         </div>
                     </div>
                 </div>
                 
-                <div class="col-lg-4 mb-4">
-                    <div class="developer-card p-4 h-100">
-                        <h4 class="text-white mb-4"><i class="bi bi-mortarboard me-2"></i>Education</h4>
-                        <div class="timeline">
-                            <div class="timeline-item">
-                                <h5 class="text-white"><?php echo $developerInfo['education']['degree']; ?></h5>
-                                <p class="text-light mb-1"><?php echo $developerInfo['education']['university']; ?></p>
-                                <p class="text-light small"><?php echo $developerInfo['education']['semester']; ?> | ID: <?php echo $developerInfo['education']['student_id']; ?></p>
-                            </div>
-                            <div class="timeline-item">
-                                <h5 class="text-white">Higher Secondary Certificate</h5>
-                                <p class="text-light mb-1">Holy Land College</p>
-                                <p class="text-light small">GPA: 5.00</p>
-                            </div>
-                        </div>
+                <!-- Skills & Technologies -->
+                <div class="col-lg-4">
+                    <div class="developer-card p-4 h-100 animate__animated animate__fadeInUp">
+                        <h4 class="text-white mb-4"><i class="bi bi-tools me-2"></i>Technical Stack</h4>
                         
-                        <h4 class="text-white mt-4 mb-3"><i class="bi bi-tools me-2"></i>Skills</h4>
-                        <div class="mb-3">
-                            <?php foreach($developerInfo['skills'] as $skillType => $skills): ?>
-                                <h6 class="text-white mb-2"><?php echo $skillType; ?>:</h6>
-                                <div class="mb-3">
+                        <?php foreach($developerInfo['skills'] as $category => $skills): ?>
+                            <div class="mb-4">
+                                <h6 class="text-info mb-2">
+                                    <i class="bi bi-chevron-right me-1"></i><?php echo $category; ?>
+                                </h6>
+                                <div class="d-flex flex-wrap gap-2">
                                     <?php 
                                     $skillList = explode(', ', $skills);
                                     foreach($skillList as $skill): 
+                                        $skill = trim($skill);
+                                        $colorClass = getSkillColorClass($skill);
                                     ?>
-                                        <span class="skill-badge"><?php echo trim($skill); ?></span>
+                                        <span class="skill-badge <?php echo $colorClass; ?>">
+                                            <?php echo $skill; ?>
+                                        </span>
                                     <?php endforeach; ?>
                                 </div>
-                            <?php endforeach; ?>
+                            </div>
+                        <?php endforeach; ?>
+                        
+                        <div class="mt-4">
+                            <h5 class="text-white mb-3"><i class="bi bi-award me-2"></i>Career Vision</h5>
+                            <div class="bg-dark rounded p-3">
+                                <p class="text-light mb-0 small">
+                                    To become a Professional Software Engineer specializing in 
+                                    Full-Stack Web Development and Cloud Engineering, 
+                                    contributing to impactful and scalable software solutions.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
                 
-                <div class="col-lg-4 mb-4">
-                    <div class="developer-card p-4 h-100">
-                        <h4 class="text-white mb-4"><i class="bi bi-briefcase me-2"></i>Projects</h4>
+                <!-- Projects Portfolio -->
+                <div class="col-lg-4">
+                    <div class="developer-card p-4 h-100 animate__animated animate__fadeInRight">
+                        <h4 class="text-white mb-4">
+                            <i class="bi bi-briefcase me-2"></i>Project Portfolio
+                        </h4>
                         
-                        <?php foreach($developerInfo['projects'] as $project => $description): ?>
-                            <div class="project-card mb-3">
-                                <h5 class="fw-bold"><?php echo $project; ?></h5>
-                                <p class="text-muted mb-0"><?php echo $description; ?></p>
-                            </div>
-                        <?php endforeach; ?>
-                        
-                        <div class="quote-box mt-4">
-                            <p class="mb-0"><?php echo $developerInfo['quote']; ?></p>
+                        <div class="row g-3" id="projectsContainer">
+                            <?php 
+                            $projectCount = 0;
+                            foreach($developerInfo['projects'] as $project => $description): 
+                                $projectCount++;
+                                if($projectCount <= 6): // Show first 6 projects
+                            ?>
+                                <div class="col-12">
+                                    <div class="project-card">
+                                        <div class="d-flex align-items-start">
+                                            <div class="me-3">
+                                                <i class="bi bi-folder text-primary fs-4"></i>
+                                            </div>
+                                            <div>
+                                                <h6 class="fw-bold text-dark mb-1"><?php echo $project; ?></h6>
+                                                <p class="text-muted small mb-0"><?php echo $description; ?></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php 
+                                endif;
+                            endforeach; 
+                            ?>
+                            
+                            <?php if(count($developerInfo['projects']) > 6): ?>
+                                <div class="col-12">
+                                    <div class="text-center">
+                                        <button class="btn btn-outline-light btn-sm" onclick="showAllProjects()">
+                                            <i class="bi bi-three-dots me-1"></i>
+                                            View <?php echo count($developerInfo['projects']) - 6; ?> More Projects
+                                        </button>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
                         </div>
                         
-                        <div class="text-center mt-4">
-                            <h6 class="text-white mb-3">Connect with me</h6>
-                            <div>
-                                <a href="<?php echo $developerInfo['profiles']['github']; ?>" class="social-icon" target="_blank">
-                                    <i class="bi bi-github"></i>
-                                </a>
-                                <a href="<?php echo $developerInfo['profiles']['linkedin']; ?>" class="social-icon" target="_blank">
-                                    <i class="bi bi-linkedin"></i>
-                                </a>
+                        <div class="mt-4">
+                            <h5 class="text-white mb-3"><i class="bi bi-building me-2"></i>Project Domains</h5>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="badge bg-primary">Desktop Applications</span>
+                                <span class="badge bg-success">Web Development</span>
+                                <span class="badge bg-info">Database Systems</span>
+                                <span class="badge bg-warning">Management Systems</span>
+                                <span class="badge bg-danger">CRUD Operations</span>
+                                <span class="badge bg-secondary">Agriculture Tech</span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <div class="text-center">
-                <p class="text-light mb-0">
-                    <i class="bi bi-code-square me-2"></i>
-                    This project is part of my journey to build meaningful software solutions
-                </p>
+            <!-- Contact Info Row -->
+            <div class="row mt-5">
+                <div class="col-12">
+                    <div class="developer-card p-4 animate__animated animate__fadeInUp animate__delay-1s">
+                        <div class="row align-items-center">
+                            <div class="col-md-4 text-center mb-3 mb-md-0">
+                                <h5 class="text-white mb-3"><i class="bi bi-geo-alt me-2"></i>Location</h5>
+                                <p class="text-light mb-0">
+                                    <i class="bi bi-geo-fill me-2"></i>
+                                    <?php echo $developerInfo['contact']['location']; ?>
+                                </p>
+                            </div>
+                            <div class="col-md-4 text-center mb-3 mb-md-0">
+                                <h5 class="text-white mb-3"><i class="bi bi-envelope me-2"></i>Email</h5>
+                                <p class="text-light mb-0">
+                                    <i class="bi bi-envelope-fill me-2"></i>
+                                    <?php echo $developerInfo['contact']['email']; ?>
+                                </p>
+                            </div>
+                            <div class="col-md-4 text-center">
+                                <h5 class="text-white mb-3"><i class="bi bi-telephone me-2"></i>Phone</h5>
+                                <p class="text-light mb-0">
+                                    <i class="bi bi-telephone-fill me-2"></i>
+                                    <?php echo $developerInfo['contact']['phone']; ?>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
@@ -728,7 +876,7 @@ if ($total_money >= 1000000) {
             <div class="text-center mt-4 pt-4 border-top border-secondary">
                 <p class="text-muted small mb-0">
                     © <?php echo date('Y'); ?> MealMaster - Developed by <?php echo $developerInfo['name']; ?> | 
-                    Version 1.0 | Built with ❤️ for the community
+                    Version 1.0
                 </p>
             </div>
         </div>
@@ -836,6 +984,95 @@ if ($total_money >= 1000000) {
             }
         }
         
+        // Show contact information modal
+        function showContactInfo() {
+            const contactInfo = `
+                <div class="text-center">
+                    <div class="display-4 mb-3">👨‍💻</div>
+                    <h5>Contact Information</h5>
+                    <div class="mt-4">
+                        <p>
+                            <i class="bi bi-envelope-fill me-2 text-primary"></i>
+                            <strong>Email:</strong> <?php echo $developerInfo['contact']['email']; ?>
+                        </p>
+                        <p>
+                            <i class="bi bi-telephone-fill me-2 text-success"></i>
+                            <strong>Phone:</strong> <?php echo $developerInfo['contact']['phone']; ?>
+                        </p>
+                        <p>
+                            <i class="bi bi-geo-alt-fill me-2 text-info"></i>
+                            <strong>Location:</strong> <?php echo $developerInfo['contact']['location']; ?>
+                        </p>
+                    </div>
+                    <div class="mt-4">
+                        <a href="mailto:<?php echo $developerInfo['contact']['email']; ?>" 
+                           class="btn btn-primary me-2">
+                            <i class="bi bi-envelope me-1"></i> Send Email
+                        </a>
+                        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            `;
+            
+            showModal('Contact Developer', contactInfo);
+        }
+
+        // Show all projects modal
+        function showAllProjects() {
+            const projects = <?php echo json_encode($developerInfo['projects']); ?>;
+            let projectsHTML = '<div class="row g-3">';
+            
+            Object.entries(projects).forEach(([project, description], index) => {
+                projectsHTML += `
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title text-primary">
+                                    <i class="bi bi-folder me-2"></i>${project}
+                                </h6>
+                                <p class="card-text text-muted small">${description}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            projectsHTML += '</div>';
+            
+            showModal('Project Portfolio', projectsHTML);
+        }
+
+        // Reusable modal function
+        function showModal(title, content) {
+            // Remove existing modal if any
+            const existingModal = document.getElementById('dynamicModal');
+            if (existingModal) existingModal.remove();
+            
+            // Create modal HTML
+            const modalHTML = `
+                <div class="modal fade" id="dynamicModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">${title}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                ${content}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add to body
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('dynamicModal'));
+            modal.show();
+        }
+        
         // Navbar scroll effect
         window.addEventListener('scroll', function() {
             const navbar = document.getElementById('mainNav');
@@ -895,15 +1132,34 @@ if ($total_money >= 1000000) {
             if (heroText) {
                 heroText.classList.add('typewriter');
             }
+            
+            // Initialize animations for developer section
+            const developerSection = document.getElementById('developer');
+            if (developerSection) {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const cards = entry.target.querySelectorAll('.animate__animated');
+                            cards.forEach((card, index) => {
+                                setTimeout(() => {
+                                    card.style.opacity = '1';
+                                }, index * 100);
+                            });
+                        }
+                    });
+                }, { threshold: 0.1 });
+                
+                observer.observe(developerSection);
+            }
         });
         
         // Skill badges hover effect
         document.querySelectorAll('.skill-badge').forEach(badge => {
             badge.addEventListener('mouseenter', function() {
-                this.style.transform = 'scale(1.05)';
+                this.style.transform = 'translateY(-2px)';
             });
             badge.addEventListener('mouseleave', function() {
-                this.style.transform = 'scale(1)';
+                this.style.transform = 'translateY(0)';
             });
         });
         
@@ -914,6 +1170,16 @@ if ($total_money >= 1000000) {
             });
             card.addEventListener('mouseleave', function() {
                 this.style.transform = 'translateY(0)';
+            });
+        });
+        
+        // Project cards click effect
+        document.querySelectorAll('.project-card').forEach(card => {
+            card.addEventListener('click', function() {
+                this.style.transform = 'translateX(5px)';
+                setTimeout(() => {
+                    this.style.transform = 'translateX(0)';
+                }, 300);
             });
         });
     </script>
