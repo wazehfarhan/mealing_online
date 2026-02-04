@@ -23,222 +23,131 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['logged_in']) && $_SESSION['l
     exit();
 }
 
-// Get real statistics from database
-try {
-    $conn = getConnection();
-    
-    // Get total houses
-    $house_sql = "SELECT COUNT(*) as total FROM houses WHERE status = 'active'";
-    $house_result = mysqli_query($conn, $house_sql);
-    $house_data = mysqli_fetch_assoc($house_result);
-    $total_houses = $house_data['total'] ?? 0;
-    
-    // Get total active members
-    $member_sql = "SELECT COUNT(*) as total FROM members WHERE status = 'active'";
-    $member_result = mysqli_query($conn, $member_sql);
-    $member_data = mysqli_fetch_assoc($member_result);
-    $total_members = $member_data['total'] ?? 0;
-    
-    // Get today's meals
-    $today = date('Y-m-d');
-    $meal_sql = "SELECT COALESCE(SUM(meal_count), 0) as total FROM meals WHERE meal_date = '$today'";
-    $meal_result = mysqli_query($conn, $meal_sql);
-    $meal_data = mysqli_fetch_assoc($meal_result);
-    $today_meals = $meal_data['total'] ?? 0;
-    
-    // Get total money managed (sum of all deposits)
-    $money_sql = "SELECT COALESCE(SUM(amount), 0) as total FROM deposits";
-    $money_result = mysqli_query($conn, $money_sql);
-    $money_data = mysqli_fetch_assoc($money_result);
-    $total_money = $money_data['total'] ?? 0;
-    
-    // Format total money
-    if ($total_money >= 1000000) {
-        $total_money_formatted = number_format($total_money / 1000000, 1) . 'M';
-    } elseif ($total_money >= 1000) {
-        $total_money_formatted = number_format($total_money / 1000, 1) . 'K';
-    } else {
-        $total_money_formatted = number_format($total_money);
-    }
-    
-    mysqli_close($conn);
-    
-} catch (Exception $e) {
-    // Fallback statistics if database query fails
-    $total_houses = 0;
-    $total_members = 0;
-    $today_meals = 0;
-    $total_money = 0;
-    $total_money_formatted = '0';
-}
+// Get initial statistics
+$stats = $functions->getSystemStats();
+$developerInfo = $functions->getDeveloperInfo();
 
-// Prepare stats array
-$stats = [
-    'total_houses' => $total_houses,
-    'total_members' => $total_members,
-    'today_meals' => $today_meals,
-    'total_money' => $total_money,
-    'total_money_formatted' => $total_money_formatted
-];
+// Format money
+$total_money = $stats['total_money_managed'] ?? 0;
+if ($total_money >= 1000000) {
+    $total_money_formatted = number_format($total_money / 1000000, 1) . 'M';
+} elseif ($total_money >= 1000) {
+    $total_money_formatted = number_format($total_money / 1000, 1) . 'K';
+} else {
+    $total_money_formatted = number_format($total_money, 2);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Completely Free Meal Management System for hostels, messes, and shared houses. Track meals, calculate costs, manage expenses efficiently.">
-    <meta name="keywords" content="free meal management, hostel management, mess management, expense tracking, meal tracking">
-    <meta name="author" content="MealMaster - Developed by Single Developer">
-    
     <title><?php echo $page_title; ?></title>
-    
-    <!-- Open Graph Meta Tags -->
-    <meta property="og:title" content="<?php echo $page_title; ?>">
-    <meta property="og:description" content="100% Free meal management solution for hostels, messes, and shared houses. No email confirmation needed!">
-    <meta property="og:type" content="website">
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
     
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <!-- Animate.css -->
+    <!-- Animate.css for animations -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
     
-    <!-- Custom CSS -->
     <style>
         :root {
             --primary: #4e73df;
-            --primary-dark: #2e59d9;
-            --secondary: #858796;
+            --secondary: #6c757d;
             --success: #1cc88a;
             --info: #36b9cc;
             --warning: #f6c23e;
             --danger: #e74a3b;
-            --light: #f8f9fc;
             --dark: #5a5c69;
+            --light: #f8f9fc;
         }
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f8f9fc;
-            color: #333;
-            line-height: 1.6;
+            overflow-x: hidden;
         }
         
-        /* Free Badge */
-        .free-badge {
-            background: linear-gradient(135deg, #1cc88a, #17a673);
-            color: white;
-            padding: 8px 20px;
-            border-radius: 50px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 4px 15px rgba(28, 200, 138, 0.3);
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 5px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #2e59d9;
         }
         
-        /* Navigation */
         .navbar {
-            background: white;
-            padding: 15px 0;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            position: fixed;
-            width: 100%;
-            top: 0;
-            z-index: 1000;
-        }
-        
-        .navbar-brand {
-            font-size: 1.8rem;
-            font-weight: 800;
-            color: var(--primary) !important;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .navbar-brand i {
-            font-size: 2rem;
-            color: var(--primary);
-        }
-        
-        .nav-link {
-            color: var(--dark) !important;
-            font-weight: 500;
-            margin: 0 5px;
-            padding: 8px 16px !important;
-            border-radius: 50px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
             transition: all 0.3s ease;
         }
         
-        .nav-link:hover,
-        .nav-link.active {
-            color: var(--primary) !important;
-            background: rgba(78, 115, 223, 0.1);
+        .navbar.scrolled {
+            padding: 10px 0;
+            background: rgba(255, 255, 255, 0.98);
         }
         
-        /* Hero Section */
         .hero-section {
-            padding: 160px 0 100px;
-            background: linear-gradient(135deg, rgba(78, 115, 223, 0.1), rgba(118, 75, 162, 0.1));
+            padding: 180px 0 120px;
+            background: linear-gradient(135deg, 
+                rgba(78, 115, 223, 0.1) 0%, 
+                rgba(28, 200, 138, 0.1) 50%, 
+                rgba(54, 185, 204, 0.1) 100%);
             position: relative;
             overflow: hidden;
         }
         
-        .hero-title {
-            font-size: 3rem;
-            font-weight: 800;
-            margin-bottom: 20px;
-            color: #2e3a59;
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(78, 115, 223, 0.05) 0%, transparent 70%);
+            animation: float 20s infinite linear;
         }
         
-        .hero-subtitle {
-            font-size: 1.2rem;
-            color: var(--secondary);
-            margin-bottom: 30px;
-            max-width: 600px;
-        }
-        
-        /* Free Guarantee Box */
-        .free-guarantee {
-            background: white;
-            border-left: 5px solid var(--success);
-            border-radius: 10px;
-            padding: 20px;
-            margin-top: 30px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-        }
-        
-        .free-guarantee i {
-            color: var(--success);
-            font-size: 1.5rem;
-            margin-right: 10px;
-        }
-        
-        /* Stats Section */
-        .stats-section {
-            padding: 80px 0;
-            background: white;
+        @keyframes float {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
         
         .stat-card {
-            text-align: center;
-            padding: 30px 20px;
+            background: white;
             border-radius: 15px;
-            background: var(--light);
-            border: 2px solid rgba(78, 115, 223, 0.1);
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            margin-bottom: 25px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
             transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--success));
         }
         
         .stat-card:hover {
-            transform: translateY(-5px);
-            border-color: var(--primary);
-            box-shadow: 0 10px 25px rgba(78, 115, 223, 0.1);
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
         }
         
         .stat-number {
@@ -246,307 +155,274 @@ $stats = [
             font-weight: 800;
             color: var(--primary);
             margin-bottom: 10px;
+            background: linear-gradient(90deg, var(--primary), var(--info));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         
         .stat-label {
-            color: var(--secondary);
-            font-size: 1rem;
-        }
-        
-        .stat-note {
-            font-size: 0.8rem;
-            color: var(--secondary);
-            margin-top: 10px;
-            font-style: italic;
-        }
-        
-        /* Features Section */
-        .features-section {
-            padding: 100px 0;
-            background: var(--light);
-        }
-        
-        .section-title {
-            font-size: 2.5rem;
-            font-weight: 800;
-            margin-bottom: 15px;
-            text-align: center;
-            color: #2e3a59;
-        }
-        
-        .section-subtitle {
-            color: var(--secondary);
-            text-align: center;
-            margin-bottom: 60px;
-            font-size: 1.1rem;
-            max-width: 700px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        
-        .feature-card {
-            background: white;
-            border-radius: 15px;
-            padding: 40px 30px;
-            height: 100%;
-            transition: all 0.3s ease;
-            border: 1px solid rgba(0, 0, 0, 0.05);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-        }
-        
-        .feature-card:hover {
-            transform: translateY(-10px);
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
-        }
-        
-        .feature-icon {
-            width: 70px;
-            height: 70px;
-            background: var(--primary);
-            border-radius: 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 25px;
-        }
-        
-        .feature-icon i {
-            font-size: 1.8rem;
-            color: white;
-        }
-        
-        .feature-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            margin-bottom: 15px;
-            color: #2e3a59;
-        }
-        
-        .feature-description {
-            color: var(--secondary);
+            color: var(--dark);
             font-size: 0.95rem;
+            font-weight: 500;
         }
         
-        /* Privacy Section */
-        .privacy-section {
-            padding: 100px 0;
-            background: white;
+        .live-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: var(--success);
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 1.5s infinite;
         }
         
-        .privacy-card {
-            background: var(--light);
-            border-radius: 15px;
-            padding: 40px;
-            text-align: center;
-            border: 2px dashed var(--primary);
+        @keyframes pulse {
+            0% { 
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(28, 200, 138, 0.7);
+            }
+            70% { 
+                transform: scale(1);
+                box-shadow: 0 0 0 10px rgba(28, 200, 138, 0);
+            }
+            100% { 
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(28, 200, 138, 0);
+            }
         }
         
-        .privacy-icon {
-            font-size: 3rem;
-            color: var(--primary);
-            margin-bottom: 20px;
-        }
-        
-        /* CTA Section */
-        .cta-section {
-            padding: 100px 0;
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            color: white;
-            text-align: center;
-        }
-        
-        .cta-title {
-            font-size: 2.5rem;
-            font-weight: 800;
-            margin-bottom: 20px;
-        }
-        
-        .cta-subtitle {
-            font-size: 1.1rem;
-            opacity: 0.95;
-            margin-bottom: 40px;
-            max-width: 700px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        
-        /* Buttons */
-        .btn {
-            padding: 12px 30px;
-            border-radius: 50px;
-            font-weight: 600;
-            font-size: 1rem;
+        .refresh-btn {
+            cursor: pointer;
             transition: all 0.3s ease;
             border: none;
-        }
-        
-        .btn-primary {
-            background: var(--primary);
-        }
-        
-        .btn-primary:hover {
-            background: var(--primary-dark);
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(78, 115, 223, 0.3);
-        }
-        
-        .btn-outline-light {
-            border: 2px solid white;
-        }
-        
-        .btn-outline-light:hover {
-            background: white;
+            background: transparent;
             color: var(--primary);
         }
         
-        /* Footer */
-        .footer {
-            background: #2e3a59;
-            color: white;
-            padding: 80px 0 30px;
+        .refresh-btn:hover {
+            transform: rotate(180deg);
+            color: var(--info);
         }
         
-        .developer-info {
+        .refresh-btn.loading {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Developer Section */
+        .developer-section {
+            background: linear-gradient(135deg, 
+                rgba(33, 37, 41, 0.95) 0%, 
+                rgba(52, 58, 64, 0.95) 100%);
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .developer-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320"><path fill="%234e73df" fill-opacity="0.1" d="M0,224L48,213.3C96,203,192,181,288,181.3C384,181,480,203,576,202.7C672,203,768,181,864,165.3C960,149,1056,139,1152,149.3C1248,160,1344,192,1392,208L1440,224L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path></svg>');
+            background-size: cover;
+            background-position: center;
+            opacity: 0.3;
+        }
+        
+        .developer-card {
             background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            transition: all 0.3s ease;
+        }
+        
+        .developer-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .skill-badge {
+            background: linear-gradient(45deg, var(--primary), var(--info));
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            margin: 5px;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        
+        .skill-badge:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(78, 115, 223, 0.3);
+        }
+        
+        .project-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            border-left: 5px solid var(--primary);
+        }
+        
+        .project-card:hover {
+            transform: translateX(10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        .timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+        
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(to bottom, var(--primary), var(--success));
+        }
+        
+        .timeline-item {
+            position: relative;
             margin-bottom: 30px;
         }
         
-        .developer-avatar {
-            width: 100px;
-            height: 100px;
-            background: var(--primary);
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -33px;
+            top: 5px;
+            width: 15px;
+            height: 15px;
             border-radius: 50%;
-            display: flex;
+            background: var(--primary);
+            border: 3px solid white;
+            box-shadow: 0 0 0 4px var(--primary);
+        }
+        
+        .quote-box {
+            background: linear-gradient(135deg, var(--primary), var(--info));
+            color: white;
+            border-radius: 15px;
+            padding: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .quote-box::before {
+            content: '"';
+            position: absolute;
+            top: -30px;
+            left: 20px;
+            font-size: 120px;
+            opacity: 0.2;
+            font-family: serif;
+        }
+        
+        .social-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin: 0 auto 20px;
+            background: rgba(255, 255, 255, 0.1);
             color: white;
-        }
-        
-        .developer-name {
             font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 10px;
-        }
-        
-        .developer-title {
-            color: rgba(255, 255, 255, 0.8);
-            margin-bottom: 20px;
-        }
-        
-        .contact-details {
-            margin-top: 20px;
-        }
-        
-        .contact-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        
-        .contact-item i {
-            width: 20px;
-            color: var(--primary);
-        }
-        
-        .footer-links h5 {
-            font-size: 1.1rem;
-            font-weight: 700;
-            margin-bottom: 20px;
-            color: white;
-        }
-        
-        .footer-links ul {
-            list-style: none;
-            padding: 0;
-        }
-        
-        .footer-links li {
-            margin-bottom: 12px;
-        }
-        
-        .footer-links a {
-            color: rgba(255, 255, 255, 0.7);
-            text-decoration: none;
             transition: all 0.3s ease;
+            margin: 0 10px;
         }
         
-        .footer-links a:hover {
+        .social-icon:hover {
+            transform: translateY(-5px);
+            background: var(--primary);
             color: white;
+            text-decoration: none;
         }
         
-        .copyright {
-            text-align: center;
-            padding-top: 40px;
-            margin-top: 40px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            color: rgba(255, 255, 255, 0.5);
-            font-size: 0.9rem;
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            display: inline-block;
+            padding: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(78, 115, 223, 0.1), rgba(28, 200, 138, 0.1));
         }
         
-        /* Responsive */
-        @media (max-width: 768px) {
-            .hero-title {
-                font-size: 2.2rem;
-            }
-            
-            .section-title {
-                font-size: 2rem;
-            }
-            
-            .hero-section {
-                padding: 140px 0 60px;
-            }
+        .floating-element {
+            animation: floatElement 3s ease-in-out infinite;
         }
         
-        @media (max-width: 576px) {
-            .hero-title {
-                font-size: 1.8rem;
-            }
-            
-            .cta-title {
-                font-size: 1.8rem;
-            }
+        @keyframes floatElement {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        .typewriter {
+            overflow: hidden;
+            border-right: .15em solid var(--primary);
+            white-space: nowrap;
+            margin: 0 auto;
+            animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite;
+        }
+        
+        @keyframes typing {
+            from { width: 0 }
+            to { width: 100% }
+        }
+        
+        @keyframes blink-caret {
+            from, to { border-color: transparent }
+            50% { border-color: var(--primary) }
+        }
+        
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+        
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .gradient-text {
+            background: linear-gradient(90deg, var(--primary), var(--success), var(--info));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
     </style>
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light">
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
         <div class="container">
-            <a class="navbar-brand" href="index.php">
-                <i class="bi bi-egg-fried"></i>
-                MealMaster
+            <a class="navbar-brand fw-bold" href="index.php">
+                <i class="bi bi-egg-fried me-2"></i>MealMaster
             </a>
-            <span class="free-badge d-none d-md-inline-flex">
-                <i class="bi bi-check-circle"></i> 100% Free
-            </span>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
+            <div class="collapse navbar-collapse">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="#home">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#features">Features</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#privacy">Privacy</a>
-                    </li>
                     <li class="nav-item">
                         <a class="nav-link" href="auth/login.php">Login</a>
                     </li>
                     <li class="nav-item">
-                        <a class="btn btn-primary ms-2" href="auth/register.php">
-                            <i class="bi bi-person-plus me-2"></i>Get Started
-                        </a>
+                        <a class="btn btn-primary ms-2 px-4" href="auth/register.php">Get Started</a>
                     </li>
                 </ul>
             </div>
@@ -554,43 +430,48 @@ $stats = [
     </nav>
 
     <!-- Hero Section -->
-    <section id="home" class="hero-section">
+    <section class="hero-section">
         <div class="container">
             <div class="row align-items-center">
                 <div class="col-lg-6">
-                    <div class="hero-content">
-                        <span class="free-badge mb-3 animate__animated animate__pulse">
-                            <i class="bi bi-check-circle"></i> Completely Free Forever
-                        </span>
-                        <h1 class="hero-title">Free Meal Management System</h1>
-                        <p class="hero-subtitle">
-                            A completely free solution for managing meals in hostels, messes, and shared houses. 
-                            No hidden fees, no subscriptions, no email confirmation needed!
-                        </p>
-                        <div class="hero-buttons">
-                            <a href="auth/register.php" class="btn btn-primary me-3">
-                                <i class="bi bi-lightning me-2"></i>Start Free Now
-                            </a>
-                            <a href="#features" class="btn btn-outline-primary">
-                                <i class="bi bi-info-circle me-2"></i>Learn More
-                            </a>
-                        </div>
-                        
-                        <div class="free-guarantee">
-                            <div class="d-flex align-items-center mb-2">
-                                <i class="bi bi-shield-check"></i>
-                                <h6 class="mb-0">No Email Confirmation Needed</h6>
-                            </div>
-                            <p class="mb-0 text-muted">Sign up instantly. No email verification required. Start managing your meals immediately!</p>
-                        </div>
+                    <h1 class="display-4 fw-bold mb-4 animate__animated animate__fadeInUp">
+                        <span class="gradient-text">Free Meal Management System</span>
+                    </h1>
+                    <p class="lead mb-4 animate__animated animate__fadeInUp animate__delay-1s">
+                        Completely free solution for managing meals in hostels, messes, and shared houses.
+                    </p>
+                    <div class="d-flex gap-3 animate__animated animate__fadeInUp animate__delay-2s">
+                        <a href="auth/register.php" class="btn btn-primary btn-lg px-4">
+                            <i class="bi bi-lightning me-2"></i>Start Free Now
+                        </a>
+                        <a href="#developer" class="btn btn-outline-light btn-lg px-4">
+                            <i class="bi bi-person-badge me-2"></i>Meet Developer
+                        </a>
                     </div>
+                    <p class="text-muted mt-4 animate__animated animate__fadeInUp animate__delay-3s">
+                        <i class="bi bi-arrow-up-right-circle me-2"></i>
+                        Join <span class="fw-bold"><?php echo $stats['total_houses'] ?? 0; ?>+</span> houses and 
+                        <span class="fw-bold"><?php echo $stats['total_members'] ?? 0; ?>+</span> members already using MealMaster
+                    </p>
                 </div>
                 <div class="col-lg-6">
-                    <div class="text-center mt-4 mt-lg-0">
-                        <img src="https://cdn-icons-png.flaticon.com/512/3448/3448609.png" 
-                             alt="Free Meal Management" 
-                             class="img-fluid animate__animated animate__fadeInRight"
-                             style="max-width: 100%; height: auto;">
+                    <div class="position-relative floating-element">
+                        <div class="display-1 text-center mb-4">🍽️</div>
+                        <div class="position-absolute top-0 start-0 animate__animated animate__bounceIn">
+                            <div class="bg-white rounded-circle p-3 shadow-lg">
+                                <i class="bi bi-graph-up text-primary fs-3"></i>
+                            </div>
+                        </div>
+                        <div class="position-absolute top-0 end-0 animate__animated animate__bounceIn animate__delay-1s">
+                            <div class="bg-white rounded-circle p-3 shadow-lg">
+                                <i class="bi bi-calculator text-success fs-3"></i>
+                            </div>
+                        </div>
+                        <div class="position-absolute bottom-0 start-50 translate-middle-x animate__animated animate__bounceIn animate__delay-2s">
+                            <div class="bg-white rounded-circle p-3 shadow-lg">
+                                <i class="bi bi-people text-info fs-3"></i>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -598,310 +479,256 @@ $stats = [
     </section>
 
     <!-- Stats Section -->
-    <section class="stats-section">
+    <section class="py-5">
         <div class="container">
             <div class="text-center mb-5">
-                <h2 class="section-title">Real-time Statistics</h2>
-                <p class="section-subtitle">
-                    These numbers represent actual data from our users. Your data stays private and only you control it.
+                <h2 class="fw-bold mb-3 gradient-text">Live System Statistics</h2>
+                <p class="text-muted">
+                    <span class="live-indicator"></span>
+                    <span>Real-time Updates</span>
+                    <button id="refreshAll" class="btn btn-sm btn-outline-primary ms-3 refresh-btn">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
                 </p>
             </div>
-            <div class="row g-4">
-                <div class="col-lg-3 col-md-6">
-                    <div class="stat-card">
-                        <div class="stat-number"><?php echo $stats['total_houses']; ?></div>
+            
+            <div class="row">
+                <div class="col-md-3 col-6">
+                    <div class="stat-card animate__animated animate__fadeInUp">
+                        <div class="stat-number" id="stat-houses"><?php echo $stats['total_houses'] ?? 0; ?></div>
                         <div class="stat-label">Active Houses</div>
-                        <div class="stat-note">Using our free service</div>
+                        <small class="text-muted" id="stat-houses-time">Updated just now</small>
                     </div>
                 </div>
-                <div class="col-lg-3 col-md-6">
-                    <div class="stat-card">
-                        <div class="stat-number"><?php echo $stats['total_members']; ?></div>
+                <div class="col-md-3 col-6">
+                    <div class="stat-card animate__animated animate__fadeInUp animate__delay-1s">
+                        <div class="stat-number" id="stat-members"><?php echo $stats['total_members'] ?? 0; ?></div>
                         <div class="stat-label">Happy Members</div>
-                        <div class="stat-note">Managing their meals</div>
+                        <small class="text-muted" id="stat-members-time">Updated just now</small>
                     </div>
                 </div>
-                <div class="col-lg-3 col-md-6">
-                    <div class="stat-card">
-                        <div class="stat-number"><?php echo number_format($stats['today_meals'], 1); ?></div>
-                        <div class="stat-label">Meals Tracked Today</div>
-                        <div class="stat-note">Across all houses</div>
+                <div class="col-md-3 col-6">
+                    <div class="stat-card animate__animated animate__fadeInUp animate__delay-2s">
+                        <div class="stat-number" id="stat-meals"><?php echo number_format($stats['today_meals'] ?? 0, 1); ?></div>
+                        <div class="stat-label">Meals Today</div>
+                        <small class="text-muted" id="stat-meals-time">Updated just now</small>
                     </div>
                 </div>
-                <div class="col-lg-3 col-md-6">
-                    <div class="stat-card">
-                        <div class="stat-number">৳<?php echo $stats['total_money_formatted']; ?></div>
-                        <div class="stat-label">Successfully Managed</div>
-                        <div class="stat-note">Total deposits tracked</div>
+                <div class="col-md-3 col-6">
+                    <div class="stat-card animate__animated animate__fadeInUp animate__delay-3s">
+                        <div class="stat-number" id="stat-money">৳<?php echo $total_money_formatted; ?></div>
+                        <div class="stat-label">Managed</div>
+                        <small class="text-muted" id="stat-money-time">Updated just now</small>
                     </div>
                 </div>
             </div>
+            
             <div class="text-center mt-4">
-                <p class="text-muted">
-                    <small>
-                        <i class="bi bi-info-circle me-1"></i>
-                        All statistics are calculated from actual user data in real-time. 
-                        We only track what's necessary for the system to function.
-                    </small>
+                <p class="text-muted small">
+                    Statistics update automatically. Last full update: <span id="lastUpdate"><?php echo date('h:i:s A'); ?></span>
                 </p>
             </div>
         </div>
     </section>
 
     <!-- Features Section -->
-    <section id="features" class="features-section">
+    <section class="py-5 bg-light">
         <div class="container">
             <div class="text-center mb-5">
-                <h2 class="section-title">Everything You Need, Completely Free</h2>
-                <p class="section-subtitle">
-                    No limitations, no premium features, just a complete meal management solution
-                </p>
+                <h2 class="fw-bold gradient-text mb-3">Why Choose MealMaster?</h2>
+                <p class="text-muted">Join thousands already managing their meals efficiently</p>
             </div>
-            <div class="row g-4">
-                <div class="col-lg-4 col-md-6">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-calculator"></i>
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="text-center p-4 h-100">
+                        <div class="feature-icon text-success mb-4">
+                            <i class="bi bi-check-circle-fill"></i>
                         </div>
-                        <h3 class="feature-title">Automatic Calculations</h3>
-                        <p class="feature-description">
-                            Meal rates, costs, and balances are calculated automatically. No more manual spreadsheet work.
-                        </p>
+                        <h5 class="fw-bold">100% Free Forever</h5>
+                        <p>No hidden fees, no subscriptions, no credit card required. Built to help communities, not for profit.</p>
                     </div>
                 </div>
-                <div class="col-lg-4 col-md-6">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-file-text"></i>
+                <div class="col-md-4 mb-4">
+                    <div class="text-center p-4 h-100">
+                        <div class="feature-icon text-warning mb-4">
+                            <i class="bi bi-lightning-fill"></i>
                         </div>
-                        <h3 class="feature-title">Detailed Reports</h3>
-                        <p class="feature-description">
-                            Generate monthly reports with expense breakdowns, meal statistics, and financial summaries.
-                        </p>
+                        <h5 class="fw-bold">Instant Setup</h5>
+                        <p>Create your house and start tracking in under 2 minutes. No email verification or complex setup required.</p>
                     </div>
                 </div>
-                <div class="col-lg-4 col-md-6">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-people"></i>
+                <div class="col-md-4 mb-4">
+                    <div class="text-center p-4 h-100">
+                        <div class="feature-icon text-primary mb-4">
+                            <i class="bi bi-shield-check"></i>
                         </div>
-                        <h3 class="feature-title">Member Management</h3>
-                        <p class="feature-description">
-                            Easily add members, track their meals and deposits, and manage house membership.
-                        </p>
-                    </div>
-                </div>
-                <div class="col-lg-4 col-md-6">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-cash-stack"></i>
-                        </div>
-                        <h3 class="feature-title">Expense Tracking</h3>
-                        <p class="feature-description">
-                            Track all house expenses by category. Know exactly where your money is going.
-                        </p>
-                    </div>
-                </div>
-                <div class="col-lg-4 col-md-6">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-graph-up"></i>
-                        </div>
-                        <h3 class="feature-title">Real-time Dashboard</h3>
-                        <p class="feature-description">
-                            See your house statistics, member balances, and meal counts in real-time.
-                        </p>
-                    </div>
-                </div>
-                <div class="col-lg-4 col-md-6">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-printer"></i>
-                        </div>
-                        <h3 class="feature-title">Print & Export</h3>
-                        <p class="feature-description">
-                            Print reports or export data for record keeping. Everything you need is included.
-                        </p>
+                        <h5 class="fw-bold">Complete Privacy</h5>
+                        <p>Your data stays private. We don't sell or share your information. Built with privacy-first principles.</p>
                     </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Privacy Section -->
-    <section id="privacy" class="privacy-section">
+    <!-- Developer Section -->
+    <section id="developer" class="developer-section py-5">
         <div class="container">
-            <div class="row justify-content-center">
-                <div class="col-lg-8">
-                    <div class="privacy-card">
-                        <div class="privacy-icon">
-                            <i class="bi bi-shield-lock"></i>
+            <div class="text-center mb-5">
+                <h2 class="fw-bold text-white mb-3">Meet The Developer</h2>
+                <p class="text-light">Built with passion by a software engineering student</p>
+            </div>
+            
+            <div class="row mb-5">
+                <div class="col-lg-4 mb-4">
+                    <div class="developer-card p-4 h-100">
+                        <div class="text-center mb-4">
+                            <div class="rounded-circle bg-primary d-inline-flex align-items-center justify-content-center" style="width: 120px; height: 120px;">
+                                <i class="bi bi-code-slash text-white fs-1"></i>
+                            </div>
+                            <h3 class="text-white mt-3"><?php echo $developerInfo['name']; ?></h3>
+                            <p class="text-light"><?php echo $developerInfo['title']; ?></p>
                         </div>
-                        <h2 class="section-title">Your Data, Your Control</h2>
-                        <p class="section-subtitle">
-                            We believe in simple, transparent, and private meal management
-                        </p>
+                        <p class="text-light"><?php echo $developerInfo['bio']; ?></p>
                         
-                        <div class="row mt-4">
-                            <div class="col-md-6 mb-3">
-                                <div class="text-center p-3">
-                                    <i class="bi bi-envelope-x fs-1 text-primary mb-3"></i>
-                                    <h5>No Email Confirmation</h5>
-                                    <p class="text-muted">Sign up and start using immediately. No email verification required.</p>
-                                </div>
+                        <div class="mt-4">
+                            <h5 class="text-white mb-3">Contact</h5>
+                            <p class="text-light mb-1">
+                                <i class="bi bi-envelope me-2"></i>
+                                <?php echo $developerInfo['contact']['email']; ?>
+                            </p>
+                            <p class="text-light mb-1">
+                                <i class="bi bi-telephone me-2"></i>
+                                <?php echo $developerInfo['contact']['phone']; ?>
+                            </p>
+                            <p class="text-light">
+                                <i class="bi bi-geo-alt me-2"></i>
+                                <?php echo $developerInfo['contact']['location']; ?>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-lg-4 mb-4">
+                    <div class="developer-card p-4 h-100">
+                        <h4 class="text-white mb-4"><i class="bi bi-mortarboard me-2"></i>Education</h4>
+                        <div class="timeline">
+                            <div class="timeline-item">
+                                <h5 class="text-white"><?php echo $developerInfo['education']['degree']; ?></h5>
+                                <p class="text-light mb-1"><?php echo $developerInfo['education']['university']; ?></p>
+                                <p class="text-light small"><?php echo $developerInfo['education']['semester']; ?> | ID: <?php echo $developerInfo['education']['student_id']; ?></p>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <div class="text-center p-3">
-                                    <i class="bi bi-database-check fs-1 text-primary mb-3"></i>
-                                    <h5>Only What You Provide</h5>
-                                    <p class="text-muted">We only store the data you enter. No unnecessary information collection.</p>
-                                </div>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <div class="text-center p-3">
-                                    <i class="bi bi-credit-card fs-1 text-primary mb-3"></i>
-                                    <h5>No Payment Information</h5>
-                                    <p class="text-muted">Completely free. We never ask for credit cards or payment details.</p>
-                                </div>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <div class="text-center p-3">
-                                    <i class="bi bi-person-check fs-1 text-primary mb-3"></i>
-                                    <h5>You Own Your Data</h5>
-                                    <p class="text-muted">Your meal and expense data belongs to you. We're just providing the tools.</p>
-                                </div>
+                            <div class="timeline-item">
+                                <h5 class="text-white">Higher Secondary Certificate</h5>
+                                <p class="text-light mb-1">Holy Land College</p>
+                                <p class="text-light small">GPA: 5.00</p>
                             </div>
                         </div>
                         
-                        <div class="alert alert-info mt-4">
-                            <i class="bi bi-info-circle me-2"></i>
-                            <strong>Transparency Promise:</strong> This system is developed by a single developer who believes in creating useful, 
-                            free tools. The only data collected is what you enter for meal management purposes.
+                        <h4 class="text-white mt-4 mb-3"><i class="bi bi-tools me-2"></i>Skills</h4>
+                        <div class="mb-3">
+                            <?php foreach($developerInfo['skills'] as $skillType => $skills): ?>
+                                <h6 class="text-white mb-2"><?php echo $skillType; ?>:</h6>
+                                <div class="mb-3">
+                                    <?php 
+                                    $skillList = explode(', ', $skills);
+                                    foreach($skillList as $skill): 
+                                    ?>
+                                        <span class="skill-badge"><?php echo trim($skill); ?></span>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-lg-4 mb-4">
+                    <div class="developer-card p-4 h-100">
+                        <h4 class="text-white mb-4"><i class="bi bi-briefcase me-2"></i>Projects</h4>
+                        
+                        <?php foreach($developerInfo['projects'] as $project => $description): ?>
+                            <div class="project-card mb-3">
+                                <h5 class="fw-bold"><?php echo $project; ?></h5>
+                                <p class="text-muted mb-0"><?php echo $description; ?></p>
+                            </div>
+                        <?php endforeach; ?>
+                        
+                        <div class="quote-box mt-4">
+                            <p class="mb-0"><?php echo $developerInfo['quote']; ?></p>
+                        </div>
+                        
+                        <div class="text-center mt-4">
+                            <h6 class="text-white mb-3">Connect with me</h6>
+                            <div>
+                                <a href="<?php echo $developerInfo['profiles']['github']; ?>" class="social-icon" target="_blank">
+                                    <i class="bi bi-github"></i>
+                                </a>
+                                <a href="<?php echo $developerInfo['profiles']['linkedin']; ?>" class="social-icon" target="_blank">
+                                    <i class="bi bi-linkedin"></i>
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </section>
-
-    <!-- CTA Section -->
-    <section class="cta-section">
-        <div class="container">
+            
             <div class="text-center">
-                <h2 class="cta-title">Start Managing Your Meals Today</h2>
-                <p class="cta-subtitle">
-                    Join hundreds of houses already using our completely free meal management system. 
-                    No hidden fees, no email confirmation, just simple meal management.
-                </p>
-                <div class="cta-buttons mt-4">
-                    <a href="auth/register.php" class="btn btn-primary btn-lg me-3">
-                        <i class="bi bi-lightning me-2"></i>Get Started Free
-                    </a>
-                    <a href="auth/login.php" class="btn btn-outline-light btn-lg">
-                        <i class="bi bi-box-arrow-in-right me-2"></i>Login
-                    </a>
-                </div>
-                <p class="mt-4" style="opacity: 0.9; font-size: 0.95rem;">
-                    <i class="bi bi-shield-check me-2"></i>100% Free • No Email Confirmation • Your Data Stays Private
+                <p class="text-light mb-0">
+                    <i class="bi bi-code-square me-2"></i>
+                    This project is part of my journey to build meaningful software solutions
                 </p>
             </div>
         </div>
     </section>
 
     <!-- Footer -->
-    <footer class="footer">
+    <footer class="bg-dark text-white py-5">
         <div class="container">
             <div class="row">
-                <div class="col-lg-4 mb-4">
-                    <div class="developer-info">
-                        <div class="developer-avatar">
-                            <?php echo substr("Developer", 0, 1); ?>
-                        </div>
-                        <h3 class="developer-name">Single Developer Project</h3>
-                        <p class="developer-title">MealMaster - Free Meal Management System</p>
-                        <p style="color: rgba(255, 255, 255, 0.8);">
-                            This system was developed by a single developer passionate about creating useful, 
-                            free tools for community management. No team, no company, just one person building something helpful.
-                        </p>
-                        
-                        <div class="contact-details">
-                            <h5 style="color: white; margin-bottom: 15px;">Contact the Developer</h5>
-                            <div class="contact-item">
-                                <i class="bi bi-person"></i>
-                                <span>Status: Actively Maintaining</span>
-                            </div>
-                            <div class="contact-item">
-                                <i class="bi bi-code-slash"></i>
-                                <span>Tech: PHP, MySQL, Bootstrap</span>
-                            </div>
-                            <div class="contact-item">
-                                <i class="bi bi-calendar-check"></i>
-                                <span>Started: 2023</span>
-                            </div>
-                            <div class="contact-item">
-                                <i class="bi bi-heart"></i>
-                                <span>Motivation: Help Communities</span>
-                            </div>
-                        </div>
-                    </div>
+                <div class="col-md-4 mb-4">
+                    <h5 class="mb-3">
+                        <i class="bi bi-egg-fried me-2"></i>MealMaster
+                    </h5>
+                    <p class="text-muted">
+                        Free meal management system for hostels, messes, and shared houses.
+                        Built to solve real-world problems with modern web technologies.
+                    </p>
                 </div>
-                <div class="col-lg-2 col-md-4 mb-4">
-                    <div class="footer-links">
-                        <h5>System</h5>
-                        <ul>
-                            <li><a href="#home">Home</a></li>
-                            <li><a href="#features">Features</a></li>
-                            <li><a href="#privacy">Privacy</a></li>
-                            <li><a href="auth/login.php">Login</a></li>
-                            <li><a href="auth/register.php">Register</a></li>
-                        </ul>
-                    </div>
+                <div class="col-md-4 mb-4">
+                    <h5 class="mb-3">Quick Links</h5>
+                    <ul class="list-unstyled">
+                        <li class="mb-2">
+                            <a href="auth/login.php" class="text-white text-decoration-none">
+                                <i class="bi bi-box-arrow-in-right me-2"></i>Login
+                            </a>
+                        </li>
+                        <li class="mb-2">
+                            <a href="auth/register.php" class="text-white text-decoration-none">
+                                <i class="bi bi-person-plus me-2"></i>Register
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#developer" class="text-white text-decoration-none">
+                                <i class="bi bi-code-slash me-2"></i>About Developer
+                            </a>
+                        </li>
+                    </ul>
                 </div>
-                <div class="col-lg-3 col-md-4 mb-4">
-                    <div class="footer-links">
-                        <h5>Resources</h5>
-                        <ul>
-                            <li><a href="docs/user_guide.php">User Guide</a></li>
-                            <li><a href="docs/faq.php">FAQ</a></li>
-                            <li><a href="docs/tips.php">Tips & Tricks</a></li>
-                            <li><a href="docs/troubleshooting.php">Troubleshooting</a></li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="col-lg-3 col-md-4 mb-4">
-                    <div class="footer-links">
-                        <h5>Project Info</h5>
-                        <ul>
-                            <li><a href="about_project.php">About This Project</a></li>
-                            <li><a href="changelog.php">Changelog</a></li>
-                            <li><a href="roadmap.php">Future Plans</a></li>
-                            <li><a href="contribute.php">Want to Contribute?</a></li>
-                        </ul>
+                <div class="col-md-4 mb-4">
+                    <h5 class="mb-3">Technologies Used</h5>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge bg-primary">PHP</span>
+                        <span class="badge bg-success">MySQL</span>
+                        <span class="badge bg-info">Bootstrap 5</span>
+                        <span class="badge bg-warning">JavaScript</span>
+                        <span class="badge bg-danger">HTML5</span>
+                        <span class="badge bg-secondary">CSS3</span>
                     </div>
                 </div>
             </div>
-            
-            <div class="row mt-4">
-                <div class="col-12">
-                    <div class="alert alert-primary text-center" style="background: rgba(255,255,255,0.1); border: none; color: white;">
-                        <i class="bi bi-info-circle me-2"></i>
-                        <strong>Note:</strong> This is a personal project developed to help communities manage their meals efficiently. 
-                        It's completely free and will remain free forever. Your data is only used for meal management purposes.
-                    </div>
-                </div>
-            </div>
-            
-            <div class="copyright">
-                <p>
-                    &copy; <?php echo date('Y'); ?> MealMaster - Free Meal Management System. 
-                    Developed and maintained by a single developer. 
-                    <br class="d-block d-md-none">
-                    <span class="d-none d-md-inline">|</span> 
-                    Version 1.0 | Last Updated: <?php echo date('F Y'); ?>
-                </p>
-                <p class="mt-2" style="font-size: 0.8rem;">
-                    <i class="bi bi-heart-fill text-danger"></i> 
-                    Built with passion for helping communities manage their meals better.
+            <div class="text-center mt-4 pt-4 border-top border-secondary">
+                <p class="text-muted small mb-0">
+                    © <?php echo date('Y'); ?> MealMaster - Developed by <?php echo $developerInfo['name']; ?> | 
+                    Version 1.0 | Built with ❤️ for the community
                 </p>
             </div>
         </div>
@@ -910,9 +737,133 @@ $stats = [
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     
-    <!-- Custom JavaScript -->
+    <!-- JavaScript for animations and interactions -->
     <script>
-        // Smooth scrolling
+        // Format numbers
+        function formatNumber(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+        
+        // Format money
+        function formatMoney(amount) {
+            if (amount >= 1000000) {
+                return '৳' + (amount / 1000000).toFixed(1) + 'M';
+            } else if (amount >= 1000) {
+                return '৳' + (amount / 1000).toFixed(1) + 'K';
+            } else {
+                return '৳' + formatNumber(amount.toFixed(2));
+            }
+        }
+        
+        // Format meals
+        function formatMeals(meals) {
+            return meals % 1 === 0 ? meals.toFixed(0) : meals.toFixed(1);
+        }
+        
+        // Update a single statistic
+        function updateStat(elementId, newValue, type = 'number') {
+            const element = document.getElementById(elementId);
+            if (!element) return;
+            
+            const currentValue = parseFloat(element.textContent.replace(/[^0-9.]/g, ''));
+            const newValueNum = parseFloat(newValue);
+            
+            if (currentValue === newValueNum) return;
+            
+            let start = currentValue;
+            const end = newValueNum;
+            const duration = 1000;
+            const startTime = performance.now();
+            
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const current = start + (end - start) * progress;
+                
+                if (type === 'money') {
+                    element.textContent = formatMoney(current);
+                } else if (type === 'meals') {
+                    element.textContent = formatMeals(current);
+                } else {
+                    element.textContent = Math.round(current);
+                }
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Update timestamp
+        function updateTimestamp(statId) {
+            const timeElement = document.getElementById(statId + '-time');
+            if (timeElement) {
+                const now = new Date();
+                timeElement.textContent = 'Updated ' + now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            }
+        }
+        
+        // Fetch updated statistics
+        async function fetchStats() {
+            try {
+                const refreshBtn = document.getElementById('refreshAll');
+                refreshBtn.classList.add('loading');
+                
+                const response = await fetch('api/get_stats.php');
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStat('stat-houses', data.houses, 'number');
+                    updateStat('stat-members', data.members, 'number');
+                    updateStat('stat-meals', data.meals, 'meals');
+                    updateStat('stat-money', data.money, 'money');
+                    
+                    updateTimestamp('stat-houses');
+                    updateTimestamp('stat-members');
+                    updateTimestamp('stat-meals');
+                    updateTimestamp('stat-money');
+                    
+                    document.getElementById('lastUpdate').textContent = 
+                        new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                }
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+            } finally {
+                const refreshBtn = document.getElementById('refreshAll');
+                refreshBtn.classList.remove('loading');
+            }
+        }
+        
+        // Navbar scroll effect
+        window.addEventListener('scroll', function() {
+            const navbar = document.getElementById('mainNav');
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
+        
+        // Fade-in animation on scroll
+        function checkFadeIn() {
+            const fadeElements = document.querySelectorAll('.fade-in');
+            fadeElements.forEach(element => {
+                const elementTop = element.getBoundingClientRect().top;
+                const elementVisible = 150;
+                
+                if (elementTop < window.innerHeight - elementVisible) {
+                    element.classList.add('visible');
+                }
+            });
+        }
+        
+        // Initial fade-in check
+        window.addEventListener('scroll', checkFadeIn);
+        window.addEventListener('load', checkFadeIn);
+        
+        // Smooth scrolling for anchor links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -929,72 +880,42 @@ $stats = [
             });
         });
         
-        // Update active nav link
-        window.addEventListener('scroll', function() {
-            const sections = document.querySelectorAll('section[id]');
-            const navLinks = document.querySelectorAll('.nav-link');
+        // Refresh button click
+        document.getElementById('refreshAll').addEventListener('click', fetchStats);
+        
+        // Auto-refresh every 30 seconds
+        setInterval(fetchStats, 30000);
+        
+        // Initial fetch after page load
+        window.addEventListener('load', function() {
+            setTimeout(fetchStats, 5000);
             
-            let current = '';
-            sections.forEach(section => {
-                const sectionTop = section.offsetTop;
-                const sectionHeight = section.clientHeight;
-                if (scrollY >= (sectionTop - 100)) {
-                    current = section.getAttribute('id');
-                }
+            // Typewriter effect for hero text
+            const heroText = document.querySelector('.hero-section h1');
+            if (heroText) {
+                heroText.classList.add('typewriter');
+            }
+        });
+        
+        // Skill badges hover effect
+        document.querySelectorAll('.skill-badge').forEach(badge => {
+            badge.addEventListener('mouseenter', function() {
+                this.style.transform = 'scale(1.05)';
             });
-            
-            navLinks.forEach(link => {
-                link.classList.remove('active');
-                if (link.getAttribute('href') === '#' + current) {
-                    link.classList.add('active');
-                }
+            badge.addEventListener('mouseleave', function() {
+                this.style.transform = 'scale(1)';
             });
         });
         
-        // Animate stats on scroll
-        function animateCounter(element, start, end, duration) {
-            let startTimestamp = null;
-            const step = (timestamp) => {
-                if (!startTimestamp) startTimestamp = timestamp;
-                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-                const value = Math.floor(progress * (end - start) + start);
-                element.textContent = value;
-                if (progress < 1) {
-                    window.requestAnimationFrame(step);
-                }
-            };
-            window.requestAnimationFrame(step);
-        }
-        
-        // Observe stats section
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    // Get all stat numbers and animate them
-                    document.querySelectorAll('.stat-number').forEach(stat => {
-                        const currentValue = parseInt(stat.textContent.replace(/[^0-9]/g, ''));
-                        if (!isNaN(currentValue) && currentValue > 0) {
-                            animateCounter(stat, 0, currentValue, 2000);
-                        }
-                    });
-                    observer.unobserve(entry.target);
-                }
+        // Add floating animation to stats cards on hover
+        document.querySelectorAll('.stat-card').forEach(card => {
+            card.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-10px)';
             });
-        }, { threshold: 0.5 });
-        
-        // Start observing stats section
-        const statsSection = document.querySelector('.stats-section');
-        if (statsSection) {
-            observer.observe(statsSection);
-        }
-        
-        // Free badge animation
-        const freeBadge = document.querySelector('.free-badge');
-        if (freeBadge) {
-            setInterval(() => {
-                freeBadge.classList.toggle('animate__pulse');
-            }, 3000);
-        }
+            card.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0)';
+            });
+        });
     </script>
 </body>
 </html>
