@@ -169,6 +169,41 @@ if ($total_money >= 1000000) {
             50% { border-color: var(--primary); }
         }
         
+        /* Profile image styles */
+        .profile-image-container {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid var(--primary);
+            background: linear-gradient(135deg, var(--primary), var(--info));
+        }
+        
+        .profile-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s ease;
+        }
+        
+        .profile-image-container:hover .profile-img {
+            transform: scale(1.1);
+        }
+        
+        /* Fallback for missing images */
+        .profile-img[src*="ui-avatars.com"] {
+            object-fit: contain;
+            padding: 10px;
+        }
+        
+        /* Mobile responsiveness for profile image */
+        @media (max-width: 768px) {
+            .profile-image-container {
+                width: 60px;
+                height: 60px;
+            }
+        }
+        
         .stat-card {
             background: white;
             border-radius: 15px;
@@ -576,6 +611,23 @@ if ($total_money >= 1000000) {
             display: inline-block;
             font-weight: 800;
         }
+        
+        /* Better mobile menu */
+        .navbar-toggler {
+            border: none;
+            padding: 0.25rem 0.5rem;
+        }
+        
+        .navbar-toggler:focus {
+            box-shadow: none;
+        }
+        
+        /* Ensure profile image doesn't stretch */
+        .profile-image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
     </style>
 </head>
 <body>
@@ -585,7 +637,10 @@ if ($total_money >= 1000000) {
             <a class="navbar-brand fw-bold" href="index.php">
                 <i class="bi bi-egg-fried me-2"></i>MealMaster
             </a>
-            <div class="collapse navbar-collapse">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
                         <a class="nav-link smooth-transition" href="auth/login.php">Login</a>
@@ -767,9 +822,9 @@ if ($total_money >= 1000000) {
                 <div class="col-lg-4">
                     <div class="developer-card p-4 h-100 animate__animated animate__fadeInLeft smooth-transition">
                         <div class="d-flex align-items-center mb-4">
-                            <div class="rounded-circle bg-gradient-primary d-flex align-items-center justify-content-center me-3" 
-                                 style="width: 70px; height: 70px;">
-                                <img src="image/farhan.png" alt="Farhan">
+                            <div class="profile-image-container me-3">
+                                <img src="image/farhan.png" alt="Farhan" class="profile-img" 
+                                     onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=<?php echo urlencode($developerInfo['name']); ?>&background=4e73df&color=fff&size=70';">
                             </div>
                             <div>
                                 <h4 class="text-white mb-1"><?php echo $developerInfo['name']; ?></h4>
