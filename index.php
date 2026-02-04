@@ -59,8 +59,9 @@ if ($total_money >= 1000000) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $page_title; ?></title>
+    <title>Meal Management System - Free Meal Tracking Solution</title>
     
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -85,6 +86,7 @@ if ($total_money >= 1000000) {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f8f9fc;
             overflow-x: hidden;
+            color: #333;
         }
         
         /* Custom Scrollbar */
@@ -103,10 +105,11 @@ if ($total_money >= 1000000) {
         }
         
         .navbar {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.98);
             backdrop-filter: blur(10px);
             box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
             transition: all 0.3s ease;
+            padding: 15px 0;
         }
         
         .navbar.scrolled {
@@ -115,7 +118,7 @@ if ($total_money >= 1000000) {
         }
         
         .hero-section {
-            padding: 180px 0 120px;
+            padding: 160px 0 100px;
             background: linear-gradient(135deg, 
                 rgba(78, 115, 223, 0.1) 0%, 
                 rgba(28, 200, 138, 0.1) 50%, 
@@ -138,6 +141,32 @@ if ($total_money >= 1000000) {
         @keyframes float {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+        
+        /* FIXED: Typewriter effect */
+        .typewriter-container {
+            display: inline-block;
+            position: relative;
+        }
+        
+        .typewriter-text {
+            display: inline-block;
+            overflow: hidden;
+            border-right: 3px solid var(--primary);
+            white-space: nowrap;
+            margin: 0;
+            letter-spacing: .15em;
+            animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite;
+        }
+        
+        @keyframes typing {
+            from { width: 0 }
+            to { width: 100% }
+        }
+        
+        @keyframes blink-caret {
+            from, to { border-color: transparent }
+            50% { border-color: var(--primary); }
         }
         
         .stat-card {
@@ -262,6 +291,7 @@ if ($total_money >= 1000000) {
             border-radius: 12px;
             transition: all 0.3s ease;
             height: 100%;
+            color: #fff;
         }
 
         .developer-card:hover {
@@ -271,17 +301,43 @@ if ($total_money >= 1000000) {
             background: rgba(255, 255, 255, 0.08);
         }
 
-        /* Skill Badge Colors */
+        /* FIXED: Developer card text colors */
+        .developer-card .text-dark {
+            color: #f8f9fa !important;
+        }
+        
+        .developer-card .text-muted {
+            color: rgba(255, 255, 255, 0.7) !important;
+        }
+        
+        /* FIXED: Project portfolio title visibility */
+        .developer-card h4,
+        .developer-card h5,
+        .developer-card h6:not(.text-info) {
+            color: white !important;
+        }
+        
+        /* FIXED: Project card text in dark section */
+        .developer-section .project-card h6 {
+            color: #212529 !important;
+        }
+        
+        .developer-section .project-card .text-muted {
+            color: #6c757d !important;
+        }
+
+        /* Skill Badge Colors - FIXED FOR VISIBILITY */
         .skill-badge {
             padding: 6px 12px;
             border-radius: 20px;
             font-size: 0.8rem;
             font-weight: 500;
-            color: white;
+            color: white !important;
             transition: all 0.3s ease;
             border: none;
             display: inline-block;
             margin: 3px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
         }
 
         .skill-badge:hover {
@@ -289,12 +345,16 @@ if ($total_money >= 1000000) {
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
 
-        /* Specific skill colors */
+        /* Specific skill colors - IMPROVED FOR VISIBILITY */
         .bg-c { background: linear-gradient(45deg, #A8B9CC, #6495ED); }
         .bg-cpp { background: linear-gradient(45deg, #00599C, #659AD2); }
         .bg-java { background: linear-gradient(45deg, #007396, #ED8B00); }
         .bg-csharp { background: linear-gradient(45deg, #239120, #68217A); }
-        .bg-js { background: linear-gradient(45deg, #F7DF1E, #F0DB4F); color: #000; }
+        .bg-js { 
+            background: linear-gradient(45deg, #F7DF1E, #F0DB4F); 
+            color: #000 !important; 
+            text-shadow: 0 1px 1px rgba(255,255,255,0.3);
+        }
         .bg-sql { background: linear-gradient(45deg, #00758F, #F29111); }
         .bg-html { background: linear-gradient(45deg, #E34F26, #F06529); }
         .bg-css { background: linear-gradient(45deg, #1572B6, #33A9DC); }
@@ -328,7 +388,7 @@ if ($total_money >= 1000000) {
         }
 
         .project-card h6 {
-            color: #2c3e50;
+            color: #2c3e50 !important;
             font-weight: 600;
             margin-bottom: 5px;
             font-size: 0.95rem;
@@ -379,6 +439,7 @@ if ($total_money >= 1000000) {
             font-weight: 500;
             border-radius: 20px;
             margin: 2px;
+            color: white !important;
         }
 
         /* Improved text visibility */
@@ -419,24 +480,6 @@ if ($total_money >= 1000000) {
             50% { transform: translateY(-20px); }
         }
         
-        .typewriter {
-            overflow: hidden;
-            border-right: .15em solid var(--primary);
-            white-space: nowrap;
-            margin: 0 auto;
-            animation: typing 3.5s steps(40, end), blink-caret .75s step-end infinite;
-        }
-        
-        @keyframes typing {
-            from { width: 0 }
-            to { width: 100% }
-        }
-        
-        @keyframes blink-caret {
-            from, to { border-color: transparent }
-            50% { border-color: var(--primary) }
-        }
-        
         .fade-in {
             opacity: 0;
             transform: translateY(30px);
@@ -467,11 +510,77 @@ if ($total_money >= 1000000) {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
+        
+        /* Professional improvements */
+        .hero-headline {
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 1.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            .hero-headline {
+                font-size: 2.5rem;
+            }
+            
+            .hero-section {
+                padding: 120px 0 80px;
+            }
+            
+            .typewriter-text {
+                white-space: normal;
+                border-right: none;
+                animation: none;
+            }
+        }
+        
+        /* Professional card shadows */
+        .professional-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 
+                        0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        
+        .professional-shadow-lg {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 
+                        0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        
+        /* Smooth transitions */
+        .smooth-transition {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Improved button styles */
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #2e59d9);
+            border: none;
+            padding: 12px 28px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #2e59d9, var(--primary));
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(78, 115, 223, 0.3);
+        }
+        
+        /* Enhanced footer */
+        footer {
+            background: linear-gradient(135deg, #2c3e50, #34495e) !important;
+        }
+        
+        /* Statistics counter animation */
+        .counter {
+            display: inline-block;
+            font-weight: 800;
+        }
     </style>
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top professional-shadow" id="mainNav">
         <div class="container">
             <a class="navbar-brand fw-bold" href="index.php">
                 <i class="bi bi-egg-fried me-2"></i>MealMaster
@@ -479,10 +588,10 @@ if ($total_money >= 1000000) {
             <div class="collapse navbar-collapse">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="auth/login.php">Login</a>
+                        <a class="nav-link smooth-transition" href="auth/login.php">Login</a>
                     </li>
                     <li class="nav-item">
-                        <a class="btn btn-primary ms-2 px-4" href="auth/register.php">Get Started</a>
+                        <a class="btn btn-primary ms-2 px-4 smooth-transition" href="auth/register.php">Get Started</a>
                     </li>
                 </ul>
             </div>
@@ -494,41 +603,45 @@ if ($total_money >= 1000000) {
         <div class="container">
             <div class="row align-items-center">
                 <div class="col-lg-6">
-                    <h1 class="display-4 fw-bold mb-4 animate__animated animate__fadeInUp">
-                        <span class="gradient-text">Free Meal Management System</span>
+                    <h1 class="hero-headline mb-4 animate__animated animate__fadeInUp">
+                        <div class="typewriter-container">
+                            <span class="typewriter-text gradient-text">Meal Management</span>
+                        </div>
+                        <div class="mt-2">Made Simple & Free</div>
                     </h1>
                     <p class="lead mb-4 animate__animated animate__fadeInUp animate__delay-1s">
                         Completely free solution for managing meals in hostels, messes, and shared houses.
+                        Track expenses, manage members, and simplify meal planning.
                     </p>
-                    <div class="d-flex gap-3 animate__animated animate__fadeInUp animate__delay-2s">
-                        <a href="auth/register.php" class="btn btn-primary btn-lg px-4">
+                    <div class="d-flex flex-wrap gap-3 animate__animated animate__fadeInUp animate__delay-2s">
+                        <a href="auth/register.php" class="btn btn-primary btn-lg px-4 smooth-transition">
                             <i class="bi bi-lightning me-2"></i>Start Free Now
                         </a>
-                        <a href="#developer" class="btn btn-outline-light btn-lg px-4">
+                        <a href="#developer" class="btn btn-outline-dark btn-lg px-4 smooth-transition">
                             <i class="bi bi-person-badge me-2"></i>Meet Developer
                         </a>
                     </div>
                     <p class="text-muted mt-4 animate__animated animate__fadeInUp animate__delay-3s">
                         <i class="bi bi-arrow-up-right-circle me-2"></i>
-                        Join <span class="fw-bold"><?php echo $stats['total_houses'] ?? 0; ?>+</span> houses and 
-                        <span class="fw-bold"><?php echo $stats['total_members'] ?? 0; ?>+</span> members already using MealMaster
+                        Join <span class="fw-bold counter"><?php echo $stats['total_houses'] ?? 0; ?></span>+ houses and 
+                        <span class="fw-bold counter"><?php echo $stats['total_members'] ?? 0; ?></span>+ members already using MealMaster
                     </p>
                 </div>
                 <div class="col-lg-6">
                     <div class="position-relative floating-element">
                         <div class="display-1 text-center mb-4">🍽️</div>
                         <div class="position-absolute top-0 start-0 animate__animated animate__bounceIn">
-                            <div class="bg-white rounded-circle p-3 shadow-lg">
+                            <div class="bg-white rounded-circle p-3 professional-shadow-lg smooth-transition">
                                 <i class="bi bi-graph-up text-primary fs-3"></i>
                             </div>
                         </div>
                         <div class="position-absolute top-0 end-0 animate__animated animate__bounceIn animate__delay-1s">
-                            <div class="bg-white rounded-circle p-3 shadow-lg">
+                            <div class="bg-white rounded-circle p-3 professional-shadow-lg smooth-transition">
                                 <i class="bi bi-calculator text-success fs-3"></i>
                             </div>
                         </div>
                         <div class="position-absolute bottom-0 start-50 translate-middle-x animate__animated animate__bounceIn animate__delay-2s">
-                            <div class="bg-white rounded-circle p-3 shadow-lg">
+                            <div class="bg-white rounded-circle p-3 professional-shadow-lg smooth-transition">
                                 <i class="bi bi-people text-info fs-3"></i>
                             </div>
                         </div>
@@ -546,7 +659,7 @@ if ($total_money >= 1000000) {
                 <p class="text-muted">
                     <span class="live-indicator"></span>
                     <span>Real-time Updates</span>
-                    <button id="refreshAll" class="btn btn-sm btn-outline-primary ms-3 refresh-btn">
+                    <button id="refreshAll" class="btn btn-sm btn-outline-primary ms-3 refresh-btn smooth-transition">
                         <i class="bi bi-arrow-clockwise"></i> Refresh
                     </button>
                 </p>
@@ -554,29 +667,29 @@ if ($total_money >= 1000000) {
             
             <div class="row">
                 <div class="col-md-3 col-6">
-                    <div class="stat-card animate__animated animate__fadeInUp">
-                        <div class="stat-number" id="stat-houses"><?php echo $stats['total_houses'] ?? 0; ?></div>
+                    <div class="stat-card animate__animated animate__fadeInUp professional-shadow smooth-transition">
+                        <div class="stat-number counter" id="stat-houses"><?php echo $stats['total_houses'] ?? 0; ?></div>
                         <div class="stat-label">Active Houses</div>
                         <small class="text-muted" id="stat-houses-time">Updated just now</small>
                     </div>
                 </div>
                 <div class="col-md-3 col-6">
-                    <div class="stat-card animate__animated animate__fadeInUp animate__delay-1s">
-                        <div class="stat-number" id="stat-members"><?php echo $stats['total_members'] ?? 0; ?></div>
+                    <div class="stat-card animate__animated animate__fadeInUp animate__delay-1s professional-shadow smooth-transition">
+                        <div class="stat-number counter" id="stat-members"><?php echo $stats['total_members'] ?? 0; ?></div>
                         <div class="stat-label">Happy Members</div>
                         <small class="text-muted" id="stat-members-time">Updated just now</small>
                     </div>
                 </div>
                 <div class="col-md-3 col-6">
-                    <div class="stat-card animate__animated animate__fadeInUp animate__delay-2s">
-                        <div class="stat-number" id="stat-meals"><?php echo number_format($stats['today_meals'] ?? 0, 1); ?></div>
+                    <div class="stat-card animate__animated animate__fadeInUp animate__delay-2s professional-shadow smooth-transition">
+                        <div class="stat-number counter" id="stat-meals"><?php echo number_format($stats['today_meals'] ?? 0, 1); ?></div>
                         <div class="stat-label">Meals Today</div>
                         <small class="text-muted" id="stat-meals-time">Updated just now</small>
                     </div>
                 </div>
                 <div class="col-md-3 col-6">
-                    <div class="stat-card animate__animated animate__fadeInUp animate__delay-3s">
-                        <div class="stat-number" id="stat-money">৳<?php echo $total_money_formatted; ?></div>
+                    <div class="stat-card animate__animated animate__fadeInUp animate__delay-3s professional-shadow smooth-transition">
+                        <div class="stat-number counter" id="stat-money">৳<?php echo $total_money_formatted; ?></div>
                         <div class="stat-label">Managed</div>
                         <small class="text-muted" id="stat-money-time">Updated just now</small>
                     </div>
@@ -600,7 +713,7 @@ if ($total_money >= 1000000) {
             </div>
             <div class="row">
                 <div class="col-md-4 mb-4">
-                    <div class="text-center p-4 h-100">
+                    <div class="text-center p-4 h-100 smooth-transition">
                         <div class="feature-icon text-success mb-4">
                             <i class="bi bi-check-circle-fill"></i>
                         </div>
@@ -609,7 +722,7 @@ if ($total_money >= 1000000) {
                     </div>
                 </div>
                 <div class="col-md-4 mb-4">
-                    <div class="text-center p-4 h-100">
+                    <div class="text-center p-4 h-100 smooth-transition">
                         <div class="feature-icon text-warning mb-4">
                             <i class="bi bi-lightning-fill"></i>
                         </div>
@@ -618,7 +731,7 @@ if ($total_money >= 1000000) {
                     </div>
                 </div>
                 <div class="col-md-4 mb-4">
-                    <div class="text-center p-4 h-100">
+                    <div class="text-center p-4 h-100 smooth-transition">
                         <div class="feature-icon text-primary mb-4">
                             <i class="bi bi-shield-check"></i>
                         </div>
@@ -636,14 +749,14 @@ if ($total_money >= 1000000) {
             <div class="text-center mb-5">
                 <h2 class="fw-bold text-white mb-3 animate__animated animate__fadeInDown">Meet The Developer</h2>
                 <p class="text-light mb-4 animate__animated animate__fadeInDown animate__delay-1s">Building scalable solutions with passion and precision</p>
-                <div class="d-flex justify-content-center gap-3">
-                    <a href="<?php echo $developerInfo['profiles']['github']; ?>" class="btn btn-outline-light btn-sm" target="_blank">
+                <div class="d-flex justify-content-center flex-wrap gap-3">
+                    <a href="<?php echo $developerInfo['profiles']['github']; ?>" class="btn btn-outline-light btn-sm smooth-transition" target="_blank">
                         <i class="bi bi-github me-2"></i>GitHub
                     </a>
-                    <a href="<?php echo $developerInfo['profiles']['linkedin']; ?>" class="btn btn-outline-light btn-sm" target="_blank">
+                    <a href="<?php echo $developerInfo['profiles']['linkedin']; ?>" class="btn btn-outline-light btn-sm smooth-transition" target="_blank">
                         <i class="bi bi-linkedin me-2"></i>LinkedIn
                     </a>
-                    <button class="btn btn-outline-light btn-sm" onclick="showContactInfo()">
+                    <button class="btn btn-outline-light btn-sm smooth-transition" onclick="showContactInfo()">
                         <i class="bi bi-envelope me-2"></i>Contact
                     </button>
                 </div>
@@ -652,11 +765,11 @@ if ($total_money >= 1000000) {
             <div class="row g-4">
                 <!-- Profile Card -->
                 <div class="col-lg-4">
-                    <div class="developer-card p-4 h-100 animate__animated animate__fadeInLeft">
+                    <div class="developer-card p-4 h-100 animate__animated animate__fadeInLeft smooth-transition">
                         <div class="d-flex align-items-center mb-4">
                             <div class="rounded-circle bg-gradient-primary d-flex align-items-center justify-content-center me-3" 
                                  style="width: 70px; height: 70px;">
-                                <i class="bi bi-code-slash text-white fs-4"></i>
+                                <img src="image/farhan.png" alt="Farhan">
                             </div>
                             <div>
                                 <h4 class="text-white mb-1"><?php echo $developerInfo['name']; ?></h4>
@@ -691,7 +804,7 @@ if ($total_money >= 1000000) {
                             </div>
                         </div>
                         
-                        <div class="quote-box">
+                        <div class="quote-box smooth-transition">
                             <i class="bi bi-quote text-white fs-1 opacity-25"></i>
                             <p class="text-white mb-0 fst-italic"><?php echo $developerInfo['quote']; ?></p>
                         </div>
@@ -700,7 +813,7 @@ if ($total_money >= 1000000) {
                 
                 <!-- Skills & Technologies -->
                 <div class="col-lg-4">
-                    <div class="developer-card p-4 h-100 animate__animated animate__fadeInUp">
+                    <div class="developer-card p-4 h-100 animate__animated animate__fadeInUp smooth-transition">
                         <h4 class="text-white mb-4"><i class="bi bi-tools me-2"></i>Technical Stack</h4>
                         
                         <?php foreach($developerInfo['skills'] as $category => $skills): ?>
@@ -715,7 +828,7 @@ if ($total_money >= 1000000) {
                                         $skill = trim($skill);
                                         $colorClass = getSkillColorClass($skill);
                                     ?>
-                                        <span class="skill-badge <?php echo $colorClass; ?>">
+                                        <span class="skill-badge <?php echo $colorClass; ?> smooth-transition">
                                             <?php echo $skill; ?>
                                         </span>
                                     <?php endforeach; ?>
@@ -738,7 +851,7 @@ if ($total_money >= 1000000) {
                 
                 <!-- Projects Portfolio -->
                 <div class="col-lg-4">
-                    <div class="developer-card p-4 h-100 animate__animated animate__fadeInRight">
+                    <div class="developer-card p-4 h-100 animate__animated animate__fadeInRight smooth-transition">
                         <h4 class="text-white mb-4">
                             <i class="bi bi-briefcase me-2"></i>Project Portfolio
                         </h4>
@@ -751,7 +864,7 @@ if ($total_money >= 1000000) {
                                 if($projectCount <= 6): // Show first 6 projects
                             ?>
                                 <div class="col-12">
-                                    <div class="project-card">
+                                    <div class="project-card smooth-transition">
                                         <div class="d-flex align-items-start">
                                             <div class="me-3">
                                                 <i class="bi bi-folder text-primary fs-4"></i>
@@ -771,7 +884,7 @@ if ($total_money >= 1000000) {
                             <?php if(count($developerInfo['projects']) > 6): ?>
                                 <div class="col-12">
                                     <div class="text-center">
-                                        <button class="btn btn-outline-light btn-sm" onclick="showAllProjects()">
+                                        <button class="btn btn-outline-light btn-sm smooth-transition" onclick="showAllProjects()">
                                             <i class="bi bi-three-dots me-1"></i>
                                             View <?php echo count($developerInfo['projects']) - 6; ?> More Projects
                                         </button>
@@ -783,12 +896,12 @@ if ($total_money >= 1000000) {
                         <div class="mt-4">
                             <h5 class="text-white mb-3"><i class="bi bi-building me-2"></i>Project Domains</h5>
                             <div class="d-flex flex-wrap gap-2">
-                                <span class="badge bg-primary">Desktop Applications</span>
-                                <span class="badge bg-success">Web Development</span>
-                                <span class="badge bg-info">Database Systems</span>
-                                <span class="badge bg-warning">Management Systems</span>
-                                <span class="badge bg-danger">CRUD Operations</span>
-                                <span class="badge bg-secondary">Agriculture Tech</span>
+                                <span class="badge bg-primary smooth-transition">Desktop Applications</span>
+                                <span class="badge bg-success smooth-transition">Web Development</span>
+                                <span class="badge bg-info smooth-transition">Database Systems</span>
+                                <span class="badge bg-warning smooth-transition">Management Systems</span>
+                                <span class="badge bg-danger smooth-transition">CRUD Operations</span>
+                                <span class="badge bg-secondary smooth-transition">Agriculture Tech</span>
                             </div>
                         </div>
                     </div>
@@ -798,7 +911,7 @@ if ($total_money >= 1000000) {
             <!-- Contact Info Row -->
             <div class="row mt-5">
                 <div class="col-12">
-                    <div class="developer-card p-4 animate__animated animate__fadeInUp animate__delay-1s">
+                    <div class="developer-card p-4 animate__animated animate__fadeInUp animate__delay-1s smooth-transition">
                         <div class="row align-items-center">
                             <div class="col-md-4 text-center mb-3 mb-md-0">
                                 <h5 class="text-white mb-3"><i class="bi bi-geo-alt me-2"></i>Location</h5>
@@ -833,48 +946,48 @@ if ($total_money >= 1000000) {
         <div class="container">
             <div class="row">
                 <div class="col-md-4 mb-4">
-                    <h5 class="mb-3">
+                    <h5 class="mb-3 text-white">
                         <i class="bi bi-egg-fried me-2"></i>MealMaster
                     </h5>
-                    <p class="text-muted">
+                    <p class="text-light">
                         Free meal management system for hostels, messes, and shared houses.
                         Built to solve real-world problems with modern web technologies.
                     </p>
                 </div>
                 <div class="col-md-4 mb-4">
-                    <h5 class="mb-3">Quick Links</h5>
+                    <h5 class="mb-3 text-white">Quick Links</h5>
                     <ul class="list-unstyled">
                         <li class="mb-2">
-                            <a href="auth/login.php" class="text-white text-decoration-none">
+                            <a href="auth/login.php" class="text-white text-decoration-none smooth-transition">
                                 <i class="bi bi-box-arrow-in-right me-2"></i>Login
                             </a>
                         </li>
                         <li class="mb-2">
-                            <a href="auth/register.php" class="text-white text-decoration-none">
+                            <a href="auth/register.php" class="text-white text-decoration-none smooth-transition">
                                 <i class="bi bi-person-plus me-2"></i>Register
                             </a>
                         </li>
                         <li>
-                            <a href="#developer" class="text-white text-decoration-none">
+                            <a href="#developer" class="text-white text-decoration-none smooth-transition">
                                 <i class="bi bi-code-slash me-2"></i>About Developer
                             </a>
                         </li>
                     </ul>
                 </div>
                 <div class="col-md-4 mb-4">
-                    <h5 class="mb-3">Technologies Used</h5>
+                    <h5 class="mb-3 text-white">Technologies Used</h5>
                     <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-primary">PHP</span>
-                        <span class="badge bg-success">MySQL</span>
-                        <span class="badge bg-info">Bootstrap 5</span>
-                        <span class="badge bg-warning">JavaScript</span>
-                        <span class="badge bg-danger">HTML5</span>
-                        <span class="badge bg-secondary">CSS3</span>
+                        <span class="badge bg-primary smooth-transition">PHP</span>
+                        <span class="badge bg-success smooth-transition">MySQL</span>
+                        <span class="badge bg-info smooth-transition">Bootstrap 5</span>
+                        <span class="badge bg-warning smooth-transition">JavaScript</span>
+                        <span class="badge bg-danger smooth-transition">HTML5</span>
+                        <span class="badge bg-secondary smooth-transition">CSS3</span>
                     </div>
                 </div>
             </div>
             <div class="text-center mt-4 pt-4 border-top border-secondary">
-                <p class="text-muted small mb-0">
+                <p class="text-light small mb-0">
                     © <?php echo date('Y'); ?> MealMaster - Developed by <?php echo $developerInfo['name']; ?> | 
                     Version 1.0
                 </p>
@@ -1006,10 +1119,10 @@ if ($total_money >= 1000000) {
                     </div>
                     <div class="mt-4">
                         <a href="mailto:<?php echo $developerInfo['contact']['email']; ?>" 
-                           class="btn btn-primary me-2">
+                           class="btn btn-primary me-2 smooth-transition">
                             <i class="bi bi-envelope me-1"></i> Send Email
                         </a>
-                        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                        <button class="btn btn-outline-secondary smooth-transition" data-bs-dismiss="modal">Close</button>
                     </div>
                 </div>
             `;
@@ -1025,7 +1138,7 @@ if ($total_money >= 1000000) {
             Object.entries(projects).forEach(([project, description], index) => {
                 projectsHTML += `
                     <div class="col-md-6">
-                        <div class="card h-100">
+                        <div class="card h-100 smooth-transition">
                             <div class="card-body">
                                 <h6 class="card-title text-primary">
                                     <i class="bi bi-folder me-2"></i>${project}
@@ -1127,11 +1240,23 @@ if ($total_money >= 1000000) {
         window.addEventListener('load', function() {
             setTimeout(fetchStats, 5000);
             
-            // Typewriter effect for hero text
-            const heroText = document.querySelector('.hero-section h1');
-            if (heroText) {
-                heroText.classList.add('typewriter');
-            }
+            // Animate counters on page load
+            document.querySelectorAll('.counter').forEach(counter => {
+                const target = parseInt(counter.textContent);
+                if (!isNaN(target)) {
+                    let current = 0;
+                    const increment = target / 50;
+                    const timer = setInterval(() => {
+                        current += increment;
+                        if (current >= target) {
+                            counter.textContent = target + '+';
+                            clearInterval(timer);
+                        } else {
+                            counter.textContent = Math.floor(current) + '+';
+                        }
+                    }, 30);
+                }
+            });
             
             // Initialize animations for developer section
             const developerSection = document.getElementById('developer');
