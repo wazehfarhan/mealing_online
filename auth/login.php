@@ -1,5 +1,9 @@
 <?php
-session_start();
+// Start session only if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once '../config/database.php';
 
 // Security headers
@@ -29,12 +33,19 @@ $error = '';
 $success = '';
 $username = '';
 
-// Check for session messages
+// Check for registration success message
+if (isset($_SESSION['registration_success'])) {
+    $success = $_SESSION['registration_success'];
+    unset($_SESSION['registration_success']); // Clear the message after displaying
+}
+
+// Check for other success messages
 if (isset($_SESSION['success'])) {
     $success = $_SESSION['success'];
     unset($_SESSION['success']);
 }
 
+// Check for error messages
 if (isset($_SESSION['error'])) {
     $error = $_SESSION['error'];
     unset($_SESSION['error']);
@@ -487,10 +498,10 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                         </button>
                     </div>
                     
-                    <div class="text-center">
+                    <div class="login-footer">
                         <p class="mb-3 text-muted">Don't have an account?</p>
-                        <a href="choose_role.php" class="btn btn-outline-primary w-100">
-                            <i class="fas fa-user-plus me-2"></i>Create New Account
+                        <a href="register.php" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-user-plus me-2"></i>Create Manager Account
                         </a>
                     </div>
                 </form>
@@ -573,6 +584,14 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
             if (window.history.replaceState) {
                 window.history.replaceState(null, null, window.location.href);
             }
+            
+            // Add enter key support for password field
+            passwordInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    loginForm.submit();
+                }
+            });
         });
     </script>
 </body>
