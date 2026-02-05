@@ -4,33 +4,28 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require_once '../config/database.php';
+
 // Security headers
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 
 // Check if already logged in
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
-    // Include auth after session start
-    require_once '../config/database.php';
     require_once '../includes/auth.php';
     $auth = new Auth();
     
-    if (isset($_SESSION['house_id']) && !empty($_SESSION['house_id'])) {
+    if ($auth->hasHouse()) {
         $redirect = ($_SESSION['role'] === 'manager') ? 
             '../manager/dashboard.php' : 
             '../member/dashboard.php';
         header("Location: " . $redirect);
     } else {
-        $redirect = ($_SESSION['role'] === 'manager') ? 
-            '../manager/setup_house.php' : 
-            '../member/waiting_approval.php';
-        header("Location: " . $redirect);
+        header("Location: ../manager/setup_house.php");
     }
     exit();
 }
 
-// Include required files
-require_once '../config/database.php';
 require_once '../includes/auth.php';
 
 $auth = new Auth();
@@ -56,18 +51,13 @@ if (isset($_SESSION['error'])) {
     unset($_SESSION['error']);
 }
 
-// Generate CSRF token if not exists
-if (!isset($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-
 // Handle login form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validate CSRF token
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
         $error = "Security token invalid. Please try again.";
     } else {
-        // Use FILTER_SANITIZE_FULL_SPECIAL_CHARS instead of deprecated FILTER_SANITIZE_STRING
+        // FIXED: Replace FILTER_SANITIZE_STRING with FILTER_SANITIZE_FULL_SPECIAL_CHARS
         $username = filter_input(INPUT_POST, 'username', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
         $password = $_POST['password'] ?? '';
         
@@ -75,10 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Please enter both username and password";
         } else {
             if ($auth->login($username, $password)) {
-                // Regenerate session ID for security
-                session_regenerate_id(true);
-                
-                if (isset($_SESSION['house_id']) && !empty($_SESSION['house_id'])) {
+                if ($auth->hasHouse()) {
                     $redirect = ($_SESSION['role'] === 'manager') ? 
                         '../manager/dashboard.php' : 
                         '../member/dashboard.php';
@@ -92,14 +79,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
             } else {
                 $error = "Invalid username or password";
-                // Log failed login attempt (comment out if not needed)
-                // error_log("Failed login attempt for username: " . htmlspecialchars($username) . " from IP: " . $_SERVER['REMOTE_ADDR']);
+                error_log("Failed login attempt for username: " . htmlspecialchars($username));
             }
         }
     }
 }
 
-// Regenerate CSRF token for new session
+// Generate CSRF token
 $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 ?>
 <!DOCTYPE html>
@@ -454,7 +440,7 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                 <?php endif; ?>
                 
                 <form method="POST" action="" id="loginForm" novalidate>
-                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
                     
                     <div class="mb-3">
                         <label for="username" class="form-label">
@@ -515,14 +501,9 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                     
                     <div class="login-footer">
                         <p class="mb-3 text-muted">Don't have an account?</p>
-                        <div class="d-flex flex-column gap-2">
-                            <a href="join.php" class="btn btn-outline-primary">
-                                <i class="fas fa-user-plus me-2"></i>Join Existing House
-                            </a>
-                            <a href="register.php" class="btn btn-outline-success">
-                                <i class="fas fa-home me-2"></i>Create New House
-                            </a>
-                        </div>
+                        <a href="choose_role.php" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-user-plus me-2"></i>Create New Account
+                        </a>
                     </div>
                 </form>
             </div>
@@ -557,29 +538,16 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                 const username = usernameInput.value.trim();
                 const password = passwordInput.value;
                 
-                // Client-side validation
-                let hasError = false;
-                
-                if (!username) {
-                    usernameInput.classList.add('is-invalid');
-                    hasError = true;
-                } else {
-                    usernameInput.classList.remove('is-invalid');
-                }
-                
-                if (!password) {
-                    passwordInput.classList.add('is-invalid');
-                    hasError = true;
-                } else {
-                    passwordInput.classList.remove('is-invalid');
-                }
-                
-                if (hasError) {
+                if (!username || !password) {
                     e.preventDefault();
+                    
+                    // Show error
                     if (!username) {
                         usernameInput.focus();
+                        usernameInput.classList.add('is-invalid');
                     } else if (!password) {
                         passwordInput.focus();
+                        passwordInput.classList.add('is-invalid');
                     }
                     return;
                 }
