@@ -25,6 +25,22 @@ $token = $_GET['token'] ?? '';
 $member_info = null;
 $house_info = null;
 
+// Security question options
+$security_questions = [
+    'What was your childhood nickname?',
+    'In what city did you meet your spouse/significant other?',
+    'What is the name of your favorite childhood friend?',
+    'What street did you live on in third grade?',
+    'What is your oldest sibling\'s middle name?',
+    'What school did you attend for sixth grade?',
+    'What is your maternal grandmother\'s maiden name?',
+    'In what city or town was your first job?',
+    'What is the name of your first pet?',
+    'What is your favorite movie?',
+    'What was your dream job as a child?',
+    'What is the name of the street you grew up on?'
+];
+
 // If token is provided, validate it
 if (!empty($token)) {
     $sql = "SELECT m.*, h.house_name, h.house_code, h.description as house_description
@@ -123,10 +139,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = trim($_POST['email'] ?? '');
         $password = $_POST['password'] ?? '';
         $confirm_password = $_POST['confirm_password'] ?? '';
+        $security_question = trim($_POST['security_question'] ?? '');
+        $security_answer = trim($_POST['security_answer'] ?? '');
         $token = $_POST['token'] ?? '';
         
         // Validation
-        if (empty($username) || empty($email) || empty($password)) {
+        if (empty($username) || empty($email) || empty($password) || empty($security_question) || empty($security_answer)) {
             $error = "All required fields are marked with *";
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = "Invalid email format";
@@ -136,6 +154,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Password must be at least 6 characters";
         } elseif (empty($token)) {
             $error = "Join token is required";
+        } elseif (strlen($security_answer) < 2) {
+            $error = "Security answer must be at least 2 characters";
         } else {
             // Start transaction
             mysqli_begin_transaction($conn);
@@ -165,15 +185,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception("Username or email already exists");
                 }
                 
+                // Check if member already has a user account (double check)
+                $check_member_sql = "SELECT user_id FROM users WHERE member_id = ?";
+                $check_member_stmt = mysqli_prepare($conn, $check_member_sql);
+                mysqli_stmt_bind_param($check_member_stmt, "i", $member_info['member_id']);
+                mysqli_stmt_execute($check_member_stmt);
+                mysqli_stmt_store_result($check_member_stmt);
+                
+                if (mysqli_stmt_num_rows($check_member_stmt) > 0) {
+                    throw new Exception("This member already has an account. Please login instead.");
+                }
+                
                 // Hash password
                 $hashed_password = password_hash($password, PASSWORD_DEFAULT);
                 
-                // Create user account
-                $insert_sql = "INSERT INTO users (username, email, password, role, house_id, member_id, is_active) 
-                              VALUES (?, ?, ?, 'member', ?, ?, 1)";
+                // Hash security answer
+                $hashed_security_answer = password_hash($security_answer, PASSWORD_DEFAULT);
+                
+                // Create user account with member_id
+                $insert_sql = "INSERT INTO users (username, email, password, role, house_id, member_id, 
+                               security_question, security_answer, is_active) 
+                              VALUES (?, ?, ?, 'member', ?, ?, ?, ?, 1)";
                 $insert_stmt = mysqli_prepare($conn, $insert_sql);
-                mysqli_stmt_bind_param($insert_stmt, "sssii", $username, $email, $hashed_password, 
-                                      $member_info['house_id'], $member_info['member_id']);
+                mysqli_stmt_bind_param($insert_stmt, "sssiiss", $username, $email, $hashed_password, 
+                                      $member_info['house_id'], $member_info['member_id'],
+                                      $security_question, $hashed_security_answer);
                 
                 if (!mysqli_stmt_execute($insert_stmt)) {
                     throw new Exception("Failed to create user account: " . mysqli_error($conn));
@@ -182,45 +218,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $user_id = mysqli_insert_id($conn);
                 
                 // Update member with email and phone from form if they were empty
-                if (empty($member_info['email']) || empty($member_info['phone'])) {
-                    $update_fields = [];
-                    $update_values = [];
-                    $types = "";
-                    
-                    if (empty($member_info['email'])) {
-                        $update_fields[] = "email = ?";
-                        $update_values[] = $email;
-                        $types .= "s";
-                    }
-                    
-                    $phone = $_POST['phone'] ?? '';
-                    if (empty($member_info['phone']) && !empty($phone)) {
-                        $update_fields[] = "phone = ?";
-                        $update_values[] = $phone;
-                        $types .= "s";
-                    }
-                    
-                    if (!empty($update_fields)) {
-                        $update_values[] = $member_info['member_id'];
-                        $types .= "i";
-                        
-                        $update_sql = "UPDATE members SET " . implode(", ", $update_fields) . " WHERE member_id = ?";
-                        $update_stmt = mysqli_prepare($conn, $update_sql);
-                        mysqli_stmt_bind_param($update_stmt, $types, ...$update_values);
-                        
-                        if (!mysqli_stmt_execute($update_stmt)) {
-                            throw new Exception("Failed to update member information");
-                        }
-                    }
+                $update_fields = [];
+                $update_values = [];
+                $types = "";
+                
+                // Always update email if it's different or empty in members table
+                if (empty($member_info['email']) || $member_info['email'] !== $email) {
+                    $update_fields[] = "email = ?";
+                    $update_values[] = $email;
+                    $types .= "s";
                 }
                 
-                // Clear the join token
-                $clear_sql = "UPDATE members SET join_token = NULL, token_expiry = NULL WHERE member_id = ?";
-                $clear_stmt = mysqli_prepare($conn, $clear_sql);
-                mysqli_stmt_bind_param($clear_stmt, "i", $member_info['member_id']);
+                $phone = $_POST['phone'] ?? '';
+                if (empty($member_info['phone']) && !empty($phone)) {
+                    $update_fields[] = "phone = ?";
+                    $update_values[] = $phone;
+                    $types .= "s";
+                }
                 
-                if (!mysqli_stmt_execute($clear_stmt)) {
-                    throw new Exception("Failed to clear join token");
+                if (!empty($update_fields)) {
+                    // Clear join token as well
+                    $update_fields[] = "join_token = NULL";
+                    $update_fields[] = "token_expiry = NULL";
+                    
+                    $update_values[] = $member_info['member_id'];
+                    $types .= "i";
+                    
+                    $update_sql = "UPDATE members SET " . implode(", ", $update_fields) . " WHERE member_id = ?";
+                    $update_stmt = mysqli_prepare($conn, $update_sql);
+                    mysqli_stmt_bind_param($update_stmt, $types, ...$update_values);
+                    
+                    if (!mysqli_stmt_execute($update_stmt)) {
+                        throw new Exception("Failed to update member information");
+                    }
+                } else {
+                    // Still clear the join token even if no other fields to update
+                    $clear_sql = "UPDATE members SET join_token = NULL, token_expiry = NULL WHERE member_id = ?";
+                    $clear_stmt = mysqli_prepare($conn, $clear_sql);
+                    mysqli_stmt_bind_param($clear_stmt, "i", $member_info['member_id']);
+                    
+                    if (!mysqli_stmt_execute($clear_stmt)) {
+                        throw new Exception("Failed to clear join token");
+                    }
                 }
                 
                 // Get house information for session
@@ -230,6 +269,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_execute($house_stmt);
                 $house_result = mysqli_stmt_get_result($house_stmt);
                 $house_data = mysqli_fetch_assoc($house_result);
+                
+                // Get member name for session
+                $member_sql = "SELECT name FROM members WHERE member_id = ?";
+                $member_stmt = mysqli_prepare($conn, $member_sql);
+                mysqli_stmt_bind_param($member_stmt, "i", $member_info['member_id']);
+                mysqli_stmt_execute($member_stmt);
+                $member_result = mysqli_stmt_get_result($member_stmt);
+                $member_data = mysqli_fetch_assoc($member_result);
                 
                 // Commit transaction
                 mysqli_commit($conn);
@@ -243,6 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['house_id'] = $member_info['house_id'];
                 $_SESSION['house_name'] = $house_data['house_name'] ?? '';
                 $_SESSION['house_code'] = $house_data['house_code'] ?? '';
+                $_SESSION['member_name'] = $member_data['name'] ?? '';
                 $_SESSION['logged_in'] = true;
                 
                 // Update last login
@@ -263,6 +311,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } catch (Exception $e) {
                 mysqli_rollback($conn);
                 $error = "Registration failed: " . $e->getMessage();
+                
+                // Refresh member info if available
+                if ($token && !$member_info) {
+                    $sql = "SELECT m.*, h.house_name, h.house_code, h.description as house_description
+                            FROM members m 
+                            JOIN houses h ON m.house_id = h.house_id 
+                            WHERE m.join_token = ? AND m.token_expiry > NOW() AND m.status = 'active' 
+                            AND h.is_active = 1";
+                    $stmt = mysqli_prepare($conn, $sql);
+                    mysqli_stmt_bind_param($stmt, "s", $token);
+                    mysqli_stmt_execute($stmt);
+                    $result = mysqli_stmt_get_result($stmt);
+                    
+                    if (mysqli_num_rows($result) === 1) {
+                        $member_info = mysqli_fetch_assoc($result);
+                        $house_info = [
+                            'house_name' => $member_info['house_name'],
+                            'house_code' => $member_info['house_code'],
+                            'description' => $member_info['house_description']
+                        ];
+                    }
+                }
             }
         }
     }
@@ -287,7 +357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 20px;
         }
         .join-container {
-            max-width: 600px;
+            max-width: 800px;
             margin: 0 auto;
         }
         .join-card {
@@ -398,6 +468,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .step.active .step-label {
             color: #27ae60;
             font-weight: bold;
+        }
+        .security-note {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            border-left: 4px solid #ffc107;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 14px;
         }
     </style>
 </head>
@@ -513,11 +591,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-envelope"></i></span>
                                 <input type="email" class="form-control" id="email" name="email"
-                                       value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : (isset($member_info['email']) ? htmlspecialchars($member_info['email']) : ''); ?>"
-                                       <?php echo isset($member_info['email']) && !empty($member_info['email']) ? 'readonly' : 'required'; ?>>
+                                       value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : (isset($member_info['email']) && !empty($member_info['email']) ? htmlspecialchars($member_info['email']) : ''); ?>"
+                                       required>
                             </div>
                             <?php if (isset($member_info['email']) && !empty($member_info['email'])): ?>
-                            <div class="form-text text-muted">Email already set by manager</div>
+                            <div class="form-text text-muted">Email already set by manager. You can change it if needed.</div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -550,22 +628,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                     </div>
                     
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="security_question" class="form-label">Security Question *</label>
+                            <select class="form-select" id="security_question" name="security_question" required>
+                                <option value="">Select a security question</option>
+                                <?php foreach ($security_questions as $question): ?>
+                                <option value="<?php echo htmlspecialchars($question); ?>"
+                                    <?php echo (isset($_POST['security_question']) && $_POST['security_question'] === $question) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($question); ?>
+                                </option>
+                                <?php endforeach; ?>
+                                <option value="other">Other (enter your own question)</option>
+                            </select>
+                            <div class="form-text">Select a question for password recovery</div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="security_answer" class="form-label">Security Answer *</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-shield-alt"></i></span>
+                                <input type="text" class="form-control" id="security_answer" name="security_answer"
+                                       value="<?php echo isset($_POST['security_answer']) ? htmlspecialchars($_POST['security_answer']) : ''; ?>"
+                                       required>
+                            </div>
+                            <div class="form-text">Your answer for password recovery</div>
+                        </div>
+                    </div>
+                    
+                    <div id="custom_question_container" style="display: none;" class="mb-3">
+                        <label for="custom_question" class="form-label">Custom Security Question *</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-question-circle"></i></span>
+                            <input type="text" class="form-control" id="custom_question" name="custom_question"
+                                   placeholder="Enter your own security question">
+                        </div>
+                    </div>
+                    
                     <div class="mb-4">
                         <label for="phone" class="form-label">Phone Number (Optional)</label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-phone"></i></span>
                             <input type="text" class="form-control" id="phone" name="phone"
-                                   value="<?php echo isset($_POST['phone']) ? htmlspecialchars($_POST['phone']) : (isset($member_info['phone']) ? htmlspecialchars($member_info['phone']) : ''); ?>"
-                                   <?php echo isset($member_info['phone']) && !empty($member_info['phone']) ? 'readonly' : ''; ?>
+                                   value="<?php echo isset($_POST['phone']) ? htmlspecialchars($_POST['phone']) : (isset($member_info['phone']) && !empty($member_info['phone']) ? htmlspecialchars($member_info['phone']) : ''); ?>"
                                    placeholder="+1 (555) 123-4567">
                         </div>
                         <?php if (isset($member_info['phone']) && !empty($member_info['phone'])): ?>
-                        <div class="form-text text-muted">Phone already set by manager</div>
+                        <div class="form-text text-muted">Phone already set by manager. You can change it if needed.</div>
                         <?php endif; ?>
                     </div>
                     
+                    <div class="security-note">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> The security question and answer will be used for password recovery. 
+                        Choose a question and answer that you'll remember but others can't easily guess.
+                    </div>
+                    
                     <div class="d-grid mb-3">
-                        <button type="submit" name="register" class="btn btn-join btn-lg">
+                        <button type="submit" name="register" class="btn btn-join btn-lg mt-3">
                             <i class="fas fa-user-plus me-2"></i>Complete Registration
                         </button>
                     </div>
@@ -647,6 +767,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     strengthBar.style.backgroundColor = '#ffc107';
                 } else {
                     strengthBar.style.backgroundColor = '#28a745';
+                }
+            });
+        }
+        
+        // Handle custom security question
+        const securityQuestionSelect = document.getElementById('security_question');
+        const customQuestionContainer = document.getElementById('custom_question_container');
+        const customQuestionInput = document.getElementById('custom_question');
+        
+        if (securityQuestionSelect) {
+            securityQuestionSelect.addEventListener('change', function() {
+                if (this.value === 'other') {
+                    customQuestionContainer.style.display = 'block';
+                    customQuestionInput.required = true;
+                    // Update the selected value to empty so we know it's custom
+                    this.value = '';
+                } else {
+                    customQuestionContainer.style.display = 'none';
+                    customQuestionInput.required = false;
+                }
+            });
+            
+            // Trigger change on page load if "other" is selected
+            if (securityQuestionSelect.value === '') {
+                const savedCustomQuestion = '<?php echo isset($_POST["custom_question"]) ? addslashes($_POST["custom_question"]) : ""; ?>';
+                if (savedCustomQuestion) {
+                    securityQuestionSelect.value = 'other';
+                    customQuestionContainer.style.display = 'block';
+                    customQuestionInput.value = savedCustomQuestion;
+                    customQuestionInput.required = true;
+                }
+            }
+        }
+        
+        // Update security question value before form submission
+        const registrationForm = document.querySelector('form[method="POST"]');
+        if (registrationForm && registrationForm.querySelector('button[name="register"]')) {
+            registrationForm.addEventListener('submit', function(e) {
+                const securityQuestionSelect = this.querySelector('#security_question');
+                const customQuestionInput = this.querySelector('#custom_question');
+                
+                if (securityQuestionSelect && customQuestionInput && 
+                    securityQuestionSelect.value === '' && customQuestionInput.value.trim() !== '') {
+                    // If custom question is selected and filled, update the select value
+                    securityQuestionSelect.value = customQuestionInput.value.trim();
+                }
+                
+                // Validate custom question if "other" is selected
+                if (customQuestionContainer.style.display === 'block' && 
+                    (!customQuestionInput.value || customQuestionInput.value.trim() === '')) {
+                    e.preventDefault();
+                    alert('Please enter your custom security question.');
+                    customQuestionInput.focus();
                 }
             });
         }
