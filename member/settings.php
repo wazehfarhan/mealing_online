@@ -18,7 +18,18 @@ $house_id = $_SESSION['house_id'];
 $errors = [];
 $success = '';
 
-// Get current user information
+// Check for session messages from redirect
+if (isset($_SESSION['settings_success'])) {
+    $success = $_SESSION['settings_success'];
+    unset($_SESSION['settings_success']);
+}
+
+if (isset($_SESSION['settings_errors'])) {
+    $errors = $_SESSION['settings_errors'];
+    unset($_SESSION['settings_errors']);
+}
+
+// Get current user information - FIXED: Get result from statement
 $sql = "SELECT u.username, u.email, u.created_at, u.last_login, u.is_active,
                m.member_id, m.name, m.phone, m.email as member_email, m.join_date, m.status
         FROM users u 
@@ -27,8 +38,8 @@ $sql = "SELECT u.username, u.email, u.created_at, u.last_login, u.is_active,
 $stmt = mysqli_prepare($conn, $sql);
 mysqli_stmt_bind_param($stmt, "i", $user_id);
 mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-$user = mysqli_fetch_assoc($result);
+$result = mysqli_stmt_get_result($stmt); // Get result from statement
+$user = mysqli_fetch_assoc($result); // Now use the result
 
 // Get house information
 $house_sql = "SELECT house_name, house_code FROM houses WHERE house_id = ?";
@@ -38,7 +49,7 @@ mysqli_stmt_execute($house_stmt);
 $house_result = mysqli_stmt_get_result($house_stmt);
 $house = mysqli_fetch_assoc($house_result);
 
-// Handle form submissions
+// Handle form submissions - using PRG pattern
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Handle password change
     if (isset($_POST['change_password'])) {
@@ -73,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_bind_param($update_stmt, "si", $hashed_password, $user_id);
                 
                 if (mysqli_stmt_execute($update_stmt)) {
-                    $success = "Password changed successfully!";
+                    $_SESSION['settings_success'] = "Password changed successfully!";
                 } else {
                     $errors[] = "Failed to update password.";
                 }
@@ -81,9 +92,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = "Current password is incorrect.";
             }
         }
+        
+        // Store errors in session for redirect
+        if (!empty($errors)) {
+            $_SESSION['settings_errors'] = $errors;
+        }
+        
+        // Redirect to prevent form resubmission
+        header("Location: settings.php");
+        exit();
     }
     
-    // Handle data export
+    // Handle data export - this should exit, so no redirect needed
     if (isset($_POST['export_data'])) {
         $export_type = $_POST['export_type'] ?? 'all';
         
@@ -377,7 +397,7 @@ $deposits_stats = mysqli_fetch_assoc($deposits_result);
                         </h5>
                     </div>
                     <div class="card-body">
-                        <form method="POST" action="">
+                        <form method="POST" action="" id="exportForm">
                             <div class="mb-3">
                                 <label for="export_type" class="form-label">Export Data</label>
                                 <select class="form-select" id="export_type" name="export_type">
@@ -565,12 +585,19 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Export data confirmation
-    const exportButton = document.querySelector('button[name="export_data"]');
-    if (exportButton) {
-        exportButton.addEventListener('click', function(e) {
+    // Handle export form with confirmation
+    const exportForm = document.getElementById('exportForm');
+    if (exportForm) {
+        exportForm.addEventListener('submit', function(e) {
             if (!confirm('This will download your data as a CSV file. Continue?')) {
                 e.preventDefault();
+                return false;
+            }
+            // Show loading indicator
+            const submitBtn = this.querySelector('button[name="export_data"]');
+            if (submitBtn) {
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Preparing Download...';
+                submitBtn.disabled = true;
             }
         });
     }
@@ -583,6 +610,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 e.preventDefault();
             }
         });
+    }
+    
+    // Clear form fields after successful password change
+    // Check URL for success parameter or check for success message
+    const successAlert = document.querySelector('.alert-success');
+    if (successAlert && successAlert.textContent.includes('Password changed')) {
+        // Clear password fields
+        document.getElementById('current_password').value = '';
+        document.getElementById('new_password').value = '';
+        document.getElementById('confirm_password').value = '';
+        if (passwordStrengthBar) {
+            passwordStrengthBar.style.display = 'none';
+        }
+    }
+});
+
+// Add beforeunload event to prevent accidental navigation during export
+window.addEventListener('beforeunload', function(e) {
+    const exportBtn = document.querySelector('button[name="export_data"]:disabled');
+    if (exportBtn && exportBtn.innerHTML.includes('Preparing')) {
+        e.preventDefault();
+        e.returnValue = 'Your data export is being prepared. Are you sure you want to leave?';
+        return e.returnValue;
     }
 });
 </script>
