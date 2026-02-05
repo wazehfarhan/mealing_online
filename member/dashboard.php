@@ -183,9 +183,9 @@ $category_names = [
     'Fish' => 'Fish',
     'Meat' => 'Meat',
     'Vegetables' => 'Vegetables',
-    'Gas' => 'Gas',
-    'Internet' => 'Internet',
-    'Utility' => 'Utility',
+    'Spices' => 'Spices',
+    'Oil' => 'Oil',
+    'Food' => 'Food',
     'Others' => 'Others'
 ];
 
@@ -459,9 +459,9 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                                             'Fish' => 'bg-info',
                                             'Meat' => 'bg-danger',
                                             'Vegetables' => 'bg-success',
-                                            'Gas' => 'bg-warning',
-                                            'Internet' => 'bg-purple',
-                                            'Utility' => 'bg-orange',
+                                            'Spices' => 'bg-warning',
+                                            'Oil' => 'bg-purple',
+                                            'Food' => 'bg-orange',
                                             'Others' => 'bg-secondary'
                                         ];
                                         $category_color = $category_bg[$expense['category']] ?? 'bg-secondary';

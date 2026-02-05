@@ -168,7 +168,7 @@ $expenses = mysqli_fetch_all($result, MYSQLI_ASSOC);
 // =========================
 // EXPENSE CATEGORIES
 // =========================
-$categories = ['Rice', 'Fish', 'Meat', 'Vegetables', 'Spices', 'Oil', 'food', 'Others'];
+$categories = ['Rice', 'Fish', 'Meat', 'Vegetables', 'Spices', 'Oil', 'Food', 'Others'];
 
 // =========================
 // SUMMARY
@@ -567,9 +567,9 @@ function getCategoryColor($category) {
         'Fish' => 'info',
         'Meat' => 'danger',
         'Vegetables' => 'success',
-        'Gas' => 'warning',
-        'Internet' => 'secondary',
-        'Utility' => 'dark',
+        'Spices' => 'warning',
+        'Oil' => 'secondary',
+        'Food' => 'dark',
         'Others' => 'light'
     ];
     return $colors[$category] ?? 'light';

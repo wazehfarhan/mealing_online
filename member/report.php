@@ -179,9 +179,9 @@ $category_colors = [
     'Fish' => 'info',
     'Meat' => 'danger',
     'Vegetables' => 'success',
-    'Gas' => 'warning',
-    'Internet' => 'purple',
-    'Utility' => 'orange',
+    'Spices' => 'warning',
+    'Oil' => 'purple',
+    'Food' => 'orange',
     'Others' => 'secondary'
 ];
 
