@@ -20,6 +20,16 @@ $success = '';
 $user_id = $_SESSION['user_id'] ?? '';
 $email = $_SESSION['email'] ?? '';
 
+// Get user role from session
+$user_role = $_SESSION['user_role'] ?? 'member'; // Default to member
+
+// Determine redirect URL based on user role
+if ($user_role === 'manager' || $user_role === 'admin') {
+    $redirect_url = '../manager/dashboard.php';
+} else {
+    $redirect_url = '../member/dashboard.php';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $current_password = trim($_POST['current_password'] ?? '');
     $new_password = trim($_POST['new_password'] ?? '');
@@ -36,7 +46,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "New password must be different from current password";
     } else {
         // Verify current password and change password
-        // Using the changePassword method from your Auth class
         $change_result = $auth->changePassword($user_id, $current_password, $new_password);
         
         if ($change_result) {
@@ -182,9 +191,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-bottom: 5px;
         }
         
+        .user-role {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 5px;
+        }
+        
+        .role-manager {
+            background-color: rgba(52, 152, 219, 0.1);
+            color: #2c3e50;
+            border: 1px solid #3498db;
+        }
+        
+        .role-member {
+            background-color: rgba(40, 167, 69, 0.1);
+            color: #155724;
+            border: 1px solid #28a745;
+        }
+        
         .user-status {
             font-size: 0.9rem;
             color: #28a745;
+            margin-top: 5px;
         }
         
         .form-label {
@@ -464,6 +497,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <i class="fas fa-user-circle"></i>
                     </div>
                     <div class="user-email"><?php echo htmlspecialchars($email); ?></div>
+                    <div class="user-role <?php echo ($user_role === 'manager' || $user_role === 'admin') ? 'role-manager' : 'role-member'; ?>">
+                        <i class="fas fa-user-tag me-1"></i><?php echo ucfirst($user_role); ?>
+                    </div>
                     <div class="user-status">
                         <i class="fas fa-circle text-success me-1" style="font-size: 0.6rem;"></i>Logged In
                     </div>
@@ -483,7 +519,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="flex-grow-1">
                         <?php echo htmlspecialchars($success); ?>
                         <div class="redirect-countdown" id="redirectCountdown">
-                            <i class="fas fa-clock me-1"></i>Redirecting to dashboard in <span id="countdownSeconds">3</span> seconds...
+                            <i class="fas fa-clock me-1"></i>Redirecting to <?php echo ($user_role === 'manager' || $user_role === 'admin') ? 'Manager' : 'Member'; ?> Dashboard in <span id="countdownSeconds">3</span> seconds...
                         </div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
@@ -575,9 +611,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <a href="../manager/dashboard.php" class="back-link">
-                            <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
-                        </a>
+                        <?php if ($user_role === 'manager' || $user_role === 'admin'): ?>
+                            <a href="../manager/dashboard.php" class="back-link">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Manager Dashboard
+                            </a>
+                        <?php else: ?>
+                            <a href="../member/dashboard.php" class="back-link">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Member Dashboard
+                            </a>
+                        <?php endif; ?>
                         <a href="logout.php" class="back-link">
                             <i class="fas fa-sign-out-alt me-2"></i>Logout
                         </a>
@@ -847,14 +889,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if (seconds <= 0) {
                         clearInterval(countdownInterval);
-                        // Redirect to dashboard
-                        window.location.href = '../manager/dashboard.php';
+                        // Redirect to appropriate dashboard based on user role
+                        window.location.href = '<?php echo $redirect_url; ?>';
                     }
                 }, 1000);
             } else {
                 // Fallback redirect after 3 seconds
                 setTimeout(function() {
-                    window.location.href = '../manager/dashboard.php';
+                    window.location.href = '<?php echo $redirect_url; ?>';
                 }, 3000);
             }
             

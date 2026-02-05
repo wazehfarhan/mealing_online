@@ -218,6 +218,27 @@ class Functions {
         return $stats;
     }
 
+
+    /**
+     * Calculate time ago from a given timestamp
+     */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     /**
  * Get developer information for the homepage
  */
