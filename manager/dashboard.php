@@ -544,9 +544,9 @@ function getCategoryColorHex($category) {
         'Fish' => '#17a2b8',      // Cyan
         'Meat' => '#e74c3c',      // Red
         'Vegetables' => '#27ae60', // Green
-        'Gas' => '#f39c12',       // Orange
-        'Internet' => '#6c757d',   // Gray
-        'Utility' => '#2c3e50',    // Dark
+        'Spices' => '#f39c12',       // Orange
+        'Oil' => '#6c757d',   // Gray
+        'food' => '#2c3e50',    // Dark
         'Others' => '#95a5a6'     // Light gray
     ];
     return $colors[$category] ?? '#95a5a6';

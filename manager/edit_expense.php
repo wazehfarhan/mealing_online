@@ -47,7 +47,7 @@ $error = '';
 $success = '';
 
 // Expense categories
-$categories = ['Rice', 'Fish', 'Meat', 'Vegetables', 'Gas', 'Internet', 'Utility', 'Others'];
+$categories = ['Rice', 'Fish', 'Meat', 'Vegetables', 'Spices', 'Oil', 'food', 'Others'];
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -266,9 +266,9 @@ function getCategoryColor($category) {
         'Fish' => 'info',
         'Meat' => 'danger',
         'Vegetables' => 'success',
-        'Gas' => 'warning',
-        'Internet' => 'secondary',
-        'Utility' => 'dark',
+        'Spices' => 'warning',
+        'Oil' => 'dark',
+        'food' => 'secondary',
         'Others' => 'light'
     ];
     return $colors[$category] ?? 'light';

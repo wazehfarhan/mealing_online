@@ -168,7 +168,7 @@ $expenses = mysqli_fetch_all($result, MYSQLI_ASSOC);
 // =========================
 // EXPENSE CATEGORIES
 // =========================
-$categories = ['Rice', 'Fish', 'Meat', 'Vegetables', 'Gas', 'Internet', 'Utility', 'Others'];
+$categories = ['Rice', 'Fish', 'Meat', 'Vegetables', 'Spices', 'Oil', 'food', 'Others'];
 
 // =========================
 // SUMMARY
