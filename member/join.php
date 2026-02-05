@@ -299,14 +299,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_bind_param($update_login_stmt, "i", $user_id);
                 mysqli_stmt_execute($update_login_stmt);
                 
-                $success = "Registration successful! Redirecting to dashboard...";
+                // Commit session changes
+                session_write_close();
                 
-                // Redirect after 3 seconds
-                echo '<script>
-                    setTimeout(function() {
-                        window.location.href = "dashboard.php";
-                    }, 3000);
-                </script>';
+                // Clear output buffers
+                ob_end_clean();
+                
+                // Store success message in session for dashboard
+                session_start();
+                $_SESSION['success'] = "Registration successful! Welcome to your dashboard.";
+                session_write_close();
+                
+                // Redirect immediately to dashboard
+                header("Location: dashboard.php");
+                exit();
                 
             } catch (Exception $e) {
                 mysqli_rollback($conn);
@@ -893,4 +899,3 @@ if (isset($check_stmt)) {
     mysqli_stmt_close($check_stmt);
 }
 mysqli_close($conn);
-?>
