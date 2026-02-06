@@ -4,6 +4,41 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// Handle PDF request BEFORE any output
+if (isset($_GET['format']) && $_GET['format'] == 'pdf') {
+    // Get parameters for PDF
+    $member_id = isset($_GET['member_id']) ? intval($_GET['member_id']) : 0;
+    $month = isset($_GET['month']) ? intval($_GET['month']) : date('m');
+    $year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
+    $house_id = $_SESSION['house_id'] ?? null;
+    
+    if ($member_id > 0 && $house_id) {
+        // Redirect to PDF generator
+        $pdf_url = "../includes/generate_member_report.php?" . http_build_query([
+            'member_id' => $member_id,
+            'month' => $month,
+            'year' => $year,
+            'house_id' => $house_id
+        ]);
+        
+        // Use meta refresh for PDF redirect
+        echo '<!DOCTYPE html>
+        <html>
+        <head>
+            <title>Redirecting to PDF...</title>
+            <meta http-equiv="refresh" content="0; url=' . htmlspecialchars($pdf_url) . '">
+        </head>
+        <body>
+            <p style="text-align: center; padding: 50px; font-family: Arial;">
+                Generating PDF report...<br>
+                If not redirected, <a href="' . htmlspecialchars($pdf_url) . '">click here</a>.
+            </p>
+        </body>
+        </html>';
+        exit();
+    }
+}
+
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 
@@ -220,9 +255,10 @@ require_once '../includes/header.php';
                         <a href="members.php" class="btn btn-secondary">
                             <i class="fas fa-arrow-left me-2"></i>Back
                         </a>
-                        <button onclick="window.print()" class="btn btn-primary ms-2">
-                            <i class="fas fa-print me-2"></i>Print
-                        </button>
+                        <a href="?member_id=<?php echo $member_id; ?>&month=<?php echo $month; ?>&year=<?php echo $year; ?>&format=pdf" 
+                           class="btn btn-danger ms-2" target="_blank">
+                            <i class="fas fa-file-pdf me-2"></i>Download PDF
+                        </a>
                     </div>
                 </div>
             </div>
@@ -535,10 +571,7 @@ require_once '../includes/header.php';
 </div>
 
 <script>
-// Print function
-function printReport() {
-    window.print();
-}
+
 
 // Update form submission for month/year selectors
 document.querySelectorAll('select[name="month"], select[name="year"]').forEach(select => {

@@ -535,25 +535,6 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                 <?php endif; ?>
             </div>
         </div>
-
-        <!-- Export Options -->
-        <div class="card shadow mt-4">
-            <div class="card-header bg-white py-3">
-                <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-download me-2"></i>Export Options</h6>
-            </div>
-            <div class="card-body">
-                <div class="d-grid gap-2">
-                    <a href="export_expenses.php?month=<?php echo $filter_month; ?>&year=<?php echo $filter_year; ?>&category=<?php echo urlencode($filter_category); ?>&format=csv" 
-                       class="btn btn-outline-success">
-                        <i class="fas fa-file-csv me-2"></i>Export as CSV
-                    </a>
-                    <a href="export_expenses.php?month=<?php echo $filter_month; ?>&year=<?php echo $filter_year; ?>&category=<?php echo urlencode($filter_category); ?>&format=pdf" 
-                       class="btn btn-outline-danger">
-                        <i class="fas fa-file-pdf me-2"></i>Export as PDF
-                    </a>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 

@@ -242,9 +242,6 @@ if (isset($stmt)) {
                                 </a>
                             </div>
                             <div>
-                                <button onclick="window.print()" class="btn btn-outline-primary me-2">
-                                    <i class="fas fa-print me-2"></i>Print Report
-                                </button>
                                 <a href="?house_id=<?php echo $house_id; ?>&month=<?php echo $month; ?>&year=<?php echo $year; ?>&format=pdf" 
                                    class="btn btn-outline-danger">
                                     <i class="fas fa-file-pdf me-2"></i>Download PDF

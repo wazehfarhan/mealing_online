@@ -430,29 +430,7 @@ $summary = $summary_result ? mysqli_fetch_assoc($summary_result) : [
                 <?php endif; ?>
                 
                 <!-- Export Options -->
-                <div class="row mt-4">
-                    <div class="col-md-6">
-                        <div class="card border-info">
-                            <div class="card-body">
-                                <h6><i class="fas fa-download me-2"></i>Export Options</h6>
-                                <div class="btn-group">
-                                    <a href="export_meals.php?month=<?php echo $filter_month; ?>&year=<?php echo $filter_year; ?>&member=<?php echo $filter_member; ?>&format=csv" 
-                                       class="btn btn-outline-success">
-                                        <i class="fas fa-file-csv me-2"></i>CSV
-                                    </a>
-                                    <a href="export_meals.php?month=<?php echo $filter_month; ?>&year=<?php echo $filter_year; ?>&member=<?php echo $filter_member; ?>&format=pdf" 
-                                       class="btn btn-outline-danger ms-2">
-                                        <i class="fas fa-file-pdf me-2"></i>PDF
-                                    </a>
-                                    <a href="export_meals.php?month=<?php echo $filter_month; ?>&year=<?php echo $filter_year; ?>&member=<?php echo $filter_member; ?>&format=excel" 
-                                       class="btn btn-outline-primary ms-2">
-                                        <i class="fas fa-file-excel me-2"></i>Excel
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
+                <div class="row mt-4">                    
                     <div class="col-md-6">
                         <div class="card border-warning">
                             <div class="card-body">
