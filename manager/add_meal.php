@@ -212,7 +212,7 @@ $yesterday = date('Y-m-d', strtotime('-1 day'));
                                         </td>
                                         <td>
                                             <div class="input-group">
-                                                <input type="number" class="form-control meal-input" name="entries[<?php echo $member['member_id']; ?>]" step="0.5" min="0" max="3" value="<?php echo isset($_POST['entries'][$member['member_id']]) ? htmlspecialchars($_POST['entries'][$member['member_id']]) : ''; ?>" placeholder="0.0">
+                                                <input type="number" class="form-control meal-input" name="entries[<?php echo $member['member_id']; ?>]" step="0.5" min="0" max="10" value="<?php echo isset($_POST['entries'][$member['member_id']]) ? htmlspecialchars($_POST['entries'][$member['member_id']]) : ''; ?>" placeholder="0.0">
                                                 <span class="input-group-text">meal</span>
                                             </div>
                                         </td>

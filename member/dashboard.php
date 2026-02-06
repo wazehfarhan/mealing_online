@@ -249,9 +249,6 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                                 </select>
                             </form>
                         </div>
-                        <button onclick="window.print()" class="btn btn-primary">
-                            <i class="fas fa-print me-2"></i>Print
-                        </button>
                     </div>
                 </div>
             </div>

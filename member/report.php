@@ -268,9 +268,10 @@ $adjusted_balance = $previous_balance + $balance;
                         <a href="dashboard.php" class="btn btn-secondary me-2">
                             <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
                         </a>
-                        <button onclick="window.print()" class="btn btn-primary">
-                            <i class="fas fa-print me-2"></i>Print Report
-                        </button>
+                        <a href="../member/generate_member_pdf.php?month=<?php echo $selected_month; ?>&year=<?php echo $selected_year; ?>" 
+                            class="btn btn-danger" id="downloadPdfBtn" target="_blank">
+                            <i class="fas fa-file-pdf me-2"></i>Download PDF Report
+                        </a>
                     </div>
                 </div>
             </div>
@@ -1015,6 +1016,18 @@ $adjusted_balance = $previous_balance + $balance;
 function printReport() {
     window.print();
 }
+document.getElementById('downloadPdfBtn').addEventListener('click', function(e) {
+    // Add loading indicator
+    const originalHTML = this.innerHTML;
+    this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generating PDF...';
+    this.disabled = true;
+    
+    // Reset button after 3 seconds
+    setTimeout(() => {
+        this.innerHTML = originalHTML;
+        this.disabled = false;
+    }, 3000);
+});
 
 // Update form submission for month/year selectors
 document.querySelectorAll('select[name="month"], select[name="year"]').forEach(select => {
