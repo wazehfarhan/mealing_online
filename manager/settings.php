@@ -1,5 +1,9 @@
 <?php
 session_start();
+// Enable debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 require_once '../config/database.php';
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
@@ -32,49 +36,60 @@ if (!$user_data || !$user_data['house_id']) {
 $house_id = $user_data['house_id'];
 $_SESSION['house_id'] = $house_id; // Ensure session has it
 
-// Initialize variables
+// Initialize variables for regular form submissions
 $message = '';
 $error = '';
+
+// Fetch house details FIRST
+$sql = "SELECT * FROM houses WHERE house_id = ?";
+$stmt = mysqli_prepare($conn, $sql);
+mysqli_stmt_bind_param($stmt, "i", $house_id);
+mysqli_stmt_execute($stmt);
+$result = mysqli_stmt_get_result($stmt);
+$house = mysqli_fetch_assoc($result);
+
+// Check if house exists
+if (!$house) {
+    $_SESSION['error'] = "House not found in database. Please contact administrator.";
+    header("Location: dashboard.php");
+    exit();
+}
 
 // Get current user info
 $current_user = $auth->getCurrentUser();
 
-// Handle form submissions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['update_house'])) {
-        // Update house details
-        $house_name = trim($_POST['house_name']);
-        $description = trim($_POST['description']);
-        $is_active = isset($_POST['is_active']) ? 1 : 0;
-        
-        if (empty($house_name)) {
-            $_SESSION['error'] = "House name is required";
-            header("Location: settings.php");
-            exit();
-        } else {
-            try {
-                $sql = "UPDATE houses SET house_name = ?, description = ?, is_active = ? WHERE house_id = ?";
-                $stmt = mysqli_prepare($conn, $sql);
-                mysqli_stmt_bind_param($stmt, "ssii", $house_name, $description, $is_active, $house_id);
-                
-                if (mysqli_stmt_execute($stmt)) {
-                    $_SESSION['success'] = "House details updated successfully!";
-                    header("Location: settings.php");
-                    exit();
-                } else {
-                    $_SESSION['error'] = "Error updating house details";
-                    header("Location: settings.php");
-                    exit();
-                }
-            } catch (Exception $e) {
-                $_SESSION['error'] = "Error: " . $e->getMessage();
-                header("Location: settings.php");
-                exit();
-            }
-        }
+// Handle AJAX house update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_house'])) {
+    $house_name = trim($_POST['house_name']);
+    $description = trim($_POST['description']);
+    $is_active = isset($_POST['is_active']) ? 1 : 0;
+    
+    if (empty($house_name)) {
+        echo json_encode(['success' => false, 'message' => 'House name is required']);
+        exit();
     }
     
-    elseif (isset($_POST['update_member'])) {
+    $sql = "UPDATE houses SET house_name = ?, description = ?, is_active = ? WHERE house_id = ?";
+    $stmt = mysqli_prepare($conn, $sql);
+    
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, "ssii", $house_name, $description, $is_active, $house_id);
+        
+        if (mysqli_stmt_execute($stmt)) {
+            echo json_encode(['success' => true, 'message' => 'House updated successfully']);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Update failed: ' . mysqli_error($conn)]);
+        }
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Prepare failed: ' . mysqli_error($conn)]);
+    }
+    exit();
+}
+
+// Handle regular form submissions (members, etc.)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    if (isset($_POST['update_member'])) {
         // Update member details
         $member_id = (int)$_POST['member_id'];
         $name = trim($_POST['name']);
@@ -83,9 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $status = $_POST['status'];
         
         if (empty($name)) {
-            $_SESSION['error'] = "Member name is required";
-            header("Location: settings.php");
-            exit();
+            $error = "Member name is required";
         } else {
             try {
                 $sql = "UPDATE members SET name = ?, phone = ?, email = ?, status = ? WHERE member_id = ? AND house_id = ?";
@@ -93,18 +106,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_bind_param($stmt, "ssssii", $name, $phone, $email, $status, $member_id, $house_id);
                 
                 if (mysqli_stmt_execute($stmt)) {
-                    $_SESSION['success'] = "Member updated successfully!";
-                    header("Location: settings.php");
-                    exit();
+                    $message = "Member updated successfully!";
                 } else {
-                    $_SESSION['error'] = "Error updating member";
-                    header("Location: settings.php");
-                    exit();
+                    $error = "Error updating member: " . mysqli_error($conn);
                 }
             } catch (Exception $e) {
-                $_SESSION['error'] = "Error: " . $e->getMessage();
-                header("Location: settings.php");
-                exit();
+                $error = "Error: " . $e->getMessage();
             }
         }
     }
@@ -117,9 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $join_date = date('Y-m-d');
         
         if (empty($name)) {
-            $_SESSION['error'] = "Member name is required";
-            header("Location: settings.php");
-            exit();
+            $error = "Member name is required";
         } else {
             try {
                 // Generate unique join token
@@ -132,18 +137,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_bind_param($stmt, "issssiss", $house_id, $name, $phone, $email, $join_date, $user_id, $join_token, $token_expiry);
                 
                 if (mysqli_stmt_execute($stmt)) {
-                    $_SESSION['success'] = "Member added successfully!";
-                    header("Location: settings.php");
-                    exit();
+                    $message = "Member added successfully!";
                 } else {
-                    $_SESSION['error'] = "Error adding member";
-                    header("Location: settings.php");
-                    exit();
+                    $error = "Error adding member: " . mysqli_error($conn);
                 }
             } catch (Exception $e) {
-                $_SESSION['error'] = "Error: " . $e->getMessage();
-                header("Location: settings.php");
-                exit();
+                $error = "Error: " . $e->getMessage();
             }
         }
     }
@@ -169,35 +168,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $member = mysqli_fetch_assoc($result);
                 
                 $invite_link = BASE_URL . "join.php?token=" . $join_token;
-                $_SESSION['success'] = "Invite link generated for " . $member['name'] . ":<br><small>" . $invite_link . "</small>";
-                header("Location: settings.php");
-                exit();
+                $message = "Invite link generated for " . $member['name'] . ":<br><small>" . $invite_link . "</small>";
             } else {
-                $_SESSION['error'] = "Error generating invite";
-                header("Location: settings.php");
-                exit();
+                $error = "Error generating invite: " . mysqli_error($conn);
             }
         } catch (Exception $e) {
-            $_SESSION['error'] = "Error: " . $e->getMessage();
-            header("Location: settings.php");
-            exit();
+            $error = "Error: " . $e->getMessage();
         }
     }
-}
-
-// Fetch house details
-$sql = "SELECT * FROM houses WHERE house_id = ?";
-$stmt = mysqli_prepare($conn, $sql);
-mysqli_stmt_bind_param($stmt, "i", $house_id);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-$house = mysqli_fetch_assoc($result);
-
-// Check if house exists
-if (!$house) {
-    $_SESSION['error'] = "House not found in database. Please contact administrator.";
-    header("Location: dashboard.php");
-    exit();
 }
 
 // Fetch members for this house
@@ -212,7 +190,7 @@ $members = mysqli_fetch_all($result, MYSQLI_ASSOC);
 $sql = "SELECT u.*, m.name as member_name 
         FROM users u 
         LEFT JOIN members m ON u.member_id = m.member_id 
-        WHERE u.house_id = ? AND u.role = 'member'";
+        WHERE u.house_id = ? AND u.role IN ('member', 'manager') AND u.is_active = 1";
 $stmt = mysqli_prepare($conn, $sql);
 mysqli_stmt_bind_param($stmt, "i", $house_id);
 mysqli_stmt_execute($stmt);
@@ -243,6 +221,48 @@ require_once '../includes/header.php';
     </div>
 </div>
 
+<!-- Messages will appear here -->
+<div id="messageContainer"></div>
+
+<!-- Display regular messages -->
+<?php if ($message): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="fas fa-check-circle me-2"></i>
+        <?php echo $message; ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php endif; ?>
+
+<?php if ($error): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="fas fa-exclamation-circle me-2"></i>
+        <?php echo $error; ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php endif; ?>
+
+<?php if (isset($_SESSION['success'])): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="fas fa-check-circle me-2"></i>
+        <?php 
+        echo $_SESSION['success'];
+        unset($_SESSION['success']);
+        ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php endif; ?>
+
+<?php if (isset($_SESSION['error'])): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="fas fa-exclamation-circle me-2"></i>
+        <?php 
+        echo $_SESSION['error'];
+        unset($_SESSION['error']);
+        ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php endif; ?>
+
 <div class="row">
     <div class="col-lg-6">
         <!-- House Details Card -->
@@ -254,7 +274,7 @@ require_once '../includes/header.php';
                 </span>
             </div>
             <div class="card-body">
-                <form method="POST" class="needs-validation" novalidate>
+                <form id="houseForm" method="POST" class="needs-validation" novalidate>
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="house_name" class="form-label">House Name *</label>
@@ -438,16 +458,20 @@ require_once '../includes/header.php';
                             <td>
                                 <?php 
                                 $has_account = false;
+                                $user_account_type = '';
                                 foreach ($user_accounts as $user) {
                                     if ($user['member_id'] == $member['member_id']) {
                                         $has_account = true;
-                                        echo '<span class="badge bg-success">Linked</span>';
+                                        $user_account_type = $user['role'];
                                         break;
                                     }
                                 }
-                                if (!$has_account && !empty($member['join_token'])) {
+                                
+                                if ($has_account) {
+                                    echo '<span class="badge bg-success">' . ucfirst($user_account_type) . '</span>';
+                                } elseif (!$has_account && !empty($member['join_token'])) {
                                     echo '<span class="badge bg-warning text-dark">Invited</span>';
-                                } elseif (!$has_account) {
+                                } else {
                                     echo '<span class="badge bg-secondary">No Account</span>';
                                 }
                                 ?>
@@ -459,11 +483,13 @@ require_once '../includes/header.php';
                                             title="Edit Member">
                                         <i class="fas fa-edit"></i>
                                     </button>
+                                    <?php if (!$has_account): ?>
                                     <button type="button" class="btn btn-outline-info" 
                                             data-bs-toggle="modal" data-bs-target="#inviteModal<?php echo $member['member_id']; ?>"
                                             title="Generate Invite">
                                         <i class="fas fa-link"></i>
                                     </button>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
@@ -667,10 +693,64 @@ require_once '../includes/header.php';
     </div>
 </div>
 
+<!-- JavaScript for AJAX House Update -->
+<script>
+document.getElementById('houseForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    formData.append('update_house', '1');
+    
+    fetch('settings.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        const container = document.getElementById('messageContainer');
+        if (data.success) {
+            container.innerHTML = `
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="fas fa-check-circle me-2"></i>${data.message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            // Update the house name in the title
+            document.querySelector('.page-title small').textContent = ' - ' + document.getElementById('house_name').value;
+        } else {
+            container.innerHTML = `
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="fas fa-exclamation-circle me-2"></i>${data.message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+        }
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            const alert = container.querySelector('.alert');
+            if (alert) {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            }
+        }, 5000);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('messageContainer').innerHTML = `
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <i class="fas fa-exclamation-circle me-2"></i>An error occurred
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+    });
+});
+</script>
+
 <?php 
 $custom_js = "
 $(document).ready(function() {
-    // Form validation
+    // Form validation for non-AJAX forms
     (function () {
         'use strict'
         var forms = document.querySelectorAll('.needs-validation')
