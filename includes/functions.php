@@ -246,11 +246,11 @@ public function getDeveloperInfo() {
     return array(
         'name' => 'Kazi Md. Wazeh Ullah Farhan',
         'title' => 'Software Engineering Student | Full-Stack & Cloud Enthusiast',
-        'bio' => 'I am a Computer Science and Engineering (CSE) student at American International University-Bangladesh (AIUB), currently in my 6th semester. I have a strong passion for software engineering, full-stack web development, and cloud computing.',
+        'bio' => 'I am a Computer Science and Engineering (CSE) student at American International University-Bangladesh (AIUB), currently in my 10th semester. I have a strong passion for software engineering, full-stack web development, and cloud computing.',
         'education' => array(
             'degree' => 'BSc in Computer Science & Engineering (CSE)',
             'university' => 'American International University-Bangladesh (AIUB)',
-            'semester' => '6th Semester',
+            'semester' => '10th Semester',
             'student_id' => '23-50577-1'
         ),
         'skills' => array(
@@ -262,17 +262,17 @@ public function getDeveloperInfo() {
         ),
         'projects' => array(
             'AgriCore Operation Platform' => 'A C# Windows Application for smart agriculture and farm resource management',
-'SmartField Resource Platform' => 'A desktop-based system for crop, field, irrigation, and market tracking using C# and SQL Server',
-'Car Rental Management System' => 'A database-driven system for managing vehicles, customers, drivers, and rentals',
-'Meal Management System' => 'A web-based application for meal entry, cost calculation, and member management',
-'Digital School Management System' => 'A complete academic management system for students, teachers, attendance, and results',
-'Crop Management Module' => 'A CRUD-based C# module for farmer-wise crop tracking with secure authentication',
-'Field Management Module' => 'A resource allocation and monitoring system for agricultural fields',
-'Irrigation & Fertilizer Scheduler' => 'An automated scheduling module for efficient water and fertilizer usage',
-'Pest and Disease Control System' => 'A monitoring and record-keeping module for crop health management',
-'Market & Sales Tracking System' => 'A sales analytics and profit tracking module for agricultural products',
-'User Management System' => 'A role-based authentication and authorization system using C# and encrypted credentials',
-'Full Stack Web Projects' => 'PHP, MySQL, HTML, CSS, JavaScript based academic and management systems'
+            'SmartField Resource Platform' => 'A desktop-based system for crop, field, irrigation, and market tracking using C# and SQL Server',
+            'Car Rental Management System' => 'A database-driven system for managing vehicles, customers, drivers, and rentals',
+            'Meal Management System' => 'A web-based application for meal entry, cost calculation, and member management',
+            'Digital School Management System' => 'A complete academic management system for students, teachers, attendance, and results',
+            'Crop Management Module' => 'A CRUD-based C# module for farmer-wise crop tracking with secure authentication',
+            'Field Management Module' => 'A resource allocation and monitoring system for agricultural fields',
+            'Irrigation & Fertilizer Scheduler' => 'An automated scheduling module for efficient water and fertilizer usage',
+            'Pest and Disease Control System' => 'A monitoring and record-keeping module for crop health management',
+            'Market & Sales Tracking System' => 'A sales analytics and profit tracking module for agricultural products',
+            'User Management System' => 'A role-based authentication and authorization system using C# and encrypted credentials',
+            'Full Stack Web Projects' => 'PHP, MySQL, HTML, CSS, JavaScript based academic and management systems'
 
         ),
         'contact' => array(
