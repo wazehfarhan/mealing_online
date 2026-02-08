@@ -8,7 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
-
+date_default_timezone_set('Asia/Dhaka');
 $auth = new Auth();
 $functions = new Functions();
 
@@ -158,6 +158,27 @@ $all_members_result = mysqli_stmt_get_result($stmt);
 $all_members_data = mysqli_fetch_assoc($all_members_result);
 $all_members_count = $all_members_data['total'] ?? 0;
 
+// Helper function for category colors - MATCHING EXPENSES.PHP
+function getCategoryColor($category) {
+    $colors = [
+        'Rice' => 'primary',        // Blue
+        'Fish' => 'info',           // Cyan
+        'Meat' => 'danger',         // Red
+        'Vegetables' => 'success',  // Green
+        'Spices' => 'warning',      // Yellow
+        'Oil' => 'purple',          // Purple
+        'Food' => 'orange',         // Orange
+        'Others' => 'secondary'     // Gray
+    ];
+    return $colors[$category] ?? 'secondary';
+}
+
+// Helper function for text color based on badge color
+function getBadgeTextColor($badge_color) {
+    // For light/yellow badges, use dark text
+    return ($badge_color == 'warning' || $badge_color == 'light') ? 'text-dark' : 'text-white';
+}
+
 // Close statement
 if (isset($stmt)) {
     mysqli_stmt_close($stmt);
@@ -198,6 +219,44 @@ if (isset($stmt)) {
         .print-only {
             display: none;
         }
+        
+        /* New styles for colored percentages - MATCHING EXPENSES.PHP */
+        .percentage-high {
+            color: #dc3545 !important; /* Red (matches danger) */
+            font-weight: bold !important;
+        }
+        .percentage-medium-high {
+            color: #fd7e14 !important; /* Orange (matches orange) */
+            font-weight: bold !important;
+        }
+        .percentage-medium {
+            color: #0d6efd !important; /* Blue (matches primary) */
+            font-weight: bold !important;
+        }
+        .percentage-low {
+            color: #198754 !important; /* Green (matches success) */
+            font-weight: bold !important;
+        }
+        
+        /* Progress bar colors based on percentage */
+        .progress-bar-high {
+            background-color: #dc3545 !important; /* Red */
+        }
+        .progress-bar-medium-high {
+            background-color: #fd7e14 !important; /* Orange */
+        }
+        .progress-bar-medium {
+            background-color: #0d6efd !important; /* Blue */
+        }
+        .progress-bar-low {
+            background-color: #198754 !important; /* Green */
+        }
+        
+        /* Special badge colors for Oil (purple) */
+        .bg-purple {
+            background-color: #6f42c1 !important;
+        }
+        
         @media print {
             .no-print {
                 display: none !important;
@@ -207,6 +266,11 @@ if (isset($stmt)) {
             }
             .report-header {
                 background: #333 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .bg-purple {
+                background-color: #6f42c1 !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
@@ -358,21 +422,57 @@ if (isset($stmt)) {
                                 <tbody>
                                     <?php foreach ($expense_categories as $category): 
                                         $percentage = $total_expenses > 0 ? ($category['total'] / $total_expenses * 100) : 0;
+                                        
+                                        // Get category badge color
+                                        $category_color = getCategoryColor($category['category']);
+                                        $badge_text_color = getBadgeTextColor($category_color);
+                                        
+                                        // Special case for Oil (purple)
+                                        if ($category_color == 'purple') {
+                                            $badge_class = 'bg-purple text-white';
+                                        } else {
+                                            $badge_class = 'bg-' . $category_color . ' ' . $badge_text_color;
+                                        }
+                                        
+                                        // Determine color class based on percentage value
+                                        $percentage_color_class = '';
+                                        $progress_bar_class = '';
+                                        
+                                        if ($percentage > 30) {
+                                            $percentage_color_class = 'percentage-high';
+                                            $progress_bar_class = 'progress-bar-high';
+                                        } elseif ($percentage > 15) {
+                                            $percentage_color_class = 'percentage-medium-high';
+                                            $progress_bar_class = 'progress-bar-medium-high';
+                                        } elseif ($percentage > 5) {
+                                            $percentage_color_class = 'percentage-medium';
+                                            $progress_bar_class = 'progress-bar-medium';
+                                        } else {
+                                            $percentage_color_class = 'percentage-low';
+                                            $progress_bar_class = 'progress-bar-low';
+                                        }
                                     ?>
                                     <tr>
-                                        <td><?php echo htmlspecialchars($category['category']); ?></td>
+                                        <td>
+                                            <span class="badge <?php echo $badge_class; ?>">
+                                                <?php echo htmlspecialchars($category['category']); ?>
+                                            </span>
+                                        </td>
                                         <td><?php echo $functions->formatCurrency($category['total']); ?></td>
                                         <td>
                                             <div class="d-flex align-items-center">
                                                 <div class="progress flex-grow-1 me-2" style="height: 20px;">
-                                                    <div class="progress-bar" role="progressbar" 
+                                                    <div class="progress-bar <?php echo $progress_bar_class; ?>" role="progressbar" 
                                                          style="width: <?php echo $percentage; ?>%;" 
                                                          aria-valuenow="<?php echo $percentage; ?>" 
                                                          aria-valuemin="0" 
                                                          aria-valuemax="100">
+                                                        <?php echo number_format($percentage, 1); ?>%
                                                     </div>
                                                 </div>
-                                                <span><?php echo number_format($percentage, 1); ?>%</span>
+                                                <span class="<?php echo $percentage_color_class; ?>">
+                                                    <?php echo number_format($percentage, 1); ?>%
+                                                </span>
                                             </div>
                                         </td>
                                     </tr>
@@ -380,7 +480,20 @@ if (isset($stmt)) {
                                     <tr class="table-light">
                                         <td><strong>Total</strong></td>
                                         <td><strong><?php echo $functions->formatCurrency($total_expenses); ?></strong></td>
-                                        <td><strong>100%</strong></td>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                <div class="progress flex-grow-1 me-2" style="height: 20px;">
+                                                    <div class="progress-bar bg-primary" role="progressbar" 
+                                                         style="width: 100%;" 
+                                                         aria-valuenow="100" 
+                                                         aria-valuemin="0" 
+                                                         aria-valuemax="100">
+                                                        100%
+                                                    </div>
+                                                </div>
+                                                <span class="text-primary fw-bold">100%</span>
+                                            </div>
+                                        </td>
                                     </tr>
                                 </tbody>
                             </table>
