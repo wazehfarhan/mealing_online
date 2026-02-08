@@ -26,18 +26,35 @@ $page_title = "All Expenses";
 $conn = getConnection();
 
 // =========================
-// HANDLE FILTERS
+// HANDLE FILTERS - FIXED
 // =========================
-// Set default to current month and year if not specified
-$filter_month = isset($_GET['month']) && $_GET['month'] !== '' ? intval($_GET['month']) : date('m');
-$filter_year = isset($_GET['year']) && $_GET['year'] !== '' ? intval($_GET['year']) : date('Y');
+// Only set defaults if no filters are specified
+// Check if month/year parameters exist in URL (even if empty)
+$has_month_filter = isset($_GET['month']);
+$has_year_filter = isset($_GET['year']);
+
+if ($has_month_filter) {
+    $filter_month = $_GET['month'] !== '' ? intval($_GET['month']) : '';
+} else {
+    // Default to current month only on first load (no filter parameters)
+    $filter_month = date('m');
+}
+
+if ($has_year_filter) {
+    $filter_year = $_GET['year'] !== '' ? intval($_GET['year']) : '';
+} else {
+    // Default to current year only on first load (no filter parameters)
+    $filter_year = date('Y');
+}
+
 $filter_category = isset($_GET['category']) ? $_GET['category'] : '';
 
 // Validate filter values
-if ($filter_month) {
+if ($filter_month !== '' && $filter_month !== 0) {
     $filter_month = max(1, min(12, $filter_month)); // Ensure month is 1-12
 }
-if ($filter_year) {
+
+if ($filter_year !== '' && $filter_year !== 0) {
     $filter_year = max(2000, min(2100, $filter_year)); // Ensure reasonable year
 }
 
@@ -79,8 +96,8 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     // Redirect back with filters
     $redirect_url = "expenses.php";
     $redirect_params = [];
-    if ($filter_month) $redirect_params[] = "month=$filter_month";
-    if ($filter_year) $redirect_params[] = "year=$filter_year";
+    if ($filter_month !== '') $redirect_params[] = "month=$filter_month";
+    if ($filter_year !== '') $redirect_params[] = "year=$filter_year";
     if ($filter_category) $redirect_params[] = "category=" . urlencode($filter_category);
     if (isset($_GET['page']) && $_GET['page'] > 1) $redirect_params[] = "page=" . intval($_GET['page']);
     
@@ -100,13 +117,13 @@ $where_conditions = ["e.house_id = ?"];
 $params = [$house_id];
 $param_types = "i";
 
-if ($filter_month) {
+if ($filter_month !== '' && $filter_month !== 0) {
     $where_conditions[] = "MONTH(e.expense_date) = ?";
     $params[] = $filter_month;
     $param_types .= "i";
 }
 
-if ($filter_year) {
+if ($filter_year !== '' && $filter_year !== 0) {
     $where_conditions[] = "YEAR(e.expense_date) = ?";
     $params[] = $filter_year;
     $param_types .= "i";
@@ -287,9 +304,14 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                     
                     <div class="col-md-2 d-flex align-items-end">
                         <div class="d-grid w-100">
-                            <button type="submit" class="btn btn-primary">
+                            <button type="submit" class="btn btn-primary mb-2">
                                 <i class="fas fa-search me-2"></i>Filter
                             </button>
+                            <?php if ($filter_month !== '' || $filter_year !== '' || $filter_category): ?>
+                            <a href="expenses.php" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-2"></i>Clear Filters
+                            </a>
+                            <?php endif; ?>
                         </div>
                     </div>
                     
@@ -363,12 +385,12 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                     <i class="fas fa-money-bill-wave fa-3x text-muted mb-3"></i>
                     <h5>No Expenses Found</h5>
                     <p class="text-muted">
-                        <?php if ($filter_month || $filter_year || $filter_category): ?>
+                        <?php if ($filter_month !== '' || $filter_year !== '' || $filter_category): ?>
                         Try adjusting your filters or
                         <?php endif; ?>
                         Add your first expense to get started
                     </p>
-                    <?php if ($filter_month || $filter_year || $filter_category): ?>
+                    <?php if ($filter_month !== '' || $filter_year !== '' || $filter_category): ?>
                     <a href="expenses.php" class="btn btn-outline-secondary me-2">
                         <i class="fas fa-times me-2"></i>Clear Filters
                     </a>
@@ -570,8 +592,8 @@ function confirmDelete(expenseId, category, date) {
         let url = 'expenses.php?delete=' + expenseId;
         
         // Add current filter parameters
-        const month = <?php echo $filter_month ? "'$filter_month'" : "''"; ?>;
-        const year = <?php echo $filter_year ? "'$filter_year'" : "''"; ?>;
+        const month = <?php echo $filter_month !== '' ? "'$filter_month'" : "''"; ?>;
+        const year = <?php echo $filter_year !== '' ? "'$filter_year'" : "''"; ?>;
         const categoryFilter = <?php echo $filter_category ? "'" . addslashes($filter_category) . "'" : "''"; ?>;
         const page = <?php echo $page; ?>;
         
