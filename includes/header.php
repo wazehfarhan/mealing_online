@@ -1,8 +1,30 @@
 <?php
-// In header.php, add this check at the beginning:
+// header.php - SAFE FIXED VERSION
 
-// Check if user is logged in
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
+// Start session if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// FIXED: Check both logged_in and user_id for compatibility
+$is_logged_in = false;
+
+// Method 1: Check logged_in (your original method)
+if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
+    $is_logged_in = true;
+}
+
+// Method 2: Check user_id (what update_profile.php uses)
+if (isset($_SESSION['user_id']) && !empty($_SESSION['user_id'])) {
+    $is_logged_in = true;
+    // Set logged_in for backward compatibility
+    if (!isset($_SESSION['logged_in'])) {
+        $_SESSION['logged_in'] = true;
+    }
+}
+
+// If not logged in by either method, redirect to login
+if (!$is_logged_in) {
     header("Location: ../auth/login.php");
     exit();
 }
@@ -23,25 +45,33 @@ if (!in_array($current_page, $excluded_pages)) {
         mysqli_stmt_execute($stmt);
         $result = mysqli_stmt_get_result($stmt);
         
-        if ($row = mysqli_fetch_assoc($result) && $row['house_id']) {
-            $_SESSION['house_id'] = $row['house_id'];
+        if ($row = mysqli_fetch_assoc($result)) {
+            if ($row['house_id']) {
+                $_SESSION['house_id'] = $row['house_id'];
+            } else {
+                // No house, redirect to setup
+                header("Location: setup_house.php");
+                exit();
+            }
         } else {
-            // No house, redirect to setup
-            header("Location: setup_house.php");
+            // User not found in database, logout
+            session_destroy();
+            header("Location: ../auth/login.php");
             exit();
         }
+        
+        mysqli_close($conn);
     }
 }
 
 $page_title = isset($page_title) ? $page_title : 'Dashboard';
 ?>
 <!DOCTYPE html>
-<!-- Rest of your header.php HTML -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $page_title . ' | ' . SITE_NAME; ?></title>
+    <title><?php echo $page_title . ' | ' . (defined('SITE_NAME') ? SITE_NAME : 'Meal System'); ?></title>
     <link rel="icon" type="image/png" href="../image/icon.png">
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -210,18 +240,20 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
         <div class="p-4">
             <h4 class="text-white mb-0">
                 <i class="fas fa-utensils me-2"></i>
-                <?php echo $_SESSION['role'] === 'manager' ? 'Manager Panel' : 'Member Panel'; ?>
+                <?php echo isset($_SESSION['role']) && $_SESSION['role'] === 'manager' ? 'Manager Panel' : 'Member Panel'; ?>
             </h4>
             <small class="text-muted">
-                <?php echo $_SESSION['username']; ?>
+                <?php echo isset($_SESSION['username']) ? $_SESSION['username'] : 'Guest'; ?>
+                <?php if (isset($_SESSION['role'])): ?>
                 <span class="badge bg-<?php echo $_SESSION['role'] === 'manager' ? 'primary' : 'success'; ?> ms-2">
                     <?php echo $_SESSION['role']; ?>
                 </span>
+                <?php endif; ?>
             </small>
         </div>
         
         <ul class="nav flex-column px-3 flex-grow-1">
-            <?php if ($_SESSION['role'] === 'manager'): ?>
+            <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'manager'): ?>
             <!-- Manager Menu -->
             <li class="nav-item">
                 <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : ''; ?>" 
@@ -322,7 +354,7 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
                     <div class="dropdown">
                         <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
                             <i class="fas fa-user-circle me-2"></i>
-                            <?php echo $_SESSION['username']; ?>
+                            <?php echo isset($_SESSION['username']) ? $_SESSION['username'] : 'Guest'; ?>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="settings.php"><i class="fas fa-cog me-2"></i>Settings</a></li>
