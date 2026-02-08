@@ -4,7 +4,7 @@ require_once 'config/database.php';
 require_once 'includes/functions.php';
 
 $functions = new Functions();
-$page_title = "Meal Management System - Free Meal Tracking Solution";
+$page_title = "mealsa";
 
 // Check if database needs setup
 $missing_tables = checkDatabaseTables();
@@ -61,7 +61,7 @@ if ($total_money >= 1000000) {
     <meta charset="UTF-8">
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meal Management System - Free Meal Tracking Solution</title>
+    <title>mealsa</title>
     <link rel="icon" type="image/png" href="image/icon.png">
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -635,7 +635,7 @@ if ($total_money >= 1000000) {
     <nav class="navbar navbar-expand-lg navbar-light fixed-top professional-shadow" id="mainNav">
         <div class="container">
             <a class="navbar-brand fw-bold" href="index.php">
-                <i class="bi bi-egg-fried me-2"></i>MealMaster
+                <i class="bi bi-egg-fried me-2"></i>MealSa
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
