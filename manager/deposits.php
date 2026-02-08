@@ -75,9 +75,13 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
 // Now include header
 require_once '../includes/header.php';
 
-// Get filter values
-$filter_month = isset($_GET['month']) ? intval($_GET['month']) : 0;
-$filter_year = isset($_GET['year']) ? intval($_GET['year']) : 0;
+// Set current month and year as defaults
+$current_month = date('n');
+$current_year = date('Y');
+
+// Get filter values - use current month/year as defaults if not set
+$filter_month = isset($_GET['month']) ? intval($_GET['month']) : $current_month;
+$filter_year = isset($_GET['year']) ? intval($_GET['year']) : $current_year;
 $filter_member = isset($_GET['member']) ? intval($_GET['member']) : 0;
 
 // Function to build WHERE clause for simple queries
@@ -216,7 +220,18 @@ if ($summary_result) {
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <h4 class="page-title mb-0">Deposit Management</h4>
-                <p class="text-muted mb-0">Total: <?php echo $total_records; ?> deposit records</p>
+                <p class="text-muted mb-0">
+                    Total: <?php echo $total_records; ?> deposit records
+                    <?php if ($filter_month > 0 || $filter_year > 0): ?>
+                    for 
+                    <?php if ($filter_month > 0): ?>
+                    <?php echo date('F', mktime(0, 0, 0, $filter_month, 1)); ?>
+                    <?php endif; ?>
+                    <?php if ($filter_year > 0): ?>
+                    <?php echo $filter_year; ?>
+                    <?php endif; ?>
+                    <?php endif; ?>
+                </p>
             </div>
             <div>
                 <a href="add_deposit.php" class="btn btn-primary">
@@ -295,7 +310,7 @@ if ($summary_result) {
                             <button type="submit" class="btn btn-primary mb-2">
                                 <i class="fas fa-search me-2"></i>Filter
                             </button>
-                            <a href="deposits.php" class="btn btn-outline-secondary">
+                            <a href="deposits.php?month=0&year=0&member=0" class="btn btn-outline-secondary">
                                 <i class="fas fa-times me-2"></i>Clear Filters
                             </a>
                         </div>
@@ -370,7 +385,7 @@ if ($summary_result) {
                         Add your first deposit to get started
                     </p>
                     <?php if ($filter_month > 0 || $filter_year > 0 || $filter_member > 0): ?>
-                    <a href="deposits.php" class="btn btn-outline-secondary me-2">
+                    <a href="deposits.php?month=0&year=0&member=0" class="btn btn-outline-secondary me-2">
                         <i class="fas fa-times me-2"></i>Clear Filters
                     </a>
                     <?php endif; ?>
