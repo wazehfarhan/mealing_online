@@ -150,6 +150,7 @@ if (isset($stmt)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Monthly Report - <?php echo htmlspecialchars($house_info['house_name']); ?></title>
+    <link rel="icon" type="image/png" href="../image/icon.png">
     <style>
         /* PDF Styles */
         * {
