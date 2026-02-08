@@ -46,7 +46,7 @@ if (!$expense) {
 $error = '';
 $success = '';
 
-// Expense categories
+// Expense categories - SAME AS EXPENSES.PHP
 $categories = ['Rice', 'Fish', 'Meat', 'Vegetables', 'Spices', 'Oil', 'Food', 'Others'];
 
 // Handle form submission
@@ -108,6 +108,27 @@ mysqli_stmt_bind_param($month_stmt, "ssi", $month_start, $month_end, $house_id);
 mysqli_stmt_execute($month_stmt);
 $month_result = mysqli_stmt_get_result($month_stmt);
 $month_total = mysqli_fetch_assoc($month_result);
+
+// Helper function for category colors - UPDATED TO MATCH EXPENSES.PHP
+function getCategoryColor($category) {
+    $colors = [
+        'Rice' => 'primary',        // Blue
+        'Fish' => 'info',           // Cyan
+        'Meat' => 'danger',         // Red
+        'Vegetables' => 'success',  // Green
+        'Spices' => 'warning',      // Yellow
+        'Oil' => 'purple',          // Purple
+        'Food' => 'orange',         // Orange
+        'Others' => 'secondary'     // Gray
+    ];
+    return $colors[$category] ?? 'secondary';
+}
+
+// Helper function for text color based on badge color
+function getBadgeTextColor($badge_color) {
+    // For light/yellow badges, use dark text
+    return ($badge_color == 'warning' || $badge_color == 'light') ? 'text-dark' : 'text-white';
+}
 ?>
 <div class="row">
     <div class="col-lg-6 mx-auto">
@@ -151,10 +172,22 @@ $month_total = mysqli_fetch_assoc($month_result);
                             <label for="category" class="form-label">Category *</label>
                             <select class="form-select" id="category" name="category" required>
                                 <option value="">Select Category</option>
-                                <?php foreach ($categories as $cat): ?>
+                                <?php foreach ($categories as $cat): 
+                                    $category_color = getCategoryColor($cat);
+                                    $badge_text_color = getBadgeTextColor($category_color);
+                                    
+                                    // Special case for Oil (purple)
+                                    if ($category_color == 'purple') {
+                                        $badge_class = 'bg-purple text-white';
+                                    } else {
+                                        $badge_class = 'bg-' . $category_color . ' ' . $badge_text_color;
+                                    }
+                                ?>
                                 <option value="<?php echo $cat; ?>" 
                                         <?php echo $expense['category'] == $cat ? 'selected' : ''; ?>>
-                                    <?php echo $cat; ?>
+                                    <span class="badge <?php echo $badge_class; ?> me-2">
+                                        <?php echo $cat; ?>
+                                    </span>
                                 </option>
                                 <?php endforeach; ?>
                             </select>
@@ -193,8 +226,20 @@ $month_total = mysqli_fetch_assoc($month_result);
                                     $this_expense = $expense['amount'];
                                     $percentage = $current_total > 0 ? ($this_expense / $current_total) * 100 : 0;
                                     if ($percentage > 100) $percentage = 100;
+                                    
+                                    // Determine progress bar color based on percentage
+                                    $progress_bar_class = '';
+                                    if ($percentage > 30) {
+                                        $progress_bar_class = 'bg-danger';
+                                    } elseif ($percentage > 15) {
+                                        $progress_bar_class = 'bg-warning';
+                                    } elseif ($percentage > 5) {
+                                        $progress_bar_class = 'bg-primary';
+                                    } else {
+                                        $progress_bar_class = 'bg-success';
+                                    }
                                     ?>
-                                    <div class="progress-bar bg-warning" role="progressbar" 
+                                    <div class="progress-bar <?php echo $progress_bar_class; ?>" role="progressbar" 
                                          style="width: <?php echo $percentage; ?>%;" 
                                          aria-valuenow="<?php echo $percentage; ?>" 
                                          aria-valuemin="0" aria-valuemax="100">
@@ -229,7 +274,18 @@ $month_total = mysqli_fetch_assoc($month_result);
                     <div class="col-md-6">
                         <p><strong>Original Amount:</strong> <?php echo $functions->formatCurrency($expense['amount']); ?></p>
                         <p><strong>Original Category:</strong> 
-                            <span class="badge bg-<?php echo getCategoryColor($expense['category']); ?>">
+                            <?php 
+                            $category_color = getCategoryColor($expense['category']);
+                            $badge_text_color = getBadgeTextColor($category_color);
+                            
+                            // Special case for Oil (purple)
+                            if ($category_color == 'purple') {
+                                $badge_class = 'bg-purple text-white';
+                            } else {
+                                $badge_class = 'bg-' . $category_color . ' ' . $badge_text_color;
+                            }
+                            ?>
+                            <span class="badge <?php echo $badge_class; ?>">
                                 <?php echo $expense['category']; ?>
                             </span>
                         </p>
@@ -258,22 +314,12 @@ $month_total = mysqli_fetch_assoc($month_result);
     </div>
 </div>
 
-<?php
-// Helper function for category colors
-function getCategoryColor($category) {
-    $colors = [
-        'Rice' => 'primary',
-        'Fish' => 'info',
-        'Meat' => 'danger',
-        'Vegetables' => 'success',
-        'Spices' => 'warning',
-        'Oil' => 'dark',
-        'Food' => 'secondary',
-        'Others' => 'light'
-    ];
-    return $colors[$category] ?? 'light';
+<style>
+/* Add this style for purple badge */
+.bg-purple {
+    background-color: #6f42c1 !important;
 }
-?>
+</style>
 
 <script>
 $(document).ready(function() {
@@ -300,6 +346,55 @@ $(document).ready(function() {
             }
         }
     });
+    
+    // Enhance category dropdown with badges
+    $('#category').select2({
+        theme: 'bootstrap-5',
+        templateResult: function(state) {
+            if (!state.id) {
+                return state.text;
+            }
+            var $state = $(
+                '<span><span class="badge ' + getCategoryBadgeClass(state.text.trim()) + ' me-2">' + state.text.trim() + '</span></span>'
+            );
+            return $state;
+        },
+        templateSelection: function(state) {
+            if (!state.id) {
+                return state.text;
+            }
+            var $state = $(
+                '<span><span class="badge ' + getCategoryBadgeClass(state.text.trim()) + ' me-2">' + state.text.trim() + '</span></span>'
+            );
+            return $state;
+        }
+    });
+    
+    // Function to get badge class for category
+    function getCategoryBadgeClass(category) {
+        var colors = {
+            'Rice': 'bg-primary text-white',
+            'Fish': 'bg-info text-white',
+            'Meat': 'bg-danger text-white',
+            'Vegetables': 'bg-success text-white',
+            'Spices': 'bg-warning text-dark',
+            'Oil': 'bg-purple text-white',
+            'Food': 'bg-orange text-white',
+            'Others': 'bg-secondary text-white'
+        };
+        
+        // Default class
+        var defaultClass = 'bg-secondary text-white';
+        
+        // Find the category (case-insensitive)
+        for (var key in colors) {
+            if (category.toLowerCase() === key.toLowerCase()) {
+                return colors[key];
+            }
+        }
+        
+        return defaultClass;
+    }
 });
 </script>
 
