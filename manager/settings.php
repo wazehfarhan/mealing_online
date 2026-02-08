@@ -86,6 +86,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_house'])) {
     exit();
 }
 
+// Handle member updates and invites (NON-AJAX)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Update member
+    if (isset($_POST['update_member'])) {
+        $member_id = intval($_POST['member_id']);
+        $name = trim($_POST['name']);
+        $phone = trim($_POST['phone'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $status = $_POST['status'] ?? 'active';
+        
+        if (empty($name)) {
+            $error = "Member name is required";
+        } else {
+            $sql = "UPDATE members SET name = ?, phone = ?, email = ?, status = ? 
+                    WHERE member_id = ? AND house_id = ?";
+            $stmt = mysqli_prepare($conn, $sql);
+            mysqli_stmt_bind_param($stmt, "ssssii", $name, $phone, $email, $status, $member_id, $house_id);
+            
+            if (mysqli_stmt_execute($stmt)) {
+                $message = "Member updated successfully";
+            } else {
+                $error = "Failed to update member: " . mysqli_error($conn);
+            }
+        }
+    }
+    
+    // Generate invite link
+    if (isset($_POST['generate_invite'])) {
+        $member_id = intval($_POST['member_id']);
+        
+        // Generate unique token
+        $token = bin2hex(random_bytes(16));
+        $token_expiry = date('Y-m-d H:i:s', strtotime('+7 days'));
+        
+        $sql = "UPDATE members SET join_token = ?, token_expiry = ? 
+                WHERE member_id = ? AND house_id = ?";
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, "ssii", $token, $token_expiry, $member_id, $house_id);
+        
+        if (mysqli_stmt_execute($stmt)) {
+            $message = "Invite link generated successfully";
+        } else {
+            $error = "Failed to generate invite: " . mysqli_error($conn);
+        }
+    }
+}
 
 // Fetch members for this house
 $sql = "SELECT * FROM members WHERE house_id = ? ORDER BY name";
@@ -129,6 +175,9 @@ require_once '../includes/header.php';
         </div>
     </div>
 </div>
+
+<!-- Toast Container for success messages -->
+<div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
 
 <!-- Messages will appear here -->
 <div id="messageContainer"></div>
@@ -289,6 +338,9 @@ require_once '../includes/header.php';
                     <button type="button" class="btn btn-outline-primary" onclick="window.location.href='update_profile.php'">
                         <i class="fas fa-user-edit me-2"></i>Update Profile
                     </button>
+                    <button type="button" class="btn btn-outline-success" onclick="window.location.href='add_member.php'">
+                        <i class="fas fa-user-plus me-2"></i>Add New Member
+                    </button>
                     <button type="button" class="btn btn-outline-danger" 
                             data-bs-toggle="modal" data-bs-target="#leaveHouseModal">
                         <i class="fas fa-sign-out-alt me-2"></i>Leave House
@@ -341,9 +393,11 @@ require_once '../includes/header.php';
 <div class="card stat-card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="card-title mb-0"><i class="fas fa-users me-2"></i>House Members</h5>
-        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addMemberModal">
-            <i class="fas fa-plus-circle me-1"></i> Add Member
+        <?php if ($_SESSION['role'] === 'manager'): ?>
+        <button type="button" class="btn btn-primary btn-sm" onclick="window.location.href='add_member.php'">
+            <i class="fas fa-plus me-1"></i> Add Member
         </button>
+        <?php endif; ?>
     </div>
     <div class="card-body">
         <div class="table-responsive">
@@ -355,7 +409,9 @@ require_once '../includes/header.php';
                         <th>Join Date</th>
                         <th>Status</th>
                         <th>User Account</th>
+                        <?php if ($_SESSION['role'] === 'manager'): ?>
                         <th>Actions</th>
+                        <?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
@@ -390,37 +446,56 @@ require_once '../includes/header.php';
                                 
                                 if ($has_account) {
                                     echo '<span class="badge bg-success">' . ucfirst($user_account_type) . '</span>';
-                                } elseif (!$has_account && !empty($member['join_token'])) {
+                                } elseif (!$has_account && !empty($member['join_token']) && strtotime($member['token_expiry']) > time()) {
                                     echo '<span class="badge bg-warning text-dark">Invited</span>';
                                 } else {
                                     echo '<span class="badge bg-secondary">No Account</span>';
                                 }
                                 ?>
                             </td>
+                            <?php if ($_SESSION['role'] === 'manager'): ?>
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
-                                    <button type="button" class="btn btn-outline-primary" 
-                                            data-bs-toggle="modal" data-bs-target="#editMemberModal<?php echo $member['member_id']; ?>"
-                                            title="Edit Member">
+                                    <!-- Edit Button - Goes to edit_member.php -->
+                                    <a href="edit_member.php?id=<?php echo $member['member_id']; ?>" 
+                                       class="btn btn-outline-primary" title="Edit Member">
                                         <i class="fas fa-edit"></i>
-                                    </button>
-                                    <?php if (!$has_account): ?>
-                                    <button type="button" class="btn btn-outline-info" 
-                                            data-bs-toggle="modal" data-bs-target="#inviteModal<?php echo $member['member_id']; ?>"
-                                            title="Generate Invite">
-                                        <i class="fas fa-link"></i>
-                                    </button>
+                                    </a>
+                                    
+                                    <!-- Copy Link Button - Copies invite link to clipboard -->
+                                    <?php if (!empty($member['join_token']) && strtotime($member['token_expiry']) > time()): ?>
+                                        <?php 
+                                        // Generate the correct invite link path
+                                        $invite_link = "http://127.0.0.1/mealing_online/member/join.php?token=" . $member['join_token'];
+                                        ?>
+                                        <button type="button" class="btn btn-outline-info copy-link-btn" 
+                                                data-link="<?php echo htmlspecialchars($invite_link); ?>"
+                                                title="Copy Invite Link">
+                                            <i class="fas fa-link"></i>
+                                        </button>
+                                    <?php elseif (!$has_account): ?>
+                                        <!-- Generate Link Button - Shows modal to generate link -->
+                                        <button type="button" class="btn btn-outline-info" 
+                                                data-bs-toggle="modal" data-bs-target="#inviteModal<?php echo $member['member_id']; ?>"
+                                                title="Generate Invite Link">
+                                            <i class="fas fa-link"></i>
+                                        </button>
                                     <?php endif; ?>
                                 </div>
                             </td>
+                            <?php endif; ?>
                         </tr>
                     <?php endforeach; ?>
                     
                     <?php if (empty($members)): ?>
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">
+                            <td colspan="<?php echo $_SESSION['role'] === 'manager' ? '6' : '5'; ?>" class="text-center text-muted py-4">
                                 <i class="fas fa-users fa-2x mb-3"></i>
-                                <p class="mb-0">No members found. Add your first member!</p>
+                                <p class="mb-0">No members found. 
+                                    <?php if ($_SESSION['role'] === 'manager'): ?>
+                                    <a href="add_member.php" class="btn btn-sm btn-primary mt-2">Add Your First Member</a>
+                                    <?php endif; ?>
+                                </p>
                             </td>
                         </tr>
                     <?php endif; ?>
@@ -430,67 +505,28 @@ require_once '../includes/header.php';
     </div>
 </div>
 
-<!-- Add Member Modal -->
-
+<!-- Generate Invite Link Modal -->
 <?php foreach ($members as $member): ?>
-    <!-- Edit Member Modal -->
-    <div class="modal fade" id="editMemberModal<?php echo $member['member_id']; ?>" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form method="POST">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Edit Member</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <input type="hidden" name="member_id" value="<?php echo $member['member_id']; ?>">
-                        
-                        <div class="mb-3">
-                            <label for="name" class="form-label">Name *</label>
-                            <input type="text" class="form-control" id="name" name="name" 
-                                   value="<?php echo htmlspecialchars($member['name']); ?>" required>
-                            <div class="invalid-feedback">
-                                Please provide member name.
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="phone" class="form-label">Phone</label>
-                                <input type="tel" class="form-control" id="phone" name="phone" 
-                                       value="<?php echo htmlspecialchars($member['phone'] ?? ''); ?>">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="email" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="email" name="email" 
-                                       value="<?php echo htmlspecialchars($member['email'] ?? ''); ?>">
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="status" class="form-label">Status</label>
-                            <select class="form-select" id="status" name="status">
-                                <option value="active" <?php echo $member['status'] === 'active' ? 'selected' : ''; ?>>Active</option>
-                                <option value="inactive" <?php echo $member['status'] === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" name="update_member" class="btn btn-primary">Save Changes</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+    <!-- Only show modal if member doesn't have an account and doesn't have a valid token -->
+    <?php 
+    $has_account = false;
+    foreach ($user_accounts as $user) {
+        if ($user['member_id'] == $member['member_id']) {
+            $has_account = true;
+            break;
+        }
+    }
     
-    <!-- Invite Modal -->
+    $has_valid_token = (!empty($member['join_token']) && strtotime($member['token_expiry']) > time());
+    
+    if (!$has_account && !$has_valid_token): 
+    ?>
     <div class="modal fade" id="inviteModal<?php echo $member['member_id']; ?>" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <form method="POST">
                     <div class="modal-header">
-                        <h5 class="modal-title">Invite Member</h5>
+                        <h5 class="modal-title">Generate Invite Link</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
@@ -498,41 +534,22 @@ require_once '../includes/header.php';
                         
                         <p>Generate an invite link for <strong><?php echo htmlspecialchars($member['name']); ?></strong>.</p>
                         
-                        <?php if (!empty($member['join_token']) && strtotime($member['token_expiry']) > time()): ?>
-                            <div class="alert alert-warning">
-                                <div class="mb-2">
-                                    <strong>Current Invite Link:</strong><br>
-                                    <code class="d-block p-2 bg-light rounded mt-1" style="word-break: break-all;">
-                                        <?php echo BASE_URL . "join.php?token=" . $member['join_token']; ?>
-                                    </code>
-                                </div>
-                                <p class="mb-0 small">
-                                    <i class="fas fa-clock me-1"></i>
-                                    Expires: <?php echo date('M d, Y H:i', strtotime($member['token_expiry'])); ?>
-                                </p>
-                            </div>
-                        <?php elseif (!empty($member['join_token'])): ?>
-                            <div class="alert alert-danger">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                Previous invite link has expired.
-                            </div>
-                        <?php endif; ?>
-                        
                         <div class="alert alert-info">
                             <i class="fas fa-info-circle me-2"></i>
-                            New invite link will be valid for 7 days.
+                            This invite link will be valid for 7 days.
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="submit" name="generate_invite" class="btn btn-primary">
-                            <?php echo !empty($member['join_token']) ? 'Regenerate Link' : 'Generate Invite Link'; ?>
+                            Generate Invite Link
                         </button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
+    <?php endif; ?>
 <?php endforeach; ?>
 
 <!-- Leave House Modal -->
@@ -626,6 +643,80 @@ document.getElementById('houseForm').addEventListener('submit', function(e) {
         `;
     });
 });
+
+// Copy link to clipboard functionality - SIMPLIFIED AND WORKING
+document.addEventListener('DOMContentLoaded', function() {
+    // Add click event to all copy link buttons
+    document.querySelectorAll('.copy-link-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const link = this.getAttribute('data-link');
+            const originalHTML = this.innerHTML;
+            const originalTitle = this.getAttribute('title');
+            
+            // Create a temporary textarea to copy the text
+            const textarea = document.createElement('textarea');
+            textarea.value = link;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-999999px';
+            textarea.style.top = '-999999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            
+            try {
+                // Copy the text
+                const successful = document.execCommand('copy');
+                
+                if (successful) {
+                    // Success - Change button appearance
+                    this.innerHTML = '<i class="fas fa-check"></i>';
+                    this.classList.remove('btn-outline-info');
+                    this.classList.add('btn-success');
+                    
+                    // Show simple success message
+                    showSuccessMessage('Invite link copied to clipboard!');
+                    
+                    // Reset button after 2 seconds
+                    setTimeout(() => {
+                        this.innerHTML = originalHTML;
+                        this.classList.remove('btn-success');
+                        this.classList.add('btn-outline-info');
+                        this.setAttribute('title', originalTitle);
+                    }, 2000);
+                } else {
+                    // If copy fails, show the link in a prompt
+                    prompt('Copy this link manually:', link);
+                }
+            } catch (err) {
+                console.error('Failed to copy: ', err);
+                // If copy fails, show the link in a prompt
+                prompt('Copy this link manually:', link);
+            } finally {
+                // Remove the textarea
+                document.body.removeChild(textarea);
+            }
+        });
+    });
+    
+    // Function to show simple success message
+    function showSuccessMessage(message) {
+        // Create a simple alert instead of toast to avoid Bootstrap issues
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed bottom-0 end-0 m-3';
+        alertDiv.style.zIndex = '9999';
+        alertDiv.innerHTML = `
+            <i class="fas fa-check-circle me-2"></i>${message}
+            <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+        `;
+        document.body.appendChild(alertDiv);
+        
+        // Auto remove after 3 seconds
+        setTimeout(() => {
+            if (alertDiv.parentElement) {
+                alertDiv.remove();
+            }
+        }, 3000);
+    }
+});
 </script>
 
 <?php 
@@ -667,4 +758,3 @@ $(document).ready(function() {
 ";
 
 require_once '../includes/footer.php';
-?>

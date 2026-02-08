@@ -28,8 +28,9 @@ $conn = getConnection();
 // =========================
 // HANDLE FILTERS
 // =========================
-$filter_month = isset($_GET['month']) && $_GET['month'] !== '' ? intval($_GET['month']) : '';
-$filter_year = isset($_GET['year']) && $_GET['year'] !== '' ? intval($_GET['year']) : '';
+// Set default to current month and year if not specified
+$filter_month = isset($_GET['month']) && $_GET['month'] !== '' ? intval($_GET['month']) : date('m');
+$filter_year = isset($_GET['year']) && $_GET['year'] !== '' ? intval($_GET['year']) : date('Y');
 $filter_category = isset($_GET['category']) ? $_GET['category'] : '';
 
 // Validate filter values
@@ -80,7 +81,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $redirect_params = [];
     if ($filter_month) $redirect_params[] = "month=$filter_month";
     if ($filter_year) $redirect_params[] = "year=$filter_year";
-    if ($filter_category) $redirect_params[] = "category=$filter_category";
+    if ($filter_category) $redirect_params[] = "category=" . urlencode($filter_category);
     if (isset($_GET['page']) && $_GET['page'] > 1) $redirect_params[] = "page=" . intval($_GET['page']);
     
     if (!empty($redirect_params)) {
@@ -297,24 +298,6 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                     <input type="hidden" name="page" value="<?php echo intval($_GET['page']); ?>">
                     <?php endif; ?>
                 </form>
-                
-                <?php if ($filter_month || $filter_year || $filter_category): ?>
-                <div class="mt-3">
-                    <small class="text-muted">
-                        Active filters: 
-                        <?php if ($filter_month): ?>
-                        <span class="badge bg-info">Month: <?php echo $months[$filter_month-1]; ?></span>
-                        <?php endif; ?>
-                        <?php if ($filter_year): ?>
-                        <span class="badge bg-info">Year: <?php echo $filter_year; ?></span>
-                        <?php endif; ?>
-                        <?php if ($filter_category): ?>
-                        <span class="badge bg-info">Category: <?php echo $filter_category; ?></span>
-                        <?php endif; ?>
-                        <a href="expenses.php" class="text-danger ms-2"><small>Clear all filters</small></a>
-                    </small>
-                </div>
-                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -416,7 +399,11 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                                 <td><?php echo $counter++; ?></td>
                                 <td><?php echo $functions->formatDate($expense['expense_date']); ?></td>
                                 <td>
-                                    <span class="badge bg-<?php echo getCategoryColor($expense['category']); ?>">
+                                    <?php
+                                    $badge_color = getCategoryColor($expense['category']);
+                                    $badge_text_color = ($badge_color == 'warning' || $badge_color == 'light') ? 'text-dark' : 'text-white';
+                                    ?>
+                                    <span class="badge bg-<?php echo $badge_color; ?> <?php echo $badge_text_color; ?>">
                                         <?php echo $expense['category']; ?>
                                     </span>
                                 </td>
@@ -512,10 +499,12 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                 <div class="list-group list-group-flush">
                     <?php foreach ($category_breakdown as $item): 
                         $percentage = $summary['total_amount'] > 0 ? ($item['total'] / $summary['total_amount'] * 100) : 0;
+                        $badge_color = getCategoryColor($item['category']);
+                        $badge_text_color = ($badge_color == 'warning' || $badge_color == 'light') ? 'text-dark' : 'text-white';
                     ?>
                     <div class="list-group-item d-flex justify-content-between align-items-center px-0">
                         <div>
-                            <span class="badge bg-<?php echo getCategoryColor($item['category']); ?> me-2">
+                            <span class="badge bg-<?php echo $badge_color; ?> <?php echo $badge_text_color; ?> me-2">
                                 <?php echo $item['category']; ?>
                             </span>
                             <small class="text-muted">(<?php echo $item['count']; ?> entries)</small>
@@ -540,20 +529,35 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
 
 <?php
 // =========================
-// HELPER FUNCTION
+// HELPER FUNCTION - UPDATED WITH PROPER COLORS
 // =========================
 function getCategoryColor($category) {
     $colors = [
-        'Rice' => 'primary',
-        'Fish' => 'info',
-        'Meat' => 'danger',
-        'Vegetables' => 'success',
-        'Spices' => 'warning',
-        'Oil' => 'secondary',
-        'Food' => 'dark',
-        'Others' => 'light'
+        'Rice' => 'primary',        // Blue
+        'Fish' => 'info',           // Cyan
+        'Meat' => 'danger',         // Red
+        'Vegetables' => 'success',  // Green
+        'Spices' => 'warning',      // Yellow
+        'Oil' => 'purple',          // Purple
+        'Food' => 'orange',         // Orange
+        'Others' => 'secondary'     // Gray
     ];
-    return $colors[$category] ?? 'light';
+    return $colors[$category] ?? 'secondary';
+}
+
+// Helper function to get hex colors for chart
+function getCategoryHexColor($category) {
+    $hex_colors = [
+        'Rice' => '#007bff',        // Blue
+        'Fish' => '#17a2b8',        // Cyan
+        'Meat' => '#dc3545',        // Red
+        'Vegetables' => '#28a745',  // Green
+        'Spices' => '#ffc107',      // Yellow
+        'Oil' => '#6f42c1',         // Purple
+        'Food' => '#fd7e14',        // Orange
+        'Others' => '#6c757d'       // Gray
+    ];
+    return $hex_colors[$category] ?? '#6c757d';
 }
 ?>
 
@@ -583,24 +587,33 @@ function confirmDelete(expenseId, category, date) {
 <?php if (!empty($category_breakdown)): ?>
 document.addEventListener('DOMContentLoaded', function() {
     const ctx = document.getElementById('categoryChart').getContext('2d');
+    
+    // Prepare data for chart
+    const labels = [
+        <?php foreach ($category_breakdown as $item): ?>
+        '<?php echo $item['category']; ?>',
+        <?php endforeach; ?>
+    ];
+    
+    const data = [
+        <?php foreach ($category_breakdown as $item): ?>
+        <?php echo $item['total']; ?>,
+        <?php endforeach; ?>
+    ];
+    
+    const backgroundColors = [
+        <?php foreach ($category_breakdown as $item): ?>
+        '<?php echo getCategoryHexColor($item['category']); ?>',
+        <?php endforeach; ?>
+    ];
+    
     const categoryChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: [
-                <?php foreach ($category_breakdown as $item): ?>
-                '<?php echo $item['category']; ?>',
-                <?php endforeach; ?>
-            ],
+            labels: labels,
             datasets: [{
-                data: [
-                    <?php foreach ($category_breakdown as $item): ?>
-                    <?php echo $item['total']; ?>,
-                    <?php endforeach; ?>
-                ],
-                backgroundColor: [
-                    '#3498db', '#17a2b8', '#e74c3c', '#27ae60',
-                    '#f39c12', '#6c757d', '#2c3e50', '#95a5a6'
-                ],
+                data: data,
+                backgroundColor: backgroundColors,
                 borderWidth: 1
             }]
         },

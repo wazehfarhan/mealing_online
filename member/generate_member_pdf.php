@@ -7,6 +7,7 @@
 // Start session
 session_start();
 
+date_default_timezone_set('Asia/Dhaka');
 // Check if user is authenticated
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     die('<div style="padding: 20px; text-align: center; font-family: Arial; color: #dc3545;">
@@ -255,6 +256,7 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="image/icon.png">
     <title>Member Report - <?php echo htmlspecialchars($member['name']); ?> - <?php echo $month_name . ' ' . $year; ?></title>
     <style>
         /* PDF Styles - Exactly like your existing PDF */
@@ -528,9 +530,27 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
             }
         }
         
-        /* Category badge colors */
-        .bg-purple { background-color: #6f42c1 !important; }
-        .bg-orange { background-color: #fd7e14 !important; }
+        /* Category badge colors - FIXED */
+        .badge-primary { background-color: #007bff !important; color: white !important; }
+        .badge-info { background-color: #17a2b8 !important; color: white !important; }
+        .badge-danger { background-color: #dc3545 !important; color: white !important; }
+        .badge-success { background-color: #28a745 !important; color: white !important; }
+        .badge-warning { background-color: #ffc107 !important; color: black !important; }
+        .badge-purple { background-color: #6f42c1 !important; color: white !important; }
+        .badge-orange { background-color: #fd7e14 !important; color: white !important; }
+        .badge-secondary { background-color: #6c757d !important; color: white !important; }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            font-size: 9px;
+            font-weight: bold;
+            line-height: 1;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
@@ -820,8 +840,7 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
             ?>
             <tr>
                 <td>
-                    <span style="background: <?php echo $category_color == 'purple' ? '#6f42c1' : ($category_color == 'orange' ? '#fd7e14' : ''); ?>; 
-                          color: white; padding: 2px 8px; border-radius: 3px; font-size: 9px;">
+                    <span class="badge badge-<?php echo $category_color; ?>">
                         <?php echo $category; ?>
                     </span>
                 </td>
@@ -829,7 +848,18 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
                 <td>
                     <div style="display: flex; align-items: center;">
                         <div style="flex-grow: 1; height: 15px; background: #ecf0f1; border-radius: 3px; overflow: hidden;">
-                            <div style="height: 100%; width: <?php echo $percentage; ?>%; background: #e74c3c;"></div>
+                            <div style="height: 100%; width: <?php echo $percentage; ?>%; background: #<?php 
+                                switch($category_color) {
+                                    case 'primary': echo '007bff'; break;
+                                    case 'info': echo '17a2b8'; break;
+                                    case 'danger': echo 'dc3545'; break;
+                                    case 'success': echo '28a745'; break;
+                                    case 'warning': echo 'ffc107'; break;
+                                    case 'purple': echo '6f42c1'; break;
+                                    case 'orange': echo 'fd7e14'; break;
+                                    default: echo '6c757d'; break;
+                                }
+                            ?>;"></div>
                         </div>
                         <span style="margin-left: 8px; min-width: 40px; text-align: right;"><?php echo number_format($percentage, 1); ?>%</span>
                     </div>

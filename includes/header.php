@@ -87,6 +87,8 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
             --success-color: #27ae60;
             --warning-color: #f39c12;
             --danger-color: #e74c3c;
+            --purple-color: #6f42c1;
+            --orange-color: #fd7e14;
         }
         
         body {
@@ -222,6 +224,38 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
             font-weight: 500;
         }
         
+        /* CUSTOM BADGE COLORS - ADDED FOR CONSISTENCY */
+        .badge.bg-purple {
+            background-color: var(--purple-color) !important;
+            color: white !important;
+        }
+        .badge.bg-orange {
+            background-color: var(--orange-color) !important;
+            color: white !important;
+        }
+        .badge.bg-light {
+            color: #212529 !important; /* Dark text for light background */
+        }
+        
+        /* Make all badges have white text by default (except light) */
+        .badge.bg-primary,
+        .badge.bg-secondary,
+        .badge.bg-success,
+        .badge.bg-danger,
+        .badge.bg-warning,
+        .badge.bg-info,
+        .badge.bg-dark,
+        .badge.bg-purple,
+        .badge.bg-orange {
+            color: white !important;
+        }
+        
+        /* Optional: Add purple and orange for other elements too */
+        .bg-purple { background-color: var(--purple-color) !important; }
+        .bg-orange { background-color: var(--orange-color) !important; }
+        .text-purple { color: var(--purple-color) !important; }
+        .text-orange { color: var(--orange-color) !important; }
+        
         @media (max-width: 768px) {
             .sidebar {
                 width: 100%;
@@ -245,7 +279,7 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
             <small class="text-muted">
                 <?php echo isset($_SESSION['username']) ? $_SESSION['username'] : 'Guest'; ?>
                 <?php if (isset($_SESSION['role'])): ?>
-                <span class="badge bg-<?php echo $_SESSION['role'] === 'manager' ? 'primary' : 'success'; ?> ms-2">
+                <span class="badge bg-<?php echo $_SESSION['role'] === 'manager' ? 'primary' : 'success'; ?> text-white ms-2">
                     <?php echo $_SESSION['role']; ?>
                 </span>
                 <?php endif; ?>

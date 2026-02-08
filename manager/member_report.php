@@ -3,6 +3,7 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+date_default_timezone_set('Asia/Dhaka');
 
 // Handle PDF request BEFORE any output
 if (isset($_GET['format']) && $_GET['format'] == 'pdf') {

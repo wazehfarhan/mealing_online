@@ -219,7 +219,7 @@ require_once '../includes/header.php';
                     <?php foreach ($recent_expenses as $recent): ?>
                     <div class="list-group-item d-flex justify-content-between align-items-center px-0">
                         <div>
-                            <span class="badge bg-<?php echo getCategoryColor($recent['category']); ?> me-2">
+                            <span class="badge bg-<?php echo getCategoryColor($recent['category']); ?> text-white me-2">
                                 <?php echo $recent['category']; ?>
                             </span>
                             <small class="text-muted"><?php echo $functions->formatDate($recent['expense_date']); ?></small>
@@ -254,16 +254,16 @@ require_once '../includes/header.php';
 // Helper function for category colors
 function getCategoryColor($category) {
     $colors = [
-        'Rice' => 'primary',
-        'Fish' => 'info',
-        'Meat' => 'danger',
-        'Vegetables' => 'success',
-        'Spices' => 'warning',
-        'Oil' => 'dark',
-        'Food' => 'secondary',
-        'Others' => 'light'
+        'Rice' => 'primary',        // Blue
+        'Fish' => 'info',           // Cyan
+        'Meat' => 'danger',         // Red
+        'Vegetables' => 'success',  // Green
+        'Spices' => 'warning',      // Yellow (will need text-dark)
+        'Oil' => 'purple',          // Purple
+        'Food' => 'orange',         // Orange
+        'Others' => 'secondary'     // Gray
     ];
-    return $colors[$category] ?? 'light';
+    return $colors[$category] ?? 'secondary';
 }
 ?>
 

@@ -7,6 +7,7 @@
 // Start session
 session_start();
 
+date_default_timezone_set('Asia/Dhaka');
 // Check if user is authenticated
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     die('<div style="padding: 20px; text-align: center; font-family: Arial; color: #dc3545;">
@@ -196,6 +197,7 @@ mysqli_stmt_close($stmt);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="../image/icon.png">
     <title>Member Report - <?php echo htmlspecialchars($member['name']); ?></title>
     <style>
         /* PDF Styles */
