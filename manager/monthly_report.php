@@ -242,8 +242,9 @@ if (isset($stmt)) {
                                 </a>
                             </div>
                             <div>
-                                <a href="?house_id=<?php echo $house_id; ?>&month=<?php echo $month; ?>&year=<?php echo $year; ?>&format=pdf" 
-                                   class="btn btn-outline-danger">
+                                <!-- UPDATED PDF BUTTON - Opens in new tab -->
+                                <a href="../includes/generate_monthly_report.php?house_id=<?php echo $house_id; ?>&month=<?php echo $month; ?>&year=<?php echo $year; ?>" 
+                                   class="btn btn-outline-danger" target="_blank">
                                     <i class="fas fa-file-pdf me-2"></i>Download PDF
                                 </a>
                             </div>
