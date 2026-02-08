@@ -7,7 +7,7 @@
 // Start session
 session_start();
 
-
+date_default_timezone_set('Asia/Dhaka');
 // Check if user is authenticated
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     die('<div style="padding: 20px; text-align: center; font-family: Arial; color: #dc3545;">

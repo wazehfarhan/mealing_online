@@ -256,7 +256,7 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/png" href="image/icon.png">
+    <link rel="icon" type="image/png" href="../image/icon.png">
     <title>Member Report - <?php echo htmlspecialchars($member['name']); ?> - <?php echo $month_name . ' ' . $year; ?></title>
     <style>
         /* PDF Styles - Exactly like your existing PDF */
