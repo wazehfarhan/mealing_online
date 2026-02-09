@@ -2,7 +2,7 @@
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/header.php';
-
+date_default_timezone_set('Asia/Dhaka');
 $auth = new Auth();
 $functions = new Functions();
 $auth->requireRole('member');
@@ -821,7 +821,7 @@ if ($view_type === 'yearly') {
                                             <h4 class="text-warning"><?php echo number_format($expense_share, 1); ?>%</h4>
                                             <p class="text-muted">of total house expenses</p>
                                         </div>
-                                        <div class="alert alert-info mt-3">
+                                        <div class="alert-su alert-info mt-3">
                                             <small><i class="fas fa-lightbulb me-2"></i>You consumed <strong><?php echo number_format($share_percentage, 1); ?>%</strong> of total meals, so you share <strong><?php echo number_format($expense_share, 1); ?>%</strong> of total expenses.</small>
                                         </div>
                                     </div>
@@ -1189,7 +1189,7 @@ if ($view_type === 'yearly') {
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-6">
-                                <div class="alert alert-info">
+                                <div class="alert-su alert-info">
                                     <h6><i class="fas fa-info-circle me-2"></i>Important Notes:</h6>
                                     <ul class="mb-0">
                                         <li>This report is generated for your personal reference</li>
@@ -1200,7 +1200,7 @@ if ($view_type === 'yearly') {
                                 </div>
                             </div>
                             <div class="col-md-6">
-                                <div class="alert alert-<?php echo $adjusted_balance < 0 ? 'danger' : 'success'; ?>">
+                                <div class="alert-su alert-<?php echo $adjusted_balance < 0 ? 'danger' : 'success'; ?>">
                                     <h6><i class="fas fa-exclamation-triangle me-2"></i>Payment Status:</h6>
                                     <p class="mb-0">
                                         <?php if ($adjusted_balance < 0): ?>
