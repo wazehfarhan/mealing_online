@@ -2,6 +2,7 @@
 /**
  * Member Report PDF Generator - Member Version
  * Standalone file for members to download their own PDF reports
+ * Now supports both Monthly and Yearly reports
  */
 
 // Start session
@@ -31,6 +32,7 @@ require_once __DIR__ . '/../includes/functions.php';
 // Get parameters
 $month = isset($_GET['month']) ? intval($_GET['month']) : date('m');
 $year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
+$view_type = isset($_GET['view']) ? $_GET['view'] : 'monthly'; // 'monthly' or 'yearly'
 $member_id = $_SESSION['member_id'];
 $house_id = $_SESSION['house_id'];
 
@@ -41,12 +43,15 @@ if (!$member_id || !$house_id) {
     </div>');
 }
 
-// Validate month/year
+// Validate parameters
 if ($month < 1 || $month > 12) {
     $month = date('m');
 }
 if ($year < 2000 || $year > 2100) {
     $year = date('Y');
+}
+if (!in_array($view_type, ['monthly', 'yearly'])) {
+    $view_type = 'monthly';
 }
 
 $month_name = date('F', mktime(0, 0, 0, $month, 1));
@@ -75,152 +80,15 @@ if (!$member) {
 // Create Functions instance
 $functions = new Functions();
 
-// Get report data
-$member_report = null;
+// Initialize arrays
+$monthly_report = [];
+$yearly_reports = [];
+$yearly_totals = [];
+$category_totals = [];
+$expenses_list = [];
 $meals = [];
 $deposits = [];
 
-// Get total meals for all members in the house for the month
-$total_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as total_meals 
-                    FROM meals 
-                    WHERE house_id = ? 
-                    AND MONTH(meal_date) = ? 
-                    AND YEAR(meal_date) = ?";
-$stmt = mysqli_prepare($conn, $total_meals_sql);
-mysqli_stmt_bind_param($stmt, "iii", $house_id, $month, $year);
-mysqli_stmt_execute($stmt);
-$total_meals_result = mysqli_stmt_get_result($stmt);
-$total_meals_data = mysqli_fetch_assoc($total_meals_result);
-$monthly_total_meals = $total_meals_data['total_meals'] ?? 0;
-
-// Get total expenses for the house for the month
-$expenses_sql = "SELECT COALESCE(SUM(amount), 0) as total_expenses 
-                 FROM expenses 
-                 WHERE house_id = ? 
-                 AND MONTH(expense_date) = ? 
-                 AND YEAR(expense_date) = ?";
-$stmt = mysqli_prepare($conn, $expenses_sql);
-mysqli_stmt_bind_param($stmt, "iii", $house_id, $month, $year);
-mysqli_stmt_execute($stmt);
-$expenses_result = mysqli_stmt_get_result($stmt);
-$expenses_data = mysqli_fetch_assoc($expenses_result);
-$total_expenses = $expenses_data['total_expenses'] ?? 0;
-
-// Get member's total meals for the month
-$member_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as member_meals 
-                     FROM meals 
-                     WHERE member_id = ? 
-                     AND house_id = ?
-                     AND MONTH(meal_date) = ? 
-                     AND YEAR(meal_date) = ?";
-$stmt = mysqli_prepare($conn, $member_meals_sql);
-mysqli_stmt_bind_param($stmt, "iiii", $member_id, $house_id, $month, $year);
-mysqli_stmt_execute($stmt);
-$member_meals_result = mysqli_stmt_get_result($stmt);
-$member_meals_data = mysqli_fetch_assoc($member_meals_result);
-$member_total_meals = $member_meals_data['member_meals'] ?? 0;
-
-// Get member's total deposits for the month
-$member_deposits_sql = "SELECT COALESCE(SUM(amount), 0) as member_deposits 
-                        FROM deposits 
-                        WHERE member_id = ? 
-                        AND house_id = ?
-                        AND MONTH(deposit_date) = ? 
-                        AND YEAR(deposit_date) = ?";
-$stmt = mysqli_prepare($conn, $member_deposits_sql);
-mysqli_stmt_bind_param($stmt, "iiii", $member_id, $house_id, $month, $year);
-mysqli_stmt_execute($stmt);
-$member_deposits_result = mysqli_stmt_get_result($stmt);
-$member_deposits_data = mysqli_fetch_assoc($member_deposits_result);
-$member_total_deposits = $member_deposits_data['member_deposits'] ?? 0;
-
-// Calculate meal rate (avoid division by zero)
-$meal_rate = 0;
-if ($monthly_total_meals > 0) {
-    $meal_rate = $total_expenses / $monthly_total_meals;
-}
-
-// Calculate member's cost
-$member_cost = $member_total_meals * $meal_rate;
-
-// Calculate balance
-$balance = $member_total_deposits - $member_cost;
-
-// Get previous month's balance - FIXED: Create separate variables
-$prev_year_month = date('Y-m', strtotime($year . '-' . sprintf('%02d', $month) . '-01 -1 month'));
-$prev_year_month_with_day = $prev_year_month . '-01';
-
-$prev_balance_sql = "SELECT mmd.balance 
-                     FROM monthly_summary ms
-                     JOIN monthly_member_details mmd ON ms.summary_id = mmd.summary_id
-                     WHERE ms.house_id = ? 
-                     AND ms.month_year = ? 
-                     AND mmd.member_id = ?";
-$prev_balance_stmt = mysqli_prepare($conn, $prev_balance_sql);
-mysqli_stmt_bind_param($prev_balance_stmt, "isi", $house_id, $prev_year_month_with_day, $member_id);
-mysqli_stmt_execute($prev_balance_stmt);
-$prev_balance_result = mysqli_stmt_get_result($prev_balance_stmt);
-$prev_balance_data = mysqli_fetch_assoc($prev_balance_result);
-$previous_balance = $prev_balance_data['balance'] ?? 0;
-
-// Calculate adjusted balance (including previous balance)
-$adjusted_balance = $previous_balance + $balance;
-
-// Build member report array
-$member_report = [
-    'total_meals' => $member_total_meals,
-    'total_deposits' => $member_total_deposits,
-    'meal_rate' => $meal_rate,
-    'member_cost' => $member_cost,
-    'balance' => $balance,
-    'adjusted_balance' => $adjusted_balance,
-    'previous_balance' => $previous_balance,
-    'house_total_meals' => $monthly_total_meals,
-    'house_total_expenses' => $total_expenses
-];
-
-// Get detailed meal history
-$meals_sql = "SELECT * FROM meals 
-              WHERE member_id = ? 
-              AND house_id = ?
-              AND MONTH(meal_date) = ? 
-              AND YEAR(meal_date) = ? 
-              ORDER BY meal_date DESC";
-$stmt = mysqli_prepare($conn, $meals_sql);
-mysqli_stmt_bind_param($stmt, "iiii", $member_id, $house_id, $month, $year);
-mysqli_stmt_execute($stmt);
-$meals_result = mysqli_stmt_get_result($stmt);
-$meals = mysqli_fetch_all($meals_result, MYSQLI_ASSOC);
-
-// Get detailed deposit history
-$deposits_sql = "SELECT * FROM deposits 
-                 WHERE member_id = ? 
-                 AND house_id = ?
-                 AND MONTH(deposit_date) = ? 
-                 AND YEAR(deposit_date) = ? 
-                 ORDER BY deposit_date DESC";
-$stmt = mysqli_prepare($conn, $deposits_sql);
-mysqli_stmt_bind_param($stmt, "iiii", $member_id, $house_id, $month, $year);
-mysqli_stmt_execute($stmt);
-$deposits_result = mysqli_stmt_get_result($stmt);
-$deposits = mysqli_fetch_all($deposits_result, MYSQLI_ASSOC);
-
-// Get all expenses for the house for the month
-$expenses_list_sql = "SELECT e.*, u.username as added_by 
-                      FROM expenses e 
-                      LEFT JOIN users u ON e.created_by = u.user_id
-                      WHERE e.house_id = ?
-                      AND MONTH(e.expense_date) = ? 
-                      AND YEAR(e.expense_date) = ?
-                      ORDER BY e.expense_date ASC";
-$expenses_list_stmt = mysqli_prepare($conn, $expenses_list_sql);
-mysqli_stmt_bind_param($expenses_list_stmt, "iii", $house_id, $month, $year);
-mysqli_stmt_execute($expenses_list_stmt);
-$expenses_list_result = mysqli_stmt_get_result($expenses_list_stmt);
-$expenses_list = mysqli_fetch_all($expenses_list_result, MYSQLI_ASSOC);
-
-// Get category totals for expenses
-$category_totals = [];
 $category_colors = [
     'Rice' => 'primary',
     'Fish' => 'info',
@@ -228,28 +96,314 @@ $category_colors = [
     'Vegetables' => 'success',
     'Spices' => 'warning',
     'Oil' => 'purple',
-    'Food' => 'orange',
+    'food' => 'orange',
     'Others' => 'secondary'
 ];
 
-foreach ($expenses_list as $expense) {
-    $category = $expense['category'];
-    if (!isset($category_totals[$category])) {
-        $category_totals[$category] = 0;
+if ($view_type === 'yearly') {
+    // YEARLY REPORT CALCULATIONS
+    $yearly_reports = [];
+    $yearly_totals = [
+        'member_meals' => 0,
+        'house_meals' => 0,
+        'member_deposits' => 0,
+        'house_expenses' => 0,
+        'member_cost' => 0,
+        'balance' => 0
+    ];
+    
+    // Get data for all months in the year
+    for ($current_month = 1; $current_month <= 12; $current_month++) {
+        // Get member's total meals for the month
+        $member_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as member_meals 
+                             FROM meals 
+                             WHERE member_id = ? 
+                             AND house_id = ?
+                             AND MONTH(meal_date) = ? 
+                             AND YEAR(meal_date) = ?";
+        $stmt = mysqli_prepare($conn, $member_meals_sql);
+        mysqli_stmt_bind_param($stmt, "iiii", $member_id, $house_id, $current_month, $year);
+        mysqli_stmt_execute($stmt);
+        $member_meals_result = mysqli_stmt_get_result($stmt);
+        $member_meals_data = mysqli_fetch_assoc($member_meals_result);
+        $member_meals = $member_meals_data['member_meals'] ?? 0;
+        
+        // Get total meals for all members in the house for the month
+        $total_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as total_meals 
+                            FROM meals 
+                            WHERE house_id = ? 
+                            AND MONTH(meal_date) = ? 
+                            AND YEAR(meal_date) = ?";
+        $stmt = mysqli_prepare($conn, $total_meals_sql);
+        mysqli_stmt_bind_param($stmt, "iii", $house_id, $current_month, $year);
+        mysqli_stmt_execute($stmt);
+        $total_meals_result = mysqli_stmt_get_result($stmt);
+        $total_meals_data = mysqli_fetch_assoc($total_meals_result);
+        $house_meals = $total_meals_data['total_meals'] ?? 0;
+        
+        // Get member's total deposits for the month
+        $member_deposits_sql = "SELECT COALESCE(SUM(amount), 0) as member_deposits 
+                                FROM deposits 
+                                WHERE member_id = ? 
+                                AND house_id = ?
+                                AND MONTH(deposit_date) = ? 
+                                AND YEAR(deposit_date) = ?";
+        $stmt = mysqli_prepare($conn, $member_deposits_sql);
+        mysqli_stmt_bind_param($stmt, "iiii", $member_id, $house_id, $current_month, $year);
+        mysqli_stmt_execute($stmt);
+        $member_deposits_result = mysqli_stmt_get_result($stmt);
+        $member_deposits_data = mysqli_fetch_assoc($member_deposits_result);
+        $member_deposits = $member_deposits_data['member_deposits'] ?? 0;
+        
+        // Get total expenses for the house for the month
+        $expenses_sql = "SELECT COALESCE(SUM(amount), 0) as total_expenses 
+                         FROM expenses 
+                         WHERE house_id = ? 
+                         AND MONTH(expense_date) = ? 
+                         AND YEAR(expense_date) = ?";
+        $stmt = mysqli_prepare($conn, $expenses_sql);
+        mysqli_stmt_bind_param($stmt, "iii", $house_id, $current_month, $year);
+        mysqli_stmt_execute($stmt);
+        $expenses_result = mysqli_stmt_get_result($stmt);
+        $expenses_data = mysqli_fetch_assoc($expenses_result);
+        $house_expenses = $expenses_data['total_expenses'] ?? 0;
+        
+        // Calculate meal rate
+        $meal_rate = 0;
+        if ($house_meals > 0) {
+            $meal_rate = $house_expenses / $house_meals;
+        }
+        
+        // Calculate member's cost and balance
+        $member_cost = $member_meals * $meal_rate;
+        $balance = $member_deposits - $member_cost;
+        
+        $yearly_reports[$current_month] = [
+            'month' => $current_month,
+            'month_name' => date('F', mktime(0, 0, 0, $current_month, 1)),
+            'year' => $year,
+            'member_meals' => $member_meals,
+            'house_meals' => $house_meals,
+            'member_deposits' => $member_deposits,
+            'house_expenses' => $house_expenses,
+            'meal_rate' => $meal_rate,
+            'member_cost' => $member_cost,
+            'balance' => $balance
+        ];
+        
+        // Add to yearly totals
+        $yearly_totals['member_meals'] += $member_meals;
+        $yearly_totals['house_meals'] += $house_meals;
+        $yearly_totals['member_deposits'] += $member_deposits;
+        $yearly_totals['house_expenses'] += $house_expenses;
+        $yearly_totals['member_cost'] += $member_cost;
+        $yearly_totals['balance'] += $balance;
     }
-    $category_totals[$category] += $expense['amount'];
+    
+    // Get yearly expense categories
+    $yearly_categories_sql = "
+        SELECT category, SUM(amount) as total 
+        FROM expenses 
+        WHERE house_id = ? 
+        AND YEAR(expense_date) = ?
+        GROUP BY category 
+        ORDER BY total DESC";
+    
+    $stmt = mysqli_prepare($conn, $yearly_categories_sql);
+    mysqli_stmt_bind_param($stmt, "ii", $house_id, $year);
+    mysqli_stmt_execute($stmt);
+    $yearly_cat_result = mysqli_stmt_get_result($stmt);
+    
+    while ($row = mysqli_fetch_assoc($yearly_cat_result)) {
+        $category_totals[$row['category']] = $row['total'];
+    }
+    
+    // Get previous year's ending balance
+    $prev_year = $year - 1;
+    $prev_year_end_date = $prev_year . '-12-01';
+    $prev_balance_sql = "SELECT mmd.balance 
+                         FROM monthly_summary ms
+                         JOIN monthly_member_details mmd ON ms.summary_id = mmd.summary_id
+                         WHERE ms.house_id = ? 
+                         AND ms.month_year = ? 
+                         AND mmd.member_id = ?";
+    $prev_balance_stmt = mysqli_prepare($conn, $prev_balance_sql);
+    mysqli_stmt_bind_param($prev_balance_stmt, "isi", $house_id, $prev_year_end_date, $member_id);
+    mysqli_stmt_execute($prev_balance_stmt);
+    $prev_balance_result = mysqli_stmt_get_result($prev_balance_stmt);
+    $prev_balance_data = mysqli_fetch_assoc($prev_balance_result);
+    $previous_balance = $prev_balance_data['balance'] ?? 0;
+    
+    // Calculate adjusted balance
+    $adjusted_balance = $previous_balance + $yearly_totals['balance'];
+    
+} else {
+    // MONTHLY REPORT CALCULATIONS (existing code)
+    // Get total meals for all members in the house for the month
+    $total_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as total_meals 
+                        FROM meals 
+                        WHERE house_id = ? 
+                        AND MONTH(meal_date) = ? 
+                        AND YEAR(meal_date) = ?";
+    $stmt = mysqli_prepare($conn, $total_meals_sql);
+    mysqli_stmt_bind_param($stmt, "iii", $house_id, $month, $year);
+    mysqli_stmt_execute($stmt);
+    $total_meals_result = mysqli_stmt_get_result($stmt);
+    $total_meals_data = mysqli_fetch_assoc($total_meals_result);
+    $house_total_meals = $total_meals_data['total_meals'] ?? 0;
+
+    // Get total expenses for the house for the month
+    $expenses_sql = "SELECT COALESCE(SUM(amount), 0) as total_expenses 
+                     FROM expenses 
+                     WHERE house_id = ? 
+                     AND MONTH(expense_date) = ? 
+                     AND YEAR(expense_date) = ?";
+    $stmt = mysqli_prepare($conn, $expenses_sql);
+    mysqli_stmt_bind_param($stmt, "iii", $house_id, $month, $year);
+    mysqli_stmt_execute($stmt);
+    $expenses_result = mysqli_stmt_get_result($stmt);
+    $expenses_data = mysqli_fetch_assoc($expenses_result);
+    $house_total_expenses = $expenses_data['total_expenses'] ?? 0;
+
+    // Get member's total meals for the month
+    $member_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as member_meals 
+                         FROM meals 
+                         WHERE member_id = ? 
+                         AND house_id = ?
+                         AND MONTH(meal_date) = ? 
+                         AND YEAR(meal_date) = ?";
+    $stmt = mysqli_prepare($conn, $member_meals_sql);
+    mysqli_stmt_bind_param($stmt, "iiii", $member_id, $house_id, $month, $year);
+    mysqli_stmt_execute($stmt);
+    $member_meals_result = mysqli_stmt_get_result($stmt);
+    $member_meals_data = mysqli_fetch_assoc($member_meals_result);
+    $member_total_meals = $member_meals_data['member_meals'] ?? 0;
+
+    // Get member's total deposits for the month
+    $member_deposits_sql = "SELECT COALESCE(SUM(amount), 0) as member_deposits 
+                            FROM deposits 
+                            WHERE member_id = ? 
+                            AND house_id = ?
+                            AND MONTH(deposit_date) = ? 
+                            AND YEAR(deposit_date) = ?";
+    $stmt = mysqli_prepare($conn, $member_deposits_sql);
+    mysqli_stmt_bind_param($stmt, "iiii", $member_id, $house_id, $month, $year);
+    mysqli_stmt_execute($stmt);
+    $member_deposits_result = mysqli_stmt_get_result($stmt);
+    $member_deposits_data = mysqli_fetch_assoc($member_deposits_result);
+    $member_total_deposits = $member_deposits_data['member_deposits'] ?? 0;
+
+    // Calculate meal rate
+    $meal_rate = 0;
+    if ($house_total_meals > 0) {
+        $meal_rate = $house_total_expenses / $house_total_meals;
+    }
+
+    // Calculate member's cost
+    $member_cost = $member_total_meals * $meal_rate;
+
+    // Calculate balance
+    $balance = $member_total_deposits - $member_cost;
+
+    // Get previous month's balance
+    $prev_year_month = date('Y-m', strtotime($year . '-' . sprintf('%02d', $month) . '-01 -1 month'));
+    $prev_year_month_with_day = $prev_year_month . '-01';
+
+    $prev_balance_sql = "SELECT mmd.balance 
+                         FROM monthly_summary ms
+                         JOIN monthly_member_details mmd ON ms.summary_id = mmd.summary_id
+                         WHERE ms.house_id = ? 
+                         AND ms.month_year = ? 
+                         AND mmd.member_id = ?";
+    $prev_balance_stmt = mysqli_prepare($conn, $prev_balance_sql);
+    mysqli_stmt_bind_param($prev_balance_stmt, "isi", $house_id, $prev_year_month_with_day, $member_id);
+    mysqli_stmt_execute($prev_balance_stmt);
+    $prev_balance_result = mysqli_stmt_get_result($prev_balance_stmt);
+    $prev_balance_data = mysqli_fetch_assoc($prev_balance_result);
+    $previous_balance = $prev_balance_data['balance'] ?? 0;
+
+    // Calculate adjusted balance
+    $adjusted_balance = $previous_balance + $balance;
+
+    // Build member report array
+    $monthly_report = [
+        'total_meals' => $member_total_meals,
+        'total_deposits' => $member_total_deposits,
+        'meal_rate' => $meal_rate,
+        'member_cost' => $member_cost,
+        'balance' => $balance,
+        'adjusted_balance' => $adjusted_balance,
+        'previous_balance' => $previous_balance,
+        'house_total_meals' => $house_total_meals,
+        'house_total_expenses' => $house_total_expenses
+    ];
+
+    // Get detailed meal history
+    $meals_sql = "SELECT * FROM meals 
+                  WHERE member_id = ? 
+                  AND house_id = ?
+                  AND MONTH(meal_date) = ? 
+                  AND YEAR(meal_date) = ? 
+                  ORDER BY meal_date DESC";
+    $stmt = mysqli_prepare($conn, $meals_sql);
+    mysqli_stmt_bind_param($stmt, "iiii", $member_id, $house_id, $month, $year);
+    mysqli_stmt_execute($stmt);
+    $meals_result = mysqli_stmt_get_result($stmt);
+    $meals = mysqli_fetch_all($meals_result, MYSQLI_ASSOC);
+
+    // Get detailed deposit history
+    $deposits_sql = "SELECT * FROM deposits 
+                     WHERE member_id = ? 
+                     AND house_id = ?
+                     AND MONTH(deposit_date) = ? 
+                     AND YEAR(deposit_date) = ? 
+                     ORDER BY deposit_date DESC";
+    $stmt = mysqli_prepare($conn, $deposits_sql);
+    mysqli_stmt_bind_param($stmt, "iiii", $member_id, $house_id, $month, $year);
+    mysqli_stmt_execute($stmt);
+    $deposits_result = mysqli_stmt_get_result($stmt);
+    $deposits = mysqli_fetch_all($deposits_result, MYSQLI_ASSOC);
+
+    // Get all expenses for the house for the month
+    $expenses_list_sql = "SELECT e.*, u.username as added_by 
+                          FROM expenses e 
+                          LEFT JOIN users u ON e.created_by = u.user_id
+                          WHERE e.house_id = ?
+                          AND MONTH(e.expense_date) = ? 
+                          AND YEAR(e.expense_date) = ?
+                          ORDER BY e.expense_date ASC";
+    $expenses_list_stmt = mysqli_prepare($conn, $expenses_list_sql);
+    mysqli_stmt_bind_param($expenses_list_stmt, "iii", $house_id, $month, $year);
+    mysqli_stmt_execute($expenses_list_stmt);
+    $expenses_list_result = mysqli_stmt_get_result($expenses_list_stmt);
+    $expenses_list = mysqli_fetch_all($expenses_list_result, MYSQLI_ASSOC);
+
+    // Get category totals for expenses
+    foreach ($expenses_list as $expense) {
+        $category = $expense['category'];
+        if (!isset($category_totals[$category])) {
+            $category_totals[$category] = 0;
+        }
+        $category_totals[$category] += $expense['amount'];
+    }
 }
 
-// Calculate percentage
+// Calculate member percentage for display
 $member_percentage = 0;
-if ($monthly_total_meals > 0) {
-    $member_percentage = ($member_total_meals / $monthly_total_meals) * 100;
+if ($view_type === 'yearly') {
+    if ($yearly_totals['house_meals'] > 0) {
+        $member_percentage = ($yearly_totals['member_meals'] / $yearly_totals['house_meals']) * 100;
+    }
+} else {
+    if ($monthly_report['house_total_meals'] > 0) {
+        $member_percentage = ($monthly_report['total_meals'] / $monthly_report['house_total_meals']) * 100;
+    }
 }
 
-// Close statement
-if (isset($stmt)) mysqli_stmt_close($stmt);
-if (isset($expenses_list_stmt)) mysqli_stmt_close($expenses_list_stmt);
-if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
+// Close statement if still open
+if (isset($stmt) && $stmt) mysqli_stmt_close($stmt);
+if (isset($expenses_list_stmt) && $expenses_list_stmt) mysqli_stmt_close($expenses_list_stmt);
+if (isset($prev_balance_stmt) && $prev_balance_stmt) mysqli_stmt_close($prev_balance_stmt);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -257,7 +411,7 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="../image/icon.png">
-    <title>Member Report - <?php echo htmlspecialchars($member['name']); ?> - <?php echo $month_name . ' ' . $year; ?></title>
+    <title><?php echo $view_type === 'yearly' ? 'Yearly' : 'Monthly'; ?> Report - <?php echo htmlspecialchars($member['name']); ?> - <?php echo $view_type === 'yearly' ? $year : $month_name . ' ' . $year; ?></title>
     <style>
         /* PDF Styles - Exactly like your existing PDF */
         * {
@@ -551,17 +705,47 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
             vertical-align: baseline;
             border-radius: 3px;
         }
+        
+        /* Monthly breakdown table */
+        .monthly-breakdown {
+            margin: 20px 0;
+        }
+        
+        .breakdown-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .breakdown-item {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+        }
+        
+        .breakdown-label {
+            font-size: 9px;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+        
+        .breakdown-value {
+            font-size: 13px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <!-- Header -->
     <div class="header">
-        <h1>Member Report</h1>
+        <h1><?php echo $view_type === 'yearly' ? 'Yearly Report' : 'Monthly Report'; ?></h1>
         <div class="member-info">
             <?php echo htmlspecialchars($member['name']); ?> - <?php echo htmlspecialchars($member['house_name']); ?>
         </div>
         <div class="report-period">
-            <?php echo $month_name . ' ' . $year; ?>
+            <?php echo $view_type === 'yearly' ? $year : $month_name . ' ' . $year; ?>
         </div>
         <div style="font-size: 11px; color: #7f8c8d; margin-top: 5px;">
             Generated on: <?php echo date('d/m/Y h:i A'); ?>
@@ -601,27 +785,210 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
         </div>
     </div>
 
+    <?php if ($view_type === 'yearly'): ?>
+    <!-- YEARLY REPORT CONTENT -->
+    
+    <!-- Yearly Summary -->
+    <div class="summary-section">
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="summary-label">Total Meals</div>
+                <div class="summary-value"><?php echo number_format($yearly_totals['member_meals'], 2); ?></div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Total Deposits</div>
+                <div class="summary-value">৳ <?php echo number_format($yearly_totals['member_deposits'], 2); ?></div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Total Cost</div>
+                <div class="summary-value">৳ <?php echo number_format($yearly_totals['member_cost'], 2); ?></div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Year Balance</div>
+                <div class="summary-value <?php echo $yearly_totals['balance'] >= 0 ? 'balance-positive' : 'balance-negative'; ?>">
+                    ৳ <?php echo number_format($yearly_totals['balance'], 2); ?>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <?php if ($previous_balance != 0): ?>
+    <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h6 style="margin: 0; color: #2c3e50;">Previous Year Carry Forward</h6>
+                <small style="color: #7f8c8d;">From <?php echo $prev_year; ?></small>
+            </div>
+            <div style="text-align: right;">
+                <h4 style="margin: 0; color: <?php echo $previous_balance >= 0 ? '#27ae60' : '#e74c3c'; ?>;">
+                    ৳ <?php echo number_format($previous_balance, 2); ?>
+                </h4>
+                <small style="color: #7f8c8d;">
+                    <?php echo $previous_balance >= 0 ? 'Credit' : 'Due'; ?> from previous year
+                </small>
+            </div>
+        </div>
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #dee2e6; text-align: center;">
+            <strong>Overall Balance:</strong>
+            <span style="color: <?php echo $adjusted_balance >= 0 ? '#27ae60' : '#e74c3c'; ?>; font-weight: bold; font-size: 16px;">
+                ৳ <?php echo number_format($adjusted_balance, 2); ?>
+            </span>
+            (<?php echo $adjusted_balance >= 0 ? 'IN CREDIT' : 'DUE'; ?>)
+        </div>
+    </div>
+    <?php endif; ?>
+    
+    <!-- House Summary -->
+    <div class="section-title">House Summary for <?php echo $year; ?></div>
+    <div class="breakdown-grid">
+        <div class="breakdown-item">
+            <div class="breakdown-label">Total House Meals</div>
+            <div class="breakdown-value"><?php echo number_format($yearly_totals['house_meals'], 2); ?></div>
+        </div>
+        <div class="breakdown-item">
+            <div class="breakdown-label">Total House Expenses</div>
+            <div class="breakdown-value">৳ <?php echo number_format($yearly_totals['house_expenses'], 2); ?></div>
+        </div>
+        <div class="breakdown-item">
+            <div class="breakdown-label">Average Meal Rate</div>
+            <div class="breakdown-value">৳ <?php echo number_format($yearly_totals['house_meals'] > 0 ? $yearly_totals['house_expenses'] / $yearly_totals['house_meals'] : 0, 2); ?></div>
+        </div>
+        <div class="breakdown-item">
+            <div class="breakdown-label">Your Share</div>
+            <div class="breakdown-value"><?php echo number_format($member_percentage, 1); ?>%</div>
+        </div>
+    </div>
+    
+    <!-- Monthly Breakdown Table -->
+    <div class="section-title">Monthly Breakdown for <?php echo $year; ?></div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Month</th>
+                <th class="text-right">My Meals</th>
+                <th class="text-right">My Deposits</th>
+                <th class="text-right">Meal Rate</th>
+                <th class="text-right">My Cost</th>
+                <th class="text-right">Monthly Balance</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php for ($m = 1; $m <= 12; $m++): 
+                $report = $yearly_reports[$m] ?? null;
+            ?>
+            <tr>
+                <td><?php echo date('F', mktime(0, 0, 0, $m, 1)); ?></td>
+                <td class="text-right"><?php echo $report ? number_format($report['member_meals'], 2) : '0.00'; ?></td>
+                <td class="text-right"><?php echo $report ? number_format($report['member_deposits'], 2) : '0.00'; ?></td>
+                <td class="text-right">৳ <?php echo $report ? number_format($report['meal_rate'], 2) : '0.00'; ?></td>
+                <td class="text-right">৳ <?php echo $report ? number_format($report['member_cost'], 2) : '0.00'; ?></td>
+                <td class="text-right <?php echo $report && $report['balance'] >= 0 ? 'text-success' : 'text-danger'; ?>">
+                    ৳ <?php echo $report ? number_format($report['balance'], 2) : '0.00'; ?>
+                </td>
+            </tr>
+            <?php endfor; ?>
+            <tr class="total-row">
+                <td><strong>Yearly Totals:</strong></td>
+                <td class="text-right"><strong><?php echo number_format($yearly_totals['member_meals'], 2); ?></strong></td>
+                <td class="text-right"><strong>৳ <?php echo number_format($yearly_totals['member_deposits'], 2); ?></strong></td>
+                <td class="text-right">-</td>
+                <td class="text-right"><strong>৳ <?php echo number_format($yearly_totals['member_cost'], 2); ?></strong></td>
+                <td class="text-right <?php echo $yearly_totals['balance'] >= 0 ? 'text-success' : 'text-danger'; ?>">
+                    <strong>৳ <?php echo number_format($yearly_totals['balance'], 2); ?></strong>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <!-- Yearly Expense Categories -->
+    <?php if (!empty($category_totals)): ?>
+    <div class="section-title">Yearly Expense Categories - <?php echo $year; ?></div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Category</th>
+                <th class="text-right">Amount</th>
+                <th>Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($category_totals as $category => $total): 
+                $percentage = ($yearly_totals['house_expenses'] > 0) ? ($total / $yearly_totals['house_expenses']) * 100 : 0;
+                $category_color = $category_colors[$category] ?? 'secondary';
+            ?>
+            <tr>
+                <td>
+                    <span class="badge badge-<?php echo $category_color; ?>">
+                        <?php echo $category; ?>
+                    </span>
+                </td>
+                <td class="text-right">৳ <?php echo number_format($total, 2); ?></td>
+                <td>
+                    <div style="display: flex; align-items: center;">
+                        <div style="flex-grow: 1; height: 15px; background: #ecf0f1; border-radius: 3px; overflow: hidden;">
+                            <div style="height: 100%; width: <?php echo $percentage; ?>%; background: #<?php 
+                                switch($category_color) {
+                                    case 'primary': echo '007bff'; break;
+                                    case 'info': echo '17a2b8'; break;
+                                    case 'danger': echo 'dc3545'; break;
+                                    case 'success': echo '28a745'; break;
+                                    case 'warning': echo 'ffc107'; break;
+                                    case 'purple': echo '6f42c1'; break;
+                                    case 'orange': echo 'fd7e14'; break;
+                                    default: echo '6c757d'; break;
+                                }
+                            ?>;"></div>
+                        </div>
+                        <span style="margin-left: 8px; min-width: 40px; text-align: right;"><?php echo number_format($percentage, 1); ?>%</span>
+                    </div>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            <tr class="total-row">
+                <td><strong>Total Expenses</strong></td>
+                <td class="text-right"><strong>৳ <?php echo number_format($yearly_totals['house_expenses'], 2); ?></strong></td>
+                <td><strong>100%</strong></td>
+            </tr>
+        </tbody>
+    </table>
+    <?php endif; ?>
+    
+    <!-- Progress Bar -->
+    <div style="margin: 20px 0;">
+        <div class="progress">
+            <div class="progress-bar" style="width: <?php echo $member_percentage; ?>%;">
+                <?php echo htmlspecialchars($member['name']); ?>: <?php echo number_format($member_percentage, 1); ?>%
+            </div>
+        </div>
+        <small style="color: #7f8c8d;">
+            <?php echo htmlspecialchars($member['name']); ?> consumed <?php echo number_format($yearly_totals['member_meals'], 2); ?> out of <?php echo number_format($yearly_totals['house_meals'], 2); ?> total house meals
+        </small>
+    </div>
+    
+    <?php else: ?>
+    <!-- MONTHLY REPORT CONTENT (existing code) -->
+    
     <!-- Summary Section -->
     <div class="summary-section">
         <div class="summary-grid">
             <div class="summary-item">
                 <div class="summary-label">Total Meals</div>
-                <div class="summary-value"><?php echo number_format($member_report['total_meals'], 2); ?></div>
+                <div class="summary-value"><?php echo number_format($monthly_report['total_meals'], 2); ?></div>
             </div>
             <div class="summary-item">
                 <div class="summary-label">Total Deposits</div>
-                <div class="summary-value">৳ <?php echo number_format($member_report['total_deposits'], 2); ?></div>
+                <div class="summary-value">৳ <?php echo number_format($monthly_report['total_deposits'], 2); ?></div>
             </div>
             <div class="summary-item">
                 <div class="summary-label">This Month Balance</div>
-                <div class="summary-value <?php echo $member_report['balance'] >= 0 ? 'balance-positive' : 'balance-negative'; ?>">
-                    ৳ <?php echo number_format($member_report['balance'], 2); ?>
+                <div class="summary-value <?php echo $monthly_report['balance'] >= 0 ? 'balance-positive' : 'balance-negative'; ?>">
+                    ৳ <?php echo number_format($monthly_report['balance'], 2); ?>
                 </div>
             </div>
             <div class="summary-item">
                 <div class="summary-label">Overall Balance</div>
-                <div class="summary-value <?php echo $member_report['adjusted_balance'] >= 0 ? 'balance-positive' : 'balance-negative'; ?>">
-                    ৳ <?php echo number_format($member_report['adjusted_balance'], 2); ?>
+                <div class="summary-value <?php echo $monthly_report['adjusted_balance'] >= 0 ? 'balance-positive' : 'balance-negative'; ?>">
+                    ৳ <?php echo number_format($monthly_report['adjusted_balance'], 2); ?>
                 </div>
             </div>
         </div>
@@ -633,44 +1000,44 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
         <div style="flex: 1; min-width: 200px; padding: 0 10px;">
             <div class="financial-card card-info">
                 <h6>Meal Rate</h6>
-                <h3 class="text-info">৳ <?php echo number_format($member_report['meal_rate'], 2); ?></h3>
+                <h3 class="text-info">৳ <?php echo number_format($monthly_report['meal_rate'], 2); ?></h3>
                 <small>
-                    Based on ৳<?php echo number_format($member_report['house_total_expenses'], 2); ?> expenses ÷ <?php echo number_format($member_report['house_total_meals'], 2); ?> total house meals
+                    Based on ৳<?php echo number_format($monthly_report['house_total_expenses'], 2); ?> expenses ÷ <?php echo number_format($monthly_report['house_total_meals'], 2); ?> total house meals
                 </small>
             </div>
         </div>
         <div style="flex: 1; min-width: 200px; padding: 0 10px;">
             <div class="financial-card card-warning">
                 <h6>Your Meals Cost</h6>
-                <h3 class="text-warning">৳ <?php echo number_format($member_report['member_cost'], 2); ?></h3>
+                <h3 class="text-warning">৳ <?php echo number_format($monthly_report['member_cost'], 2); ?></h3>
                 <small>
-                    <?php echo number_format($member_report['total_meals'], 2); ?> meals × ৳<?php echo number_format($member_report['meal_rate'], 2); ?> per meal
+                    <?php echo number_format($monthly_report['total_meals'], 2); ?> meals × ৳<?php echo number_format($monthly_report['meal_rate'], 2); ?> per meal
                 </small>
             </div>
         </div>
         <div style="flex: 1; min-width: 200px; padding: 0 10px;">
             <div class="financial-card card-success">
                 <h6>Your Deposits</h6>
-                <h3 class="text-success">৳ <?php echo number_format($member_report['total_deposits'], 2); ?></h3>
+                <h3 class="text-success">৳ <?php echo number_format($monthly_report['total_deposits'], 2); ?></h3>
                 <small>
                     Total deposited this month
                 </small>
             </div>
         </div>
         <div style="flex: 1; min-width: 200px; padding: 0 10px;">
-            <div class="financial-card <?php echo $member_report['balance'] >= 0 ? 'card-primary' : 'card-danger'; ?>">
+            <div class="financial-card <?php echo $monthly_report['balance'] >= 0 ? 'card-primary' : 'card-danger'; ?>">
                 <h6>Monthly Balance</h6>
-                <h3 class="<?php echo $member_report['balance'] >= 0 ? 'text-info' : 'text-danger'; ?>">
-                    ৳ <?php echo number_format($member_report['balance'], 2); ?>
+                <h3 class="<?php echo $monthly_report['balance'] >= 0 ? 'text-info' : 'text-danger'; ?>">
+                    ৳ <?php echo number_format($monthly_report['balance'], 2); ?>
                 </h3>
                 <small>
-                    <?php echo $member_report['balance'] >= 0 ? 'Deposits exceed costs' : 'Costs exceed deposits'; ?>
+                    <?php echo $monthly_report['balance'] >= 0 ? 'Deposits exceed costs' : 'Costs exceed deposits'; ?>
                 </small>
             </div>
         </div>
     </div>
 
-    <?php if ($member_report['previous_balance'] != 0): ?>
+    <?php if ($monthly_report['previous_balance'] != 0): ?>
     <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
@@ -678,20 +1045,20 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
                 <small style="color: #7f8c8d;">From previous month</small>
             </div>
             <div style="text-align: right;">
-                <h4 style="margin: 0; color: <?php echo $member_report['previous_balance'] >= 0 ? '#27ae60' : '#e74c3c'; ?>;">
-                    ৳ <?php echo number_format($member_report['previous_balance'], 2); ?>
+                <h4 style="margin: 0; color: <?php echo $monthly_report['previous_balance'] >= 0 ? '#27ae60' : '#e74c3c'; ?>;">
+                    ৳ <?php echo number_format($monthly_report['previous_balance'], 2); ?>
                 </h4>
                 <small style="color: #7f8c8d;">
-                    <?php echo $member_report['previous_balance'] >= 0 ? 'Credit' : 'Due'; ?> from previous month
+                    <?php echo $monthly_report['previous_balance'] >= 0 ? 'Credit' : 'Due'; ?> from previous month
                 </small>
             </div>
         </div>
         <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #dee2e6; text-align: center;">
             <strong>Overall Balance:</strong>
-            <span style="color: <?php echo $member_report['adjusted_balance'] >= 0 ? '#27ae60' : '#e74c3c'; ?>; font-weight: bold; font-size: 16px;">
-                ৳ <?php echo number_format($member_report['adjusted_balance'], 2); ?>
+            <span style="color: <?php echo $monthly_report['adjusted_balance'] >= 0 ? '#27ae60' : '#e74c3c'; ?>; font-weight: bold; font-size: 16px;">
+                ৳ <?php echo number_format($monthly_report['adjusted_balance'], 2); ?>
             </span>
-            (<?php echo $member_report['adjusted_balance'] >= 0 ? 'IN CREDIT' : 'DUE'; ?>)
+            (<?php echo $monthly_report['adjusted_balance'] >= 0 ? 'IN CREDIT' : 'DUE'; ?>)
         </div>
     </div>
     <?php endif; ?>
@@ -700,13 +1067,13 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
     <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 5px;">
         <h6 style="margin-bottom: 10px;">Calculation Formula:</h6>
         <div style="font-family: monospace; padding: 10px; background: white; border-radius: 3px; border: 1px solid #dee2e6;">
-            (<span style="color: #27ae60; font-weight: bold;">৳ <?php echo number_format($member_report['total_deposits'], 2); ?></span> Deposits) 
+            (<span style="color: #27ae60; font-weight: bold;">৳ <?php echo number_format($monthly_report['total_deposits'], 2); ?></span> Deposits) 
             - 
-            (<span style="color: #f39c12; font-weight: bold;"><?php echo number_format($member_report['total_meals'], 2); ?></span> Meals × 
-            <span style="color: #3498db; font-weight: bold;">৳ <?php echo number_format($member_report['meal_rate'], 2); ?></span> Rate) 
+            (<span style="color: #f39c12; font-weight: bold;"><?php echo number_format($monthly_report['total_meals'], 2); ?></span> Meals × 
+            <span style="color: #3498db; font-weight: bold;">৳ <?php echo number_format($monthly_report['meal_rate'], 2); ?></span> Rate) 
             = 
-            <span style="color: <?php echo $member_report['balance'] >= 0 ? '#3498db' : '#e74c3c'; ?>; font-weight: bold;">
-                ৳ <?php echo number_format($member_report['balance'], 2); ?>
+            <span style="color: <?php echo $monthly_report['balance'] >= 0 ? '#3498db' : '#e74c3c'; ?>; font-weight: bold;">
+                ৳ <?php echo number_format($monthly_report['balance'], 2); ?>
             </span>
         </div>
     </div>
@@ -730,7 +1097,7 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
                     <?php 
                     $total_daily_cost = 0;
                     foreach ($meals as $meal): 
-                        $daily_cost = $meal['meal_count'] * $member_report['meal_rate'];
+                        $daily_cost = $meal['meal_count'] * $monthly_report['meal_rate'];
                         $total_daily_cost += $daily_cost;
                     ?>
                     <tr>
@@ -778,12 +1145,12 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
                     <?php endforeach; ?>
                     <tr class="total-row">
                         <td colspan="2" class="text-right"><strong>Total:</strong></td>
-                        <td><strong>৳ <?php echo number_format($member_report['total_deposits'], 2); ?></strong></td>
+                        <td><strong>৳ <?php echo number_format($monthly_report['total_deposits'], 2); ?></strong></td>
                     </tr>
                 </tbody>
             </table>
             <div style="text-align: center; font-size: 10px; color: #7f8c8d; margin-top: 5px;">
-                <?php echo count($deposits); ?> deposits | Average per deposit: ৳ <?php echo count($deposits) > 0 ? number_format($member_report['total_deposits'] / count($deposits), 2) : '0.00'; ?>
+                <?php echo count($deposits); ?> deposits | Average per deposit: ৳ <?php echo count($deposits) > 0 ? number_format($monthly_report['total_deposits'] / count($deposits), 2) : '0.00'; ?>
             </div>
             <?php else: ?>
             <div style="text-align: center; padding: 20px; color: #7f8c8d; font-style: italic;">
@@ -798,15 +1165,15 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
     <div style="display: flex; flex-wrap: wrap; margin: 0 -10px; text-align: center;">
         <div style="flex: 1; min-width: 200px; padding: 0 10px;">
             <h6>Total House Meals</h6>
-            <h3 style="color: #27ae60;"><?php echo number_format($member_report['house_total_meals'], 2); ?></h3>
+            <h3 style="color: #27ae60;"><?php echo number_format($monthly_report['house_total_meals'], 2); ?></h3>
         </div>
         <div style="flex: 1; min-width: 200px; padding: 0 10px;">
             <h6>Total House Expenses</h6>
-            <h3 style="color: #f39c12;">৳ <?php echo number_format($member_report['house_total_expenses'], 2); ?></h3>
+            <h3 style="color: #f39c12;">৳ <?php echo number_format($monthly_report['house_total_expenses'], 2); ?></h3>
         </div>
         <div style="flex: 1; min-width: 200px; padding: 0 10px;">
             <h6>Average Meal Rate</h6>
-            <h3 style="color: #3498db;">৳ <?php echo number_format($member_report['meal_rate'], 2); ?></h3>
+            <h3 style="color: #3498db;">৳ <?php echo number_format($monthly_report['meal_rate'], 2); ?></h3>
         </div>
     </div>
     
@@ -818,7 +1185,7 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
             </div>
         </div>
         <small style="color: #7f8c8d;">
-            <?php echo htmlspecialchars($member['name']); ?> consumed <?php echo number_format($member_report['total_meals'], 2); ?> out of <?php echo number_format($member_report['house_total_meals'], 2); ?> total house meals
+            <?php echo htmlspecialchars($member['name']); ?> consumed <?php echo number_format($monthly_report['total_meals'], 2); ?> out of <?php echo number_format($monthly_report['house_total_meals'], 2); ?> total house meals
         </small>
     </div>
 
@@ -835,7 +1202,7 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
         </thead>
         <tbody>
             <?php foreach ($category_totals as $category => $total): 
-                $percentage = ($member_report['house_total_expenses'] > 0) ? ($total / $member_report['house_total_expenses']) * 100 : 0;
+                $percentage = ($monthly_report['house_total_expenses'] > 0) ? ($total / $monthly_report['house_total_expenses']) * 100 : 0;
                 $category_color = $category_colors[$category] ?? 'secondary';
             ?>
             <tr>
@@ -868,11 +1235,13 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
             <?php endforeach; ?>
             <tr class="total-row">
                 <td><strong>Total Expenses</strong></td>
-                <td class="text-right"><strong>৳ <?php echo number_format($member_report['house_total_expenses'], 2); ?></strong></td>
+                <td class="text-right"><strong>৳ <?php echo number_format($monthly_report['house_total_expenses'], 2); ?></strong></td>
                 <td><strong>100%</strong></td>
             </tr>
         </tbody>
     </table>
+    <?php endif; ?>
+    
     <?php endif; ?>
 
     <!-- Footer -->
@@ -880,7 +1249,7 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
         <p>Report generated by mealsa</p>
         <p>Member: <?php echo htmlspecialchars($member['name']); ?> | 
            House: <?php echo htmlspecialchars($member['house_name']); ?> | 
-           Month: <?php echo $month_name . ' ' . $year; ?></p>
+           <?php echo $view_type === 'yearly' ? 'Year: ' . $year : 'Month: ' . $month_name . ' ' . $year; ?></p>
         <p>Generated on: <?php echo date('d M Y, h:i A'); ?></p>
         <p>This is a computer-generated report. No signature required.</p>
     </div>
@@ -897,7 +1266,7 @@ if (isset($prev_balance_stmt)) mysqli_stmt_close($prev_balance_stmt);
             Tip: In the print dialog, select "Save as PDF" to download this report
         </p>
         <div style="margin-top: 15px;">
-            <a href="report.php?month=<?php echo $month; ?>&year=<?php echo $year; ?>" 
+            <a href="report.php?view=<?php echo $view_type; ?>&month=<?php echo $month; ?>&year=<?php echo $year; ?>" 
                style="padding: 8px 20px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; margin-right: 10px;">
                 Back to Report View
             </a>
