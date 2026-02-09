@@ -260,7 +260,12 @@ require_once '../includes/header.php';
         <div class="col-md-12 mb-4">
             <div class="card shadow-sm">
                 <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0"><i class="fas fa-key me-2"></i>Change Password</h5>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-key me-2"></i>Change Password</h5>
+                        <a href="../auth/forgot_password.php" class="btn btn-outline-dark btn-sm">
+                            <i class="fas fa-question-circle me-1"></i>Forgot Password?
+                        </a>
+                    </div>
                 </div>
                 <div class="card-body">
                     <form method="POST" id="passwordForm">
