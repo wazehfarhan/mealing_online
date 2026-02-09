@@ -494,7 +494,7 @@ $members_no_account = mysqli_fetch_all($members_no_account_result, MYSQLI_ASSOC)
                     </div>
                     
                     <div class="col-12">
-                        <div class="alert alert-info mt-3">
+                        <div class="alert-su alert-info mt-3">
                             <h6><i class="fas fa-info-circle me-2"></i>Report Includes:</h6>
                             <ul class="mb-0">
                                 <li>Member-wise meal count and cost</li>
