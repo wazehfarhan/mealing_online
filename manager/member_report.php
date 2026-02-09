@@ -338,7 +338,7 @@ require_once '../includes/header.php';
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-3">
-                                <div class="alert alert-info">
+                                <div class="alert-su alert-info">
                                     <h6>Meal Rate</h6>
                                     <h3 class="text-info"><?php echo $functions->formatCurrency($member_report['meal_rate']); ?></h3>
                                     <small class="text-muted">
@@ -347,7 +347,7 @@ require_once '../includes/header.php';
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <div class="alert alert-warning">
+                                <div class="alert-su alert-warning">
                                     <h6>Your Meals Cost</h6>
                                     <h3 class="text-warning"><?php echo $functions->formatCurrency($member_report['member_cost']); ?></h3>
                                     <small class="text-muted">
@@ -356,7 +356,7 @@ require_once '../includes/header.php';
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <div class="alert alert-success">
+                                <div class="alert-su alert-success">
                                     <h6>Your Deposits</h6>
                                     <h3 class="text-success"><?php echo $functions->formatCurrency($member_report['total_deposits']); ?></h3>
                                     <small class="text-muted">
@@ -365,7 +365,7 @@ require_once '../includes/header.php';
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <div class="alert alert-<?php echo $member_report['balance'] >= 0 ? 'primary' : 'danger'; ?>">
+                                <div class="alert-su alert-<?php echo $member_report['balance'] >= 0 ? 'primary' : 'danger'; ?>">
                                     <h6>Net Balance</h6>
                                     <h3><?php echo $functions->formatCurrency($member_report['balance']); ?></h3>
                                     <small>

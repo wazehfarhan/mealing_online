@@ -149,7 +149,7 @@ $yesterday = date('Y-m-d', strtotime('-1 day'));
                                 <div class="form-text">Select date for meal entry</div>
                             </div>
                             <div class="col-md-8">
-                                <div class="alert alert-info h-100 d-flex align-items-center">
+                                <div class="alert-su alert-info h-100 d-flex align-items-center">
                                     <div>
                                         <i class="fas fa-info-circle me-2"></i>
                                         <strong>Instructions:</strong> Enter meal count for each member. Use decimal values (e.g., 0.5, 1.0, 2.5). Empty or 0 values will be skipped.
