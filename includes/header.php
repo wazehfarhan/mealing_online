@@ -208,6 +208,12 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
             border: none;
             border-radius: 8px;
         }
+
+        .alert-su {          
+           border-radius: 8px;
+            padding: 1.5rem; /* Internal padding */
+            margin: 1rem 0; 
+        }
         
         .balance-positive {
             color: var(--success-color);

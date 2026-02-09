@@ -25,7 +25,9 @@
             // Auto-hide alerts after 5 seconds
             setTimeout(function() {
                 $('.alert').alert('close');
-            }, 5000);
+            }, 9000);
+
+            // Auto-hide only flash message alerts after 5 seconds (not informational alerts)
             
             // Confirm delete actions
             $('.confirm-delete').on('click', function() {
