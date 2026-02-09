@@ -328,7 +328,7 @@ $total_active_tokens = count($members_active_tokens);
                     </div>
                 </div>
                 <?php else: ?>
-                <div class="alert alert-success mb-4">
+                <div class="alert-su alert-success mb-4">
                     <i class="fas fa-check-circle me-2"></i>
                     Great! All members in your house already have accounts. No join links need to be generated.
                 </div>
@@ -476,7 +476,7 @@ $total_active_tokens = count($members_active_tokens);
                             <li>Regenerate links if they expire before the member creates an account.</li>
                         </ol>
                         
-                        <div class="alert alert-warning mt-3">
+                        <div class="alert-su alert-warning mt-3">
                             <h6><i class="fas fa-exclamation-triangle me-2"></i>Important Notes:</h6>
                             <ul class="mb-0">
                                 <li>Each join link is unique and can only be used once</li>

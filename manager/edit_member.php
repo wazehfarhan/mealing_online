@@ -329,7 +329,7 @@ require_once '../includes/header.php';
                         ?>
                         
                         <?php if ($user_account): ?>
-                        <div class="alert alert-success">
+                        <div class="alert-su alert-success">
                             <h6><i class="fas fa-check-circle me-2"></i>Account Created</h6>
                             <p class="mb-1"><strong>Username:</strong> <?php echo htmlspecialchars($user_account['username']); ?></p>
                             <p class="mb-1"><strong>Email:</strong> <?php echo htmlspecialchars($user_account['email']); ?></p>
@@ -343,7 +343,7 @@ require_once '../includes/header.php';
                             </p>
                         </div>
                         <?php elseif ($member['join_token'] && strtotime($member['token_expiry']) > time()): ?>
-                        <div class="alert alert-warning">
+                        <div class="alert-su alert-warning">
                             <h6><i class="fas fa-clock me-2"></i>Pending Account Creation</h6>
                             <p class="mb-2">Member has not created their account yet.</p>
                             <p class="mb-1">Invite link is active.</p>

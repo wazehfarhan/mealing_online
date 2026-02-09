@@ -315,7 +315,7 @@ require_once '../includes/header.php';
     <div class="card-body">
         <div class="row">
             <div class="col-md-6">
-                <div class="alert alert-info">
+                <div class="alert-su alert-info">
                     <h6><i class="fas fa-user-crown me-2"></i>Manager Privileges</h6>
                     <p class="mb-2">As the house manager, you can:</p>
                     <ul class="mb-0">
@@ -327,7 +327,7 @@ require_once '../includes/header.php';
                 </div>
             </div>
             <div class="col-md-6">
-                <div class="alert alert-warning">
+                <div class="alert-su alert-warning">
                     <h6><i class="fas fa-exclamation-triangle me-2"></i>Important</h6>
                     <p class="mb-2">House Code: <code><?php echo $house['house_code']; ?></code></p>
                     <p class="small mb-0">Share this code with members so they can join your house.</p>

@@ -645,7 +645,7 @@ if (isset($stmt)) {
                             <label for="remarks" class="form-label">Add Notes (Optional)</label>
                             <textarea class="form-control" id="remarks" rows="4" placeholder="Add any notes or remarks about this monthly report..."></textarea>
                         </div>
-                        <div class="alert alert-info">
+                        <div class="alert-su alert-info">
                             <h6><i class="fas fa-info-circle me-2"></i>Report Status</h6>
                             <ul class="mb-0 small">
                                 <li>Report generated on: <?php echo date('d M Y, h:i A'); ?></li>
