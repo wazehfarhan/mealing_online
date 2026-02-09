@@ -241,7 +241,7 @@ require_once '../includes/header.php';
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <div class="alert alert-info">
+                        <div class="alert-su alert-info">
                             <h6><i class="fas fa-lightbulb me-2"></i>Required Fields:</h6>
                             <ul class="mb-0">
                                 <li><strong>Full Name:</strong> Member's complete name</li>
@@ -249,7 +249,7 @@ require_once '../includes/header.php';
                             </ul>
                         </div>
                         
-                        <div class="alert alert-success">
+                        <div class="alert-su alert-success">
                             <h6><i class="fas fa-check-circle me-2"></i>Optional Fields:</h6>
                             <ul class="mb-0">
                                 <li><strong>Phone:</strong> For contact and reminders</li>
@@ -259,7 +259,7 @@ require_once '../includes/header.php';
                     </div>
                     
                     <div class="col-md-6">
-                        <div class="alert alert-warning">
+                        <div class="alert-su alert-warning">
                             <h6><i class="fas fa-exclamation-triangle me-2"></i>Important Notes:</h6>
                             <ul class="mb-0">
                                 <li>Join link is valid for <strong>7 days only</strong></li>
@@ -269,7 +269,7 @@ require_once '../includes/header.php';
                             </ul>
                         </div>
                         
-                        <div class="alert alert-primary">
+                        <div class="alert-su alert-primary">
                             <h6><i class="fas fa-question-circle me-2"></i>Need Help?</h6>
                             <p class="mb-0">If member doesn't have email, you can add them without it and share the join link manually.</p>
                         </div>
