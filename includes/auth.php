@@ -31,6 +31,26 @@ class Auth {
         return $this->security_questions;
     }
     
+    /**
+     * Refresh house code in session
+     * This ensures the session always has the latest house code
+     */
+    public function refreshHouseCode() {
+        if (isset($_SESSION['house_id']) && !empty($_SESSION['house_id'])) {
+            $sql = "SELECT house_code FROM houses WHERE house_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "i", $_SESSION['house_id']);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            $house = mysqli_fetch_assoc($result);
+            
+            if ($house) {
+                $_SESSION['house_code'] = $house['house_code'];
+            }
+            mysqli_stmt_close($stmt);
+        }
+    }
+    
     // Updated login method
     public function login($username, $password) {
         // Sanitize input
@@ -70,6 +90,11 @@ class Auth {
                     $_SESSION['house_id'] = $row['user_house_id'];
                     $_SESSION['house_name'] = $row['house_name'] ?? null;
                     $_SESSION['house_code'] = $row['house_code'] ?? null;
+                    
+                    // If house_code is not set in the row but house_id exists, fetch it
+                    if (empty($_SESSION['house_code']) && !empty($row['user_house_id'])) {
+                        $this->refreshHouseCode();
+                    }
                 } else {
                     // Clear house_id if user doesn't have one
                     unset($_SESSION['house_id']);
@@ -82,6 +107,7 @@ class Auth {
                 $update_stmt = mysqli_prepare($this->conn, $update_sql);
                 mysqli_stmt_bind_param($update_stmt, "i", $row['user_id']);
                 mysqli_stmt_execute($update_stmt);
+                mysqli_stmt_close($update_stmt);
                 
                 return true;
             }
@@ -140,6 +166,9 @@ class Auth {
                 $_SESSION['house_id'] = $house_info['house_id'];
                 $_SESSION['house_name'] = $house_info['house_name'] ?? null;
                 $_SESSION['house_code'] = $house_info['house_code'] ?? null;
+                
+                // Refresh house code
+                $this->refreshHouseCode();
             } else {
                 // No house found, redirect to setup
                 if ($_SESSION['role'] === 'manager') {
@@ -277,7 +306,9 @@ class Auth {
             
             // Update session
             $_SESSION['house_id'] = $new_house_id;
+            $_SESSION['house_code'] = $house_code;
             $_SESSION['member_id'] = $member_id;
+            $_SESSION['house_name'] = $house_name;
             
             return [
                 'success' => true,
@@ -378,7 +409,11 @@ class Auth {
             
             // Update session
             $_SESSION['house_id'] = $house['house_id'];
+            $_SESSION['house_name'] = $house['house_name'];
             $_SESSION['member_id'] = $member_id;
+            
+            // Refresh house code
+            $this->refreshHouseCode();
             
             return [
                 'success' => true,
@@ -546,7 +581,7 @@ class Auth {
     
     public function getCurrentUser() {
         if ($this->isLoggedIn()) {
-            $sql = "SELECT u.*, m.name as member_name, h.house_name 
+            $sql = "SELECT u.*, m.name as member_name, h.house_name, h.house_code 
                     FROM users u 
                     LEFT JOIN members m ON u.member_id = m.member_id 
                     LEFT JOIN houses h ON u.house_id = h.house_id 
@@ -828,6 +863,9 @@ class Auth {
         }
         if (isset($userData['house_name'])) {
             $_SESSION['house_name'] = $userData['house_name'];
+        }
+        if (isset($userData['house_code'])) {
+            $_SESSION['house_code'] = $userData['house_code'];
         }
         if (isset($userData['full_name'])) {
             $_SESSION['full_name'] = $userData['full_name'];
@@ -1134,6 +1172,102 @@ class Auth {
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "s", $email);
         
+        return mysqli_stmt_execute($stmt);
+    }
+    
+    /**
+     * Get member's current house status
+     */
+    public function getMemberStatus($member_id) {
+        $sql = "SELECT house_status, requested_house_id, leave_request_date, join_request_date 
+                FROM members WHERE member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $member_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        return mysqli_fetch_assoc($result);
+    }
+    
+    /**
+     * Update member's house after transfer approval
+     */
+    public function updateMemberHouse($member_id, $new_house_id) {
+        $sql = "UPDATE members SET house_id = ?, house_status = 'active', 
+                requested_house_id = NULL, join_request_date = NULL 
+                WHERE member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "ii", $new_house_id, $member_id);
+        return mysqli_stmt_execute($stmt);
+    }
+    
+    /**
+     * Update user's house after transfer approval
+     */
+    public function updateUserHouse($member_id, $new_house_id) {
+        $sql = "UPDATE users SET house_id = ? WHERE member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "ii", $new_house_id, $member_id);
+        return mysqli_stmt_execute($stmt);
+    }
+    
+    /**
+     * Archive member when leaving house
+     */
+    public function archiveMember($member_id, $archived_by) {
+        $sql = "INSERT INTO member_archive (member_id, name, email, phone, original_house_id, 
+                total_deposits, total_meals, archived_at, archived_by)
+                SELECT m.member_id, m.name, m.email, m.phone, m.house_id,
+                       (SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE member_id = m.member_id),
+                       (SELECT COALESCE(SUM(meal_count), 0) FROM meals WHERE member_id = m.member_id),
+                       NOW(), ?
+                FROM members m
+                WHERE m.member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "ii", $archived_by, $member_id);
+        return mysqli_stmt_execute($stmt);
+    }
+    
+    /**
+     * Log house transfer action
+     */
+    public function logHouseTransfer($member_id, $from_house_id, $to_house_id, $action, $performed_by, $notes = '') {
+        $sql = "INSERT INTO house_transfers_log 
+                (member_id, from_house_id, to_house_id, action, performed_by, performed_at, notes)
+                VALUES (?, ?, ?, ?, ?, NOW(), ?)";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "iiisss", $member_id, $from_house_id, $to_house_id, $action, $performed_by, $notes);
+        return mysqli_stmt_execute($stmt);
+    }
+    
+    /**
+     * Check if user is viewing history
+     */
+    public function isViewingHistory($member_id) {
+        $sql = "SELECT is_viewing_history, history_house_id FROM members WHERE member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $member_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        return mysqli_fetch_assoc($result);
+    }
+    
+    /**
+     * Set history view mode
+     */
+    public function setHistoryView($member_id, $house_id) {
+        $sql = "UPDATE members SET is_viewing_history = 1, history_house_id = ? WHERE member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "ii", $house_id, $member_id);
+        return mysqli_stmt_execute($stmt);
+    }
+    
+    /**
+     * Clear history view mode
+     */
+    public function clearHistoryView($member_id) {
+        $sql = "UPDATE members SET is_viewing_history = 0, history_house_id = NULL WHERE member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $member_id);
         return mysqli_stmt_execute($stmt);
     }
 }

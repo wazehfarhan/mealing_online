@@ -40,6 +40,28 @@ $_SESSION['house_id'] = $house_id; // Ensure session has it
 $message = '';
 $error = '';
 
+// Handle house join status toggle
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_join_status'])) {
+    $new_status = isset($_POST['is_open_for_join']) ? 1 : 0;
+    
+    $sql = "UPDATE houses SET is_open_for_join = ? WHERE house_id = ?";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "ii", $new_status, $house_id);
+    
+    if (mysqli_stmt_execute($stmt)) {
+        $message = "House join status updated successfully!";
+        // Refresh house data
+        $sql = "SELECT * FROM houses WHERE house_id = ?";
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $house_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        $house = mysqli_fetch_assoc($result);
+    } else {
+        $error = "Failed to update join status: " . mysqli_error($conn);
+    }
+}
+
 // Fetch house details FIRST
 $sql = "SELECT * FROM houses WHERE house_id = ?";
 $stmt = mysqli_prepare($conn, $sql);
@@ -260,6 +282,24 @@ require_once '../includes/header.php';
                                <?php echo ($house['is_active'] ?? 1) ? 'checked' : ''; ?>>
                         <label class="form-check-label" for="is_active">Active House</label>
                     </div>
+                    
+                    <!-- House Join Status Toggle (Manager Only) -->
+                    <?php if ($_SESSION['role'] === 'manager'): ?>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="is_open_for_join" name="is_open_for_join" 
+                               <?php echo ($house['is_open_for_join'] ?? 1) ? 'checked' : ''; ?>
+                               onchange="document.getElementById('joinToggleForm').submit()">
+                        <label class="form-check-label" for="is_open_for_join">
+                            <strong>Open for New Members</strong>
+                            <br><small class="text-muted">Allow members to request joining this house by house code</small>
+                        </label>
+                    </div>
+                    
+                    <form method="POST" action="" id="joinToggleForm" style="display:none;">
+                        <input type="hidden" name="toggle_join_status" value="1">
+                        <input type="hidden" name="is_open_for_join" value="<?php echo ($house['is_open_for_join'] ?? 1) ? '0' : '1'; ?>">
+                    </form>
+                    <?php endif; ?>
                     
                     <button type="submit" name="update_house" class="btn btn-primary">
                         <i class="fas fa-save me-2"></i> Update House

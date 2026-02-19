@@ -1230,6 +1230,80 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                         </div>
                     </div>
                 </div>
+                
+                <!-- House Transfer Status Card -->
+                <?php
+                // Get member's house status
+                $status_sql = "SELECT house_status, requested_house_id, leave_request_date, join_request_date 
+                              FROM members WHERE member_id = ?";
+                $status_stmt = mysqli_prepare($conn, $status_sql);
+                mysqli_stmt_bind_param($status_stmt, "i", $member_id);
+                mysqli_stmt_execute($status_stmt);
+                $status_result = mysqli_stmt_get_result($status_stmt);
+                $house_status = mysqli_fetch_assoc($status_result);
+                ?>
+                <div class="card shadow mt-3">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0"><i class="fas fa-home me-2"></i>House Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <?php if ($house_status): ?>
+                        <div class="mb-3">
+                            <span class="badge <?php 
+                                echo match($house_status['house_status'] ?? '') {
+                                    'active' => 'bg-success',
+                                    'pending_leave' => 'bg-warning',
+                                    'pending_join' => 'bg-info',
+                                    default => 'bg-secondary'
+                                };
+                            ?>">
+                                <?php echo ucwords(str_replace('_', ' ', $house_status['house_status'] ?? 'Active')); ?>
+                            </span>
+                        </div>
+                        
+                        <?php if ($house_status['house_status'] == 'pending_join' && $house_status['requested_house_id']): 
+                            // Get requested house info
+                            $req_house_sql = "SELECT house_name, house_code FROM houses WHERE house_id = ?";
+                            $req_house_stmt = mysqli_prepare($conn, $req_house_sql);
+                            mysqli_stmt_bind_param($req_house_stmt, "i", $house_status['requested_house_id']);
+                            mysqli_stmt_execute($req_house_stmt);
+                            $req_house_result = mysqli_stmt_get_result($req_house_stmt);
+                            $req_house = mysqli_fetch_assoc($req_house_stmt->get_result());
+                        ?>
+                        <p class="text-muted mb-2">
+                            <small>Requesting to join:</small><br>
+                            <strong><?php echo htmlspecialchars($req_house['house_name'] ?? 'Unknown'); ?></strong>
+                            <span class="badge bg-info"><?php echo htmlspecialchars($req_house['house_code'] ?? ''); ?></span>
+                        </p>
+                        <p class="text-muted mb-0">
+                            <small>Submitted: <?php echo $house_status['join_request_date'] ? date('M d, Y g:i A', strtotime($house_status['join_request_date'])) : '-'; ?></small>
+                        </p>
+                        <?php endif; ?>
+                        
+                        <?php if ($house_status['house_status'] == 'pending_leave'): ?>
+                        <p class="text-muted mb-0">
+                            <small>Leave request submitted: <?php echo $house_status['leave_request_date'] ? date('M d, Y g:i A', strtotime($house_status['leave_request_date'])) : '-'; ?></small>
+                        </p>
+                        <?php endif; ?>
+                        <?php endif; ?>
+                        
+                        <hr>
+                        
+                        <div class="d-grid gap-2">
+                            <a href="settings.php" class="btn btn-outline-primary text-start">
+                                <i class="fas fa-cog me-2"></i>Manage House
+                            </a>
+                            <?php if ($house_status['house_status'] == 'active'): ?>
+                            <a href="leave_request.php" class="btn btn-outline-danger text-start">
+                                <i class="fas fa-sign-out-alt me-2"></i>Leave House
+                            </a>
+                            <a href="join_request.php" class="btn btn-outline-success text-start">
+                                <i class="fas fa-sign-in-alt me-2"></i>Join New House
+                            </a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1299,7 +1373,7 @@ if (isset($member_deposits_stmt)) mysqli_stmt_close($member_deposits_stmt);
 if (isset($deposits_stmt)) mysqli_stmt_close($deposits_stmt);
 if (isset($expenses_list_stmt)) mysqli_stmt_close($expenses_list_stmt);
 if (isset($available_months_stmt)) mysqli_stmt_close($available_months_stmt);
-mysqli_close($conn);
+// DO NOT close $conn - it's managed by getConnection() singleton
 
 require_once '../includes/footer.php';
 ?>

@@ -1255,6 +1255,6 @@ if (isset($available_months_stmt) && $available_months_stmt) mysqli_stmt_close($
 if (isset($prev_balance_stmt) && $prev_balance_stmt) mysqli_stmt_close($prev_balance_stmt);
 if (isset($yearly_cat_stmt) && $yearly_cat_stmt) mysqli_stmt_close($yearly_cat_stmt);
 
-mysqli_close($conn);
+// DO NOT close $conn - it's managed by getConnection() singleton
 require_once '../includes/footer.php';
 ?>

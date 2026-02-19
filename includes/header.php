@@ -1,5 +1,5 @@
 <?php
-// header.php - SAFE FIXED VERSION
+// header.php - UPDATED WITH HOUSE TRANSFER NOTIFICATIONS
 
 // Start session if not already started
 if (session_status() === PHP_SESSION_NONE) {
@@ -30,7 +30,7 @@ if (!$is_logged_in) {
 }
 
 // Check if user has a house (for house-dependent pages)
-$excluded_pages = ['setup_house.php', 'logout.php'];
+$excluded_pages = ['setup_house.php', 'logout.php', 'approve_requests.php'];
 $current_page = basename($_SERVER['PHP_SELF']);
 
 if (!in_array($current_page, $excluded_pages)) {
@@ -48,6 +48,18 @@ if (!in_array($current_page, $excluded_pages)) {
         if ($row = mysqli_fetch_assoc($result)) {
             if ($row['house_id']) {
                 $_SESSION['house_id'] = $row['house_id'];
+                
+                // Also check if member_id is set
+                if (!isset($_SESSION['member_id']) && isset($_SESSION['user_id'])) {
+                    $member_sql = "SELECT member_id FROM users WHERE user_id = ?";
+                    $member_stmt = mysqli_prepare($conn, $member_sql);
+                    mysqli_stmt_bind_param($member_stmt, "i", $_SESSION['user_id']);
+                    mysqli_stmt_execute($member_stmt);
+                    $member_result = mysqli_stmt_get_result($member_stmt);
+                    if ($member_row = mysqli_fetch_assoc($member_result)) {
+                        $_SESSION['member_id'] = $member_row['member_id'];
+                    }
+                }
             } else {
                 // No house, redirect to setup
                 header("Location: setup_house.php");
@@ -62,6 +74,33 @@ if (!in_array($current_page, $excluded_pages)) {
         
         mysqli_close($conn);
     }
+}
+
+// Check for pending house requests (for members)
+if (isset($_SESSION['role']) && $_SESSION['role'] === 'member' && isset($_SESSION['member_id'])) {
+    require_once __DIR__ . '/../config/database.php';
+    require_once 'functions.php';
+    
+    $functions = new Functions();
+    $member_id = $_SESSION['member_id'];
+    
+    // Get member house status
+    $member_status = $functions->getMemberHouseStatus($member_id);
+    
+    if ($member_status) {
+        $_SESSION['house_status'] = $member_status['house_status'];
+        $_SESSION['requested_house_id'] = $member_status['requested_house_id'];
+    }
+}
+
+// Check for pending approval count (for managers)
+if (isset($_SESSION['role']) && $_SESSION['role'] === 'manager') {
+    require_once __DIR__ . '/../config/database.php';
+    require_once 'functions.php';
+    
+    $functions = new Functions();
+    $pending_count = $functions->countPendingRequests();
+    $_SESSION['pending_requests'] = $pending_count;
 }
 
 $page_title = isset($page_title) ? $page_title : 'Dashboard';
@@ -289,6 +328,11 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
                     <?php echo $_SESSION['role']; ?>
                 </span>
                 <?php endif; ?>
+                <?php if (isset($_SESSION['house_status']) && $_SESSION['house_status'] != 'active'): ?>
+                <span class="badge bg-warning ms-2">
+                    <?php echo $_SESSION['house_status'] == 'pending_leave' ? 'Leaving' : 'Joining'; ?>
+                </span>
+                <?php endif; ?>
             </small>
         </div>
         
@@ -337,6 +381,16 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
                     <i class="fas fa-link"></i> Generate Join Link
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'approve_requests.php' ? 'active' : ''; ?>" 
+                   href="approve_requests.php">
+                    <i class="fas fa-clipboard-check"></i> Approve Requests
+                    <?php if (isset($_SESSION['pending_requests']) && $_SESSION['pending_requests'] > 0): ?>
+                    <span class="badge bg-danger ms-2"><?php echo $_SESSION['pending_requests']; ?></span>
+                    <?php endif; ?>
+                </a>
+            </li>
+            
             <?php else: ?>
             <!-- Member Menu -->
             <li class="nav-item">
@@ -364,6 +418,11 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
                 <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'settings.php' ? 'active' : ''; ?>" 
                    href="settings.php">
                     <i class="fas fa-cog"></i> Settings
+                    <?php if (isset($_SESSION['house_status']) && $_SESSION['house_status'] != 'active'): ?>
+                    <span class="badge bg-warning ms-2">
+                        <i class="fas fa-clock"></i>
+                    </span>
+                    <?php endif; ?>
                 </a>
             </li>
         </ul>

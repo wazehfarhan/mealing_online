@@ -1300,5 +1300,5 @@ if (isset($prev_balance_stmt) && $prev_balance_stmt) mysqli_stmt_close($prev_bal
 </body>
 </html>
 <?php
-mysqli_close($conn);
+// DO NOT close $conn - it's managed by getConnection() singleton
 ?>

@@ -201,6 +201,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $total_without_accounts = count($members_without_accounts);
 $total_expired_tokens = count($members_expired_tokens);
 $total_active_tokens = count($members_active_tokens);
+
+// Handle transfer token generation
+$transfer_error = '';
+$transfer_success = '';
+$transfer_token = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_transfer_token'])) {
+    // Generate a transfer token for existing members from other houses
+    $transfer_token = strtoupper(bin2hex(random_bytes(8)));
+    $expires_at = date('Y-m-d H:i:s', strtotime('+30 days'));
+    
+    $sql = "INSERT INTO join_tokens (token, house_id, member_id, token_type, expires_at, created_by) 
+            VALUES (?, ?, NULL, 'house_transfer', ?, ?)";
+    $stmt = mysqli_prepare($conn, $sql);
+    $created_by = $_SESSION['user_id'];
+    mysqli_stmt_bind_param($stmt, "siss", $transfer_token, $house_id, $expires_at, $created_by);
+    
+    if (mysqli_stmt_execute($stmt)) {
+        $transfer_success = "Transfer token generated successfully!";
+    } else {
+        $transfer_error = "Failed to generate transfer token: " . mysqli_error($conn);
+    }
+}
+
+// Get recently used transfer tokens
+$tokens_sql = "SELECT * FROM join_tokens WHERE house_id = ? AND token_type = 'house_transfer' ORDER BY created_at DESC LIMIT 10";
+$tokens_stmt = mysqli_prepare($conn, $tokens_sql);
+mysqli_stmt_bind_param($tokens_stmt, "i", $house_id);
+mysqli_stmt_execute($tokens_stmt);
+$tokens_result = mysqli_stmt_get_result($tokens_stmt);
+$transfer_tokens = mysqli_fetch_all($tokens_result, MYSQLI_ASSOC);
 ?>
 <div class="row">
     <div class="col-lg-10 mx-auto">
@@ -488,6 +519,104 @@ $total_active_tokens = count($members_active_tokens);
                         </div>
                     </div>
                 </div>
+                
+                <!-- House Transfer Tokens Section -->
+                <div class="card border-purple mt-4">
+                    <div class="card-header bg-purple text-white">
+                        <h5 class="mb-0"><i class="fas fa-random me-2"></i>House Transfer Tokens</h5>
+                        <small>Generate tokens for existing members from other houses to transfer to your house</small>
+                    </div>
+                    <div class="card-body">
+                        <?php if ($transfer_success): ?>
+                        <div class="alert alert-success">
+                            <strong><i class="fas fa-check-circle me-2"></i><?php echo $transfer_success; ?></strong>
+                            <div class="mt-3">
+                                <h6>Transfer Token:</h6>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="transferToken" value="<?php echo htmlspecialchars($transfer_token); ?>" readonly>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="copyTransferToken()">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted">Share this token with members who want to transfer from another house. Valid for 30 days.</small>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if ($transfer_error): ?>
+                        <div class="alert alert-danger"><?php echo $transfer_error; ?></div>
+                        <?php endif; ?>
+                        
+                        <form method="POST" action="">
+                            <input type="hidden" name="generate_transfer_token" value="1">
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-purple btn-lg">
+                                    <i class="fas fa-random me-2"></i>Generate Transfer Token
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <hr>
+                        
+                        <h6><i class="fas fa-history me-2"></i>Recent Transfer Tokens</h6>
+                        <?php if (empty($transfer_tokens)): ?>
+                        <p class="text-muted">No transfer tokens generated yet.</p>
+                        <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Token</th>
+                                        <th>Status</th>
+                                        <th>Created</th>
+                                        <th>Expires</th>
+                                        <th>Used By</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($transfer_tokens as $token): ?>
+                                    <tr>
+                                        <td>
+                                            <code><?php echo htmlspecialchars($token['token']); ?></code>
+                                        </td>
+                                        <td>
+                                            <?php if ($token['is_used']): ?>
+                                            <span class="badge bg-success">Used</span>
+                                            <?php elseif (strtotime($token['expires_at']) < time()): ?>
+                                            <span class="badge bg-danger">Expired</span>
+                                            <?php else: ?>
+                                            <span class="badge bg-info">Active</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?php echo date('M d, Y', strtotime($token['created_at'])); ?></td>
+                                        <td><?php echo date('M d, Y', strtotime($token['expires_at'])); ?></td>
+                                        <td>
+                                            <?php if ($token['used_by']): ?>
+                                            Member #<?php echo $token['used_by']; ?>
+                                            <?php else: ?>
+                                            -
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <div class="alert alert-info mt-3">
+                            <h6><i class="fas fa-info-circle me-2"></i>How Transfer Tokens Work:</h6>
+                            <ul class="mb-0">
+                                <li>Generate a transfer token for existing members from other houses</li>
+                                <li>Share the token with the member (via WhatsApp, SMS, email, etc.)</li>
+                                <li>The member goes to Settings → Join New House → Use Token</li>
+                                <li>Enter the token to request joining your house</li>
+                                <li>You'll need to approve the request in Approve Requests</li>
+                                <li>Token is valid for 30 days</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -525,6 +654,21 @@ function copyMemberLink(link, memberName) {
     }
     
     document.body.removeChild(tempInput);
+}
+
+function copyTransferToken() {
+    const tokenInput = document.getElementById('transferToken');
+    if (tokenInput) {
+        tokenInput.select();
+        tokenInput.setSelectionRange(0, 99999);
+        
+        try {
+            document.execCommand('copy');
+            alert('Transfer token copied to clipboard!');
+        } catch (err) {
+            console.error('Failed to copy: ', err);
+        }
+    }
 }
 
 function showLinkDetails(link, memberName, expiryDate) {
