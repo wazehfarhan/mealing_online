@@ -1,4 +1,12 @@
 <?php
+// Start session FIRST before any output
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Output buffering to prevent "headers already sent" errors
+ob_start();
+
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/header.php';

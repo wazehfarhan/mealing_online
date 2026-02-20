@@ -111,10 +111,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $base_url = str_replace($_SERVER['DOCUMENT_ROOT'], '', str_replace('\\', '/', dirname(__DIR__)));
                 $join_url = 'http://' . $_SERVER['HTTP_HOST'] . $base_url . '/member/join.php?token=' . $join_token;
                 
-                $success = "Member added successfully! Member ID: #" . $member_id;
+                // Store success message in session and redirect to prevent resubmission
+                $_SESSION['success'] = "Member added successfully! Member ID: #" . $member_id;
+                $_SESSION['join_url'] = $join_url;
                 
-                // Clear form
-                $_POST = array();
+                // Redirect to prevent form resubmission (PRG pattern)
+                header("Location: members.php");
+                exit();
                 
             } catch (Exception $e) {
                 mysqli_rollback($conn);
@@ -122,6 +125,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+}
+
+// Check for success message in session (from redirect)
+if (isset($_SESSION['success'])) {
+    $success = $_SESSION['success'];
+    $join_url = $_SESSION['join_url'] ?? '';
+    unset($_SESSION['success']);
+    unset($_SESSION['join_url']);
 }
 
 // Now include the header AFTER all processing
