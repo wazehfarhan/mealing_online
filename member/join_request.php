@@ -10,7 +10,7 @@ $page_title = "Join New House";
 
 $conn = getConnection();
 $member_id = $_SESSION['member_id'];
-$current_house_id = $_SESSION['house_id'];
+$current_house_id = $_SESSION['house_id'] ?? null;
 $current_house_code = $_SESSION['house_code'] ?? '';
 
 $errors = [];
@@ -20,7 +20,7 @@ $success = '';
 function getMemberData($conn, $member_id) {
     $sql = "SELECT m.*, h.house_name, h.house_code 
             FROM members m 
-            JOIN houses h ON m.house_id = h.house_id 
+            LEFT JOIN houses h ON m.house_id = h.house_id 
             WHERE m.member_id = ?";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "i", $member_id);
@@ -48,64 +48,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         // Refresh member data to check current status
         $member = getMemberData($conn, $member_id);
         
-        // Check if member already has pending request
-        if ($member['house_status'] != 'active') {
-            $errors[] = "You already have a pending request: " . ucfirst(str_replace('_', ' ', $member['house_status']));
+        // Check if member can join using the helper function
+        $can_join = canMemberJoinNewHouse($member_id);
+        
+        if (!$can_join['success']) {
+            $errors[] = $can_join['error'];
         } else {
-            // Validate and use the token
-            $token_result = useJoinToken($token, $member_id);
+            // Submit join request using token
+            $result = requestJoinHouseByToken($member_id, $token);
             
-            if ($token_result['success']) {
-                $requested_house_id = $token_result['house_id'];
-                
-                // Get requested house info
-                $house_sql = "SELECT house_id, house_name, house_code FROM houses WHERE house_id = ?";
-                $house_stmt = mysqli_prepare($conn, $house_sql);
-                mysqli_stmt_bind_param($house_stmt, "i", $requested_house_id);
-                mysqli_stmt_execute($house_stmt);
-                $house_result = mysqli_stmt_get_result($house_stmt);
-                $requested_house = mysqli_fetch_assoc($house_result);
-                mysqli_stmt_close($house_stmt);
-                
-                if (!$requested_house) {
-                    $errors[] = "House not found.";
-                } else {
-                    // Submit join request
-                    $update_sql = "UPDATE members 
-                                  SET house_status = 'pending_join', 
-                                      requested_house_id = ?, 
-                                      join_request_date = NOW() 
-                                  WHERE member_id = ? AND house_status = 'active'";
-                    $update_stmt = mysqli_prepare($conn, $update_sql);
-                    mysqli_stmt_bind_param($update_stmt, "ii", $requested_house_id, $member_id);
-                    
-                    if (mysqli_stmt_execute($update_stmt)) {
-                        if (mysqli_stmt_affected_rows($update_stmt) > 0) {
-                            $_SESSION['success'] = "Join request submitted successfully for house: " . htmlspecialchars($requested_house['house_name']) . "! Waiting for manager approval.";
-                            
-                            // Log activity - FIXED: to_house_id can be NULL for from_house_id
-                            $log_sql = "INSERT INTO house_transfers_log 
-                                        (member_id, from_house_id, to_house_id, action, performed_by, notes)
-                                        VALUES (?, ?, ?, 'join_requested', ?, 'Member used token to request join')";
-                            $log_stmt = mysqli_prepare($conn, $log_sql);
-                            // We have 5 placeholders: member_id, from_house_id, to_house_id, performed_by
-                            mysqli_stmt_bind_param($log_stmt, "iiiii", $member_id, $current_house_id, $requested_house_id, $member_id);
-                            mysqli_stmt_execute($log_stmt);
-                            mysqli_stmt_close($log_stmt);
-                            
-                            // Redirect to avoid form resubmission
-                            header("Location: join_request.php");
-                            exit();
-                        } else {
-                            $errors[] = "Unable to submit join request. You may already have a pending request.";
-                        }
-                    } else {
-                        $errors[] = "Failed to submit join request. Error: " . mysqli_error($conn);
-                    }
-                    mysqli_stmt_close($update_stmt);
-                }
+            if ($result['success']) {
+                $_SESSION['success'] = $result['message'];
+                header("Location: join_request.php");
+                exit();
             } else {
-                $errors[] = $token_result['error'];
+                $errors[] = $result['error'];
             }
         }
     }
@@ -121,9 +78,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         // Refresh member data to check current status
         $member = getMemberData($conn, $member_id);
         
-        // Check if member already has pending request
-        if ($member['house_status'] != 'active') {
-            $errors[] = "You already have a pending request: " . ucfirst(str_replace('_', ' ', $member['house_status']));
+        // Check if member can join using the helper function
+        $can_join = canMemberJoinNewHouse($member_id);
+        
+        if (!$can_join['success']) {
+            $errors[] = $can_join['error'];
         } else {
             // Search for house
             $house_sql = "SELECT house_id, house_name, house_code, is_open_for_join, created_at 
@@ -138,93 +97,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             
             if (!$found_house) {
                 $errors[] = "House with code '$search_code' not found or is inactive.";
-            } elseif ($found_house['house_id'] == $current_house_id) {
+            } elseif ($found_house['house_id'] == $current_house_id && $member['house_status'] == 'active') {
                 $errors[] = "You are already a member of this house.";
             } elseif ($found_house['is_open_for_join'] == 0) {
                 $errors[] = "This house is not open for new members. Please use a join token instead.";
             } else {
-                // Check if can join via house code
-                $can_join = canJoinHouseViaCode($member_id, $found_house['house_id']);
+                // Submit join request
+                $result = requestJoinHouseByCode($member_id, $search_code);
                 
-                if ($can_join['success']) {
-                    // Submit join request
-                    $update_sql = "UPDATE members 
-                                  SET house_status = 'pending_join', 
-                                      requested_house_id = ?, 
-                                      join_request_date = NOW() 
-                                  WHERE member_id = ? AND house_status = 'active'";
-                    $update_stmt = mysqli_prepare($conn, $update_sql);
-                    mysqli_stmt_bind_param($update_stmt, "ii", $found_house['house_id'], $member_id);
-                    
-                    if (mysqli_stmt_execute($update_stmt)) {
-                        if (mysqli_stmt_affected_rows($update_stmt) > 0) {
-                            $_SESSION['success'] = "Join request submitted successfully for house: " . htmlspecialchars($found_house['house_name']) . "! Waiting for manager approval.";
-                            
-                            // Log activity - FIXED: to_house_id can be NULL for from_house_id
-                            $log_sql = "INSERT INTO house_transfers_log 
-                                        (member_id, from_house_id, to_house_id, action, performed_by, notes)
-                                        VALUES (?, ?, ?, 'join_requested', ?, 'Member requested to join by house code')";
-                            $log_stmt = mysqli_prepare($conn, $log_sql);
-                            // We have 5 placeholders: member_id, from_house_id, to_house_id, performed_by
-                            mysqli_stmt_bind_param($log_stmt, "iiiii", $member_id, $current_house_id, $found_house['house_id'], $member_id);
-                            mysqli_stmt_execute($log_stmt);
-                            mysqli_stmt_close($log_stmt);
-                            
-                            // Redirect to avoid form resubmission
-                            header("Location: join_request.php");
-                            exit();
-                        } else {
-                            $errors[] = "Unable to submit join request. You may already have a pending request.";
-                        }
-                    } else {
-                        $errors[] = "Failed to submit join request. Error: " . mysqli_error($conn);
-                    }
-                    mysqli_stmt_close($update_stmt);
+                if ($result['success']) {
+                    $_SESSION['success'] = $result['message'];
+                    header("Location: join_request.php");
+                    exit();
                 } else {
-                    $errors[] = $can_join['error'];
+                    $errors[] = $result['error'];
                 }
             }
         }
     }
 }
 
-// Handle cancel request
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'cancel_request') {
-    // Refresh member data first
-    $member = getMemberData($conn, $member_id);
-    
-    if ($member['house_status'] == 'pending_join') {
-        $cancel_sql = "UPDATE members 
-                      SET house_status = 'active', 
-                          requested_house_id = NULL, 
-                          join_request_date = NULL 
-                      WHERE member_id = ? AND house_status = 'pending_join'";
-        $cancel_stmt = mysqli_prepare($conn, $cancel_sql);
-        mysqli_stmt_bind_param($cancel_stmt, "i", $member_id);
-        
-        if (mysqli_stmt_execute($cancel_stmt)) {
-            if (mysqli_stmt_affected_rows($cancel_stmt) > 0) {
-                $_SESSION['success'] = "Your join request has been cancelled.";
-                
-                // Log activity - FIXED: For cancel, we don't need to_house_id
-                $log_sql = "INSERT INTO house_transfers_log 
-                            (member_id, from_house_id, action, performed_by, notes)
-                            VALUES (?, ?, 'join_cancelled', ?, 'Member cancelled join request')";
-                $log_stmt = mysqli_prepare($conn, $log_sql);
-                // We have 3 placeholders: member_id, from_house_id, performed_by
-                mysqli_stmt_bind_param($log_stmt, "iii", $member_id, $current_house_id, $member_id);
-                mysqli_stmt_execute($log_stmt);
-                mysqli_stmt_close($log_stmt);
-                
-                // Redirect to avoid form resubmission
-                header("Location: join_request.php");
-                exit();
-            }
-        } else {
-            $errors[] = "Failed to cancel request. Error: " . mysqli_error($conn);
-        }
-        mysqli_stmt_close($cancel_stmt);
+// Handle cancel join request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'cancel_join_request') {
+    if (cancelJoinRequest($member_id)) {
+        $_SESSION['success'] = "Your join request has been cancelled.";
+    } else {
+        $_SESSION['error'] = "Failed to cancel join request.";
     }
+    
+    header("Location: join_request.php");
+    exit();
+}
+
+// Handle cancel leave request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'cancel_leave_request') {
+    if (cancelLeaveRequest($member_id)) {
+        $_SESSION['success'] = "Your leave request has been cancelled.";
+    } else {
+        $_SESSION['error'] = "Failed to cancel leave request.";
+    }
+    
+    header("Location: join_request.php");
+    exit();
 }
 
 // Refresh member data after any processing
@@ -245,12 +159,21 @@ if (isset($_SESSION['error'])) {
 $houses_sql = "SELECT house_id, house_name, house_code, created_at 
                FROM houses 
                WHERE is_open_for_join = 1 
-               AND is_active = 1 
-               AND house_id != ?
-               ORDER BY house_name ASC 
-               LIMIT 20";
-$houses_stmt = mysqli_prepare($conn, $houses_sql);
-mysqli_stmt_bind_param($houses_stmt, "i", $current_house_id);
+               AND is_active = 1";
+
+if (!empty($current_house_id) && $member['house_status'] == 'active') {
+    $houses_sql .= " AND house_id != ?";
+}
+
+$houses_sql .= " ORDER BY house_name ASC LIMIT 20";
+
+if (!empty($current_house_id) && $member['house_status'] == 'active') {
+    $houses_stmt = mysqli_prepare($conn, $houses_sql);
+    mysqli_stmt_bind_param($houses_stmt, "i", $current_house_id);
+} else {
+    $houses_stmt = mysqli_prepare($conn, $houses_sql);
+}
+
 mysqli_stmt_execute($houses_stmt);
 $houses_result = mysqli_stmt_get_result($houses_stmt);
 $open_houses = [];
@@ -294,7 +217,11 @@ require_once '../includes/header.php';
         
         <!-- Current Status -->
         <div class="card shadow mb-4">
-            <div class="card-header">
+            <div class="card-header <?php 
+                echo $member['house_status'] == 'active' ? 'bg-success text-white' : 
+                    ($member['house_status'] == 'left' ? 'bg-warning' : 
+                    ($member['house_status'] == 'pending_leave' ? 'bg-warning' : 'bg-info text-white')); 
+            ?>">
                 <h5 class="mb-0">
                     <i class="fas fa-home me-2"></i>Current House Status
                 </h5>
@@ -304,23 +231,48 @@ require_once '../includes/header.php';
                     <div class="col-md-6">
                         <dl class="row">
                             <dt class="col-sm-4">House Name</dt>
-                            <dd class="col-sm-8"><?php echo htmlspecialchars($member['house_name']); ?></dd>
+                            <dd class="col-sm-8">
+                                <?php if ($member['house_status'] == 'left'): ?>
+                                    <span class="text-muted">No active house</span>
+                                    <small class="d-block text-info">(Viewing history of: <?php echo htmlspecialchars($member['house_name'] ?? 'Unknown'); ?>)</small>
+                                <?php else: ?>
+                                    <?php echo htmlspecialchars($member['house_name'] ?? 'None'); ?>
+                                <?php endif; ?>
+                            </dd>
                             
                             <dt class="col-sm-4">House Code</dt>
                             <dd class="col-sm-8">
+                                <?php if ($member['house_code']): ?>
                                 <span class="badge bg-info"><?php echo htmlspecialchars($member['house_code']); ?></span>
+                                <?php else: ?>
+                                <span class="text-muted">N/A</span>
+                                <?php endif; ?>
                             </dd>
                             
                             <dt class="col-sm-4">Join Date</dt>
-                            <dd class="col-sm-8"><?php echo date('M d, Y', strtotime($member['join_date'])); ?></dd>
+                            <dd class="col-sm-8">
+                                <?php echo $member['join_date'] ? date('M d, Y', strtotime($member['join_date'])) : 'N/A'; ?>
+                            </dd>
                         </dl>
                     </div>
                     <div class="col-md-6">
                         <dl class="row">
                             <dt class="col-sm-4">Account Status</dt>
                             <dd class="col-sm-8">
-                                <?php if ($member['house_status'] == 'active'): ?>
+                                <?php if ($member['status'] == 'active'): ?>
+                                    <span class="badge bg-success">Active</span>
+                                <?php else: ?>
+                                    <span class="badge bg-danger">Inactive</span>
+                                <?php endif; ?>
+                            </dd>
+                            
+                            <dt class="col-sm-4">House Status</dt>
+                            <dd class="col-sm-8">
+                                <?php if ($member['house_status'] == 'active' && !empty($member['house_id'])): ?>
                                 <span class="badge bg-success">Active Member</span>
+                                <?php elseif ($member['house_status'] == 'left'): ?>
+                                <span class="badge bg-warning">Left Previous House</span>
+                                <small class="d-block text-success">✓ Eligible to join new house</small>
                                 <?php elseif ($member['house_status'] == 'pending_leave'): ?>
                                 <span class="badge bg-warning">Pending Leave Request</span>
                                 <?php elseif ($member['house_status'] == 'pending_join'): ?>
@@ -332,24 +284,33 @@ require_once '../includes/header.php';
                             <dt class="col-sm-4">Requested House</dt>
                             <dd class="col-sm-8">
                                 <?php
-                                $req_house_sql = "SELECT house_name, house_code FROM houses WHERE house_id = ?";
-                                $req_house_stmt = mysqli_prepare($conn, $req_house_sql);
-                                mysqli_stmt_bind_param($req_house_stmt, "i", $member['requested_house_id']);
-                                mysqli_stmt_execute($req_house_stmt);
-                                $req_house_result = mysqli_stmt_get_result($req_house_stmt);
-                                $req_house = mysqli_fetch_assoc($req_house_result);
-                                mysqli_stmt_close($req_house_stmt);
-                                ?>
-                                <?php if ($req_house): ?>
-                                <?php echo htmlspecialchars($req_house['house_name']); ?>
-                                <span class="badge bg-info"><?php echo htmlspecialchars($req_house['house_code']); ?></span>
-                                <?php else: ?>
-                                <span class="text-danger">House not found</span>
-                                <?php endif; ?>
+                                if ($member['requested_house_id']) {
+                                    $req_house_sql = "SELECT house_name, house_code FROM houses WHERE house_id = ?";
+                                    $req_house_stmt = mysqli_prepare($conn, $req_house_sql);
+                                    mysqli_stmt_bind_param($req_house_stmt, "i", $member['requested_house_id']);
+                                    mysqli_stmt_execute($req_house_stmt);
+                                    $req_house_result = mysqli_stmt_get_result($req_house_stmt);
+                                    $req_house = mysqli_fetch_assoc($req_house_result);
+                                    mysqli_stmt_close($req_house_stmt);
+                                    
+                                    if ($req_house): ?>
+                                        <?php echo htmlspecialchars($req_house['house_name']); ?>
+                                        <span class="badge bg-info"><?php echo htmlspecialchars($req_house['house_code']); ?></span>
+                                    <?php else: ?>
+                                        <span class="text-danger">House not found</span>
+                                    <?php endif;
+                                } else { ?>
+                                    <span class="text-danger">No house specified</span>
+                                <?php } ?>
                             </dd>
                             
                             <dt class="col-sm-4">Request Date</dt>
-                            <dd class="col-sm-8"><?php echo date('M d, Y g:i A', strtotime($member['join_request_date'])); ?></dd>
+                            <dd class="col-sm-8"><?php echo $member['join_request_date'] ? date('M d, Y g:i A', strtotime($member['join_request_date'])) : 'N/A'; ?></dd>
+                            <?php endif; ?>
+                            
+                            <?php if ($member['house_status'] == 'pending_leave'): ?>
+                            <dt class="col-sm-4">Leave Request</dt>
+                            <dd class="col-sm-8"><?php echo $member['leave_request_date'] ? date('M d, Y g:i A', strtotime($member['leave_request_date'])) : 'N/A'; ?></dd>
                             <?php endif; ?>
                         </dl>
                     </div>
@@ -359,7 +320,7 @@ require_once '../includes/header.php';
         
         <!-- Pending Request Actions -->
         <?php if ($member['house_status'] == 'pending_join'): ?>
-        <div class="card shadow mb-4">
+        <div class="card shadow mb-4 border-info">
             <div class="card-header bg-info text-white">
                 <h5 class="mb-0">
                     <i class="fas fa-clock me-2"></i>Join Request Pending
@@ -372,21 +333,43 @@ require_once '../includes/header.php';
                 </div>
                 
                 <form method="POST" action="">
-                    <input type="hidden" name="action" value="cancel_request">
-                    <button type="submit" name="cancel_request" class="btn btn-secondary" 
+                    <input type="hidden" name="action" value="cancel_join_request">
+                    <button type="submit" class="btn btn-warning" 
                             onclick="return confirm('Are you sure you want to cancel your join request?');">
                         <i class="fas fa-times me-2"></i>Cancel Join Request
                     </button>
                 </form>
             </div>
         </div>
-        <?php elseif ($member['house_status'] == 'active'): ?>
+        <?php elseif ($member['house_status'] == 'pending_leave'): ?>
+        <div class="card shadow mb-4 border-warning">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0">
+                    <i class="fas fa-clock me-2"></i>Leave Request Pending
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <p class="mb-2"><strong>Your leave request is currently pending approval.</strong></p>
+                    <p class="mb-0">Please wait for your manager to review your request.</p>
+                </div>
+                
+                <form method="POST" action="">
+                    <input type="hidden" name="action" value="cancel_leave_request">
+                    <button type="submit" class="btn btn-secondary" 
+                            onclick="return confirm('Are you sure you want to cancel your leave request?');">
+                        <i class="fas fa-times me-2"></i>Cancel Leave Request
+                    </button>
+                </form>
+            </div>
+        </div>
+        <?php elseif ($member['house_status'] == 'left'): ?>
         
-        <!-- Join Methods -->
+        <!-- Join Methods - Show for members who have left -->
         <div class="row">
             <!-- Method 1: Join Token -->
             <div class="col-lg-6 mb-4">
-                <div class="card shadow h-100">
+                <div class="card shadow h-100 border-primary">
                     <div class="card-header bg-primary text-white">
                         <h5 class="mb-0">
                             <i class="fas fa-key me-2"></i>Join with Token
@@ -400,7 +383,7 @@ require_once '../includes/header.php';
                             <div class="mb-3">
                                 <label for="join_token" class="form-label">Join Token</label>
                                 <input type="text" class="form-control" id="join_token" name="join_token" 
-                                       placeholder="Enter token (e.g., D58E64)" required>
+                                       placeholder="Enter token" required>
                                 <div class="form-text">Enter the token provided by the house manager.</div>
                             </div>
                             
@@ -414,7 +397,7 @@ require_once '../includes/header.php';
             
             <!-- Method 2: House Code -->
             <div class="col-lg-6 mb-4">
-                <div class="card shadow h-100">
+                <div class="card shadow h-100 border-success">
                     <div class="card-header bg-success text-white">
                         <h5 class="mb-0">
                             <i class="fas fa-home me-2"></i>Join with House Code
@@ -428,7 +411,7 @@ require_once '../includes/header.php';
                             <div class="mb-3">
                                 <label for="house_code" class="form-label">House Code</label>
                                 <input type="text" class="form-control" id="house_code" name="house_code" 
-                                       placeholder="Enter house code (e.g., 430346)" required>
+                                       placeholder="Enter house code" required>
                                 <div class="form-text">Enter the house code.</div>
                             </div>
                             
@@ -443,7 +426,7 @@ require_once '../includes/header.php';
         
         <!-- Open Houses List -->
         <div class="card shadow">
-            <div class="card-header">
+            <div class="card-header bg-info text-white">
                 <h5 class="mb-0">
                     <i class="fas fa-building me-2"></i>Houses Open for Joining
                 </h5>
@@ -460,7 +443,7 @@ require_once '../includes/header.php';
                             <tr>
                                 <th>House Name</th>
                                 <th>House Code</th>
-                                <th>Joined System</th>
+                                <th>Created</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -476,7 +459,7 @@ require_once '../includes/header.php';
                                     <form method="POST" action="" class="d-inline">
                                         <input type="hidden" name="action" value="search_house">
                                         <input type="hidden" name="house_code" value="<?php echo htmlspecialchars($house['house_code']); ?>">
-                                        <button type="submit" name="search_house" class="btn btn-sm btn-success">
+                                        <button type="submit" class="btn btn-sm btn-success">
                                             <i class="fas fa-plus me-1"></i>Request to Join
                                         </button>
                                     </form>
@@ -487,50 +470,51 @@ require_once '../includes/header.php';
                     </table>
                 </div>
                 <?php endif; ?>
-                
-                <div class="alert alert-light mt-3">
-                    <h6><i class="fas fa-info-circle me-2"></i>How joining works:</h6>
-                    <ul class="mb-0">
-                        <li><strong>With Token:</strong> Enter the token provided by a house manager. This gives you direct access if approved.</li>
-                        <li><strong>With House Code:</strong> Search for a house and request to join. The house must be "open for joining".</li>
-                        <li><strong>Manager Approval:</strong> Your request will be reviewed by the manager of the house you want to join.</li>
-                        <li><strong>Transfer:</strong> Once approved, you'll be transferred to the new house and your current house data will be archived.</li>
-                    </ul>
-                </div>
             </div>
+        </div>
+        
+        <?php elseif ($member['house_status'] == 'active'): ?>
+        <!-- Show message for active members -->
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>You are currently in an active house.</strong> 
+            You must <a href="leave_house.php" class="alert-link">request to leave</a> your current house before joining a new one.
         </div>
         <?php endif; ?>
         
         <!-- Important Info -->
         <div class="card shadow mt-4">
-            <div class="card-header bg-warning text-dark">
+            <div class="card-header bg-warning">
                 <h5 class="mb-0">
                     <i class="fas fa-exclamation-triangle me-2"></i>Important Information
                 </h5>
             </div>
             <div class="card-body">
-                <ul class="mb-0">
-                    <li>You can only have one active join request at a time</li>
-                    <li>If you leave your current house, your data will be archived and preserved</li>
-                    <li>You can view your previous house data anytime from Settings → View Past House History</li>
-                    <li>The new house manager must approve your join request</li>
-                    <li>Your current house manager will be notified of your transfer</li>
-                </ul>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>House Status Meanings:</h6>
+                        <ul>
+                            <li><span class="badge bg-success">Active Member</span> - You are in a house and cannot join another until you leave</li>
+                            <li><span class="badge bg-warning">Left Previous House</span> - You can join a new house</li>
+                            <li><span class="badge bg-warning">Pending Leave</span> - Your leave request is waiting for approval</li>
+                            <li><span class="badge bg-info">Pending Join</span> - Your join request is waiting for approval</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Important Rules:</h6>
+                        <ul class="mb-0">
+                            <li>You can only have one active request at a time</li>
+                            <li>If you leave your current house, your data will be archived</li>
+                            <li>You can view your previous house data from Settings → View Past House History</li>
+                            <li>The new house manager must approve your join request</li>
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <?php
-// Close statements but NOT the connection
-if (isset($info_stmt)) mysqli_stmt_close($info_stmt);
-if (isset($stmt)) mysqli_stmt_close($stmt);
-if (isset($check_stmt)) mysqli_stmt_close($check_stmt);
-if (isset($house_stmt)) mysqli_stmt_close($house_stmt);
-if (isset($update_stmt)) mysqli_stmt_close($update_stmt);
-if (isset($log_stmt)) mysqli_stmt_close($log_stmt);
-if (isset($req_house_stmt)) mysqli_stmt_close($req_house_stmt);
-// DO NOT close $conn
-
 require_once '../includes/footer.php';
 ?>

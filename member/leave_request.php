@@ -20,7 +20,7 @@ $warning = ''; // Initialize warning variable
 function getMemberData($conn, $member_id) {
     $sql = "SELECT m.*, h.house_name, h.house_code 
             FROM members m 
-            JOIN houses h ON m.house_id = h.house_id 
+            LEFT JOIN houses h ON m.house_id = h.house_id 
             WHERE m.member_id = ?";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "i", $member_id);
@@ -46,17 +46,20 @@ if ($member['status'] == 'inactive') {
     exit();
 }
 
-// Check today's meals
-$today = date('Y-m-d');
-$today_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as total FROM meals WHERE member_id = ? AND meal_date = ?";
-$today_meals_stmt = mysqli_prepare($conn, $today_meals_sql);
-mysqli_stmt_bind_param($today_meals_stmt, "is", $member_id, $today);
-mysqli_stmt_execute($today_meals_stmt);
-$today_meals_result = mysqli_stmt_get_result($today_meals_stmt);
-$today_meals = mysqli_fetch_assoc($today_meals_result);
-mysqli_stmt_close($today_meals_stmt);
+// Check today's meals (only if member is active in a house)
+$today_meals = ['total' => 0];
+if ($member['house_status'] == 'active' || $member['house_status'] == 'pending_leave') {
+    $today = date('Y-m-d');
+    $today_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as total FROM meals WHERE member_id = ? AND meal_date = ?";
+    $today_meals_stmt = mysqli_prepare($conn, $today_meals_sql);
+    mysqli_stmt_bind_param($today_meals_stmt, "is", $member_id, $today);
+    mysqli_stmt_execute($today_meals_stmt);
+    $today_meals_result = mysqli_stmt_get_result($today_meals_stmt);
+    $today_meals = mysqli_fetch_assoc($today_meals_result);
+    mysqli_stmt_close($today_meals_stmt);
+}
 
-// Get member statistics
+// Get member statistics (only if member has data)
 $stats_sql = "
     SELECT 
         (SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE member_id = ?) as total_deposits,
@@ -73,8 +76,12 @@ mysqli_stmt_close($stats_stmt);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Handle leave request submission
     if (isset($_POST['action']) && $_POST['action'] == 'submit_leave') {
+        // Check if member has already left
+        if ($member['house_status'] == 'left') {
+            $errors[] = "You have already left this house. You cannot submit another leave request.";
+        }
         // Check if member is still active
-        if ($member['status'] != 'active') {
+        elseif ($member['status'] != 'active') {
             $errors[] = "You are not an active member of this house.";
         }
         // Check if member already has a pending leave request
@@ -226,8 +233,56 @@ require_once '../includes/header.php';
         </div>
         <?php endif; ?>
         
+        <!-- Check if member has left -->
+        <?php if ($member['house_status'] == 'left'): ?>
+        <div class="card shadow mb-4 border-success">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-check-circle me-2"></i>You Have Left the House
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-success">
+                    <strong><i class="fas fa-info-circle me-2"></i>You have successfully left your previous house.</strong>
+                    <p class="mb-0 mt-2">Your data has been archived and preserved. You can now join a new house.</p>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Previous House Information:</h6>
+                                <p class="mb-1"><strong>House Name:</strong> <?php echo htmlspecialchars($member['house_name'] ?? 'N/A'); ?></p>
+                                <p class="mb-1"><strong>House Code:</strong> <span class="badge bg-info"><?php echo htmlspecialchars($member['house_code'] ?? 'N/A'); ?></span></p>
+                                <p class="mb-0"><strong>Join Date:</strong> <?php echo date('M d, Y', strtotime($member['join_date'])); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Your Statistics from Previous House:</h6>
+                                <p class="mb-1"><strong>Total Deposits:</strong> ৳<?php echo number_format($stats['total_deposits'] ?? 0, 2); ?></p>
+                                <p class="mb-1"><strong>Total Meals:</strong> <?php echo number_format($stats['total_meals'] ?? 0, 2); ?></p>
+                                <p class="mb-0"><strong>Status:</strong> <span class="badge bg-warning">Left</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <a href="join_request.php" class="btn btn-primary">
+                        <i class="fas fa-sign-in-alt me-2"></i>Join New House
+                    </a>
+                    <a href="settings.php" class="btn btn-outline-secondary ms-2">
+                        <i class="fas fa-cog me-2"></i>View Settings
+                    </a>
+                </div>
+            </div>
+        </div>
+        
         <!-- Check if member is inactive -->
-        <?php if ($member['status'] == 'inactive'): ?>
+        <?php elseif ($member['status'] == 'inactive'): ?>
         <div class="card shadow mb-4 border-danger">
             <div class="card-header bg-danger text-white">
                 <h5 class="mb-0">
@@ -244,9 +299,10 @@ require_once '../includes/header.php';
                 </a>
             </div>
         </div>
+        
         <?php else: ?>
         
-        <!-- Current Status -->
+        <!-- Current Status for Active Members -->
         <div class="card shadow mb-4">
             <div class="card-header">
                 <h5 class="mb-0">
@@ -355,11 +411,11 @@ require_once '../includes/header.php';
                     <ul class="mb-3">
                         <li>You can only leave the house if you have <strong>no meal entries for today</strong></li>
                         <li>Once your leave request is approved, your data will be archived</li>
-                        <li>You will be marked as inactive and won't be able to access this house anymore</li>
+                        <li>You will be marked as having left and can join another house</li>
                         <li>Your historical data (deposits, meals) will be preserved and can be viewed later</li>
                         <li>The manager of your current house must approve your leave request</li>
                         <li>If you have a pending balance, please settle it with the manager before leaving</li>
-                        <li class="text-danger"><strong>You cannot submit another leave request after being approved</strong></li>
+                        <li class="text-info"><strong>After leaving, you can join a new house from the Join New House page</strong></li>
                     </ul>
                 </div>
                 
@@ -397,7 +453,7 @@ require_once '../includes/header.php';
                     <p>Please try again tomorrow after all meal entries for today are finalized.</p>
                 </div>
                 
-                <?php else: ?>
+                <?php elseif ($member['house_status'] == 'active'): ?>
                 <!-- Can submit request -->
                 <div class="alert alert-success">
                     <strong><i class="fas fa-check-circle me-2"></i>You are eligible to leave</strong>

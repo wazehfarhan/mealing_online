@@ -102,8 +102,8 @@ function calculateHouseHistoryStats($member_id, $house_id) {
     $total_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as total FROM meals WHERE house_id = ?";
     $total_meals_stmt = mysqli_prepare($conn, $total_meals_sql);
     mysqli_stmt_bind_param($total_meals_stmt, "i", $house_id);
-    $total_meals_stmt->execute();
-    $total_meals_result = $total_meals_stmt->get_result();
+    mysqli_stmt_execute($total_meals_stmt);
+    $total_meals_result = mysqli_stmt_get_result($total_meals_stmt);
     $total_meals = mysqli_fetch_assoc($total_meals_result);
     mysqli_stmt_close($total_meals_stmt);
     
@@ -212,6 +212,37 @@ function useJoinToken($token, $member_id) {
 function canJoinHouseViaCode($member_id, $house_id) {
     $conn = getConnection();
     
+    // Get member's current status
+    $member_sql = "SELECT house_status, status, house_id FROM members WHERE member_id = ?";
+    $member_stmt = mysqli_prepare($conn, $member_sql);
+    mysqli_stmt_bind_param($member_stmt, "i", $member_id);
+    mysqli_stmt_execute($member_stmt);
+    $member_result = mysqli_stmt_get_result($member_stmt);
+    $member = mysqli_fetch_assoc($member_result);
+    mysqli_stmt_close($member_stmt);
+    
+    if (!$member) {
+        return ['success' => false, 'error' => 'Member not found'];
+    }
+    
+    // Check if member account is active
+    if ($member['status'] != 'active') {
+        return ['success' => false, 'error' => 'Your account is not active. Please contact support.'];
+    }
+    
+    // Check if member has left their previous house (ALLOWED)
+    if ($member['house_status'] == 'left') {
+        // Allowed to join - continue
+    }
+    // Check if member has pending requests
+    elseif (in_array($member['house_status'], ['pending_join', 'pending_leave'])) {
+        return ['success' => false, 'error' => 'You already have a pending request. Please wait for approval or cancel it first.'];
+    }
+    // Check if member is in an active house
+    elseif ($member['house_status'] == 'active') {
+        return ['success' => false, 'error' => 'You are already in an active house. Please leave your current house first.'];
+    }
+    
     // Check if house is open for joining
     $house_sql = "SELECT is_open_for_join FROM houses WHERE house_id = ? AND is_active = 1";
     $house_stmt = mysqli_prepare($conn, $house_sql);
@@ -221,21 +252,12 @@ function canJoinHouseViaCode($member_id, $house_id) {
     $house = mysqli_fetch_assoc($house_result);
     mysqli_stmt_close($house_stmt);
     
-    if (!$house || $house['is_open_for_join'] == 0) {
-        return ['success' => false, 'error' => 'House is not open for joining'];
+    if (!$house) {
+        return ['success' => false, 'error' => 'House not found or inactive'];
     }
     
-    // Check if member already has a pending request
-    $member_sql = "SELECT house_status FROM members WHERE member_id = ?";
-    $member_stmt = mysqli_prepare($conn, $member_sql);
-    mysqli_stmt_bind_param($member_stmt, "i", $member_id);
-    mysqli_stmt_execute($member_stmt);
-    $member_result = mysqli_stmt_get_result($member_stmt);
-    $member = mysqli_fetch_assoc($member_result);
-    mysqli_stmt_close($member_stmt);
-    
-    if ($member['house_status'] != 'active') {
-        return ['success' => false, 'error' => 'You already have a pending request'];
+    if ($house['is_open_for_join'] == 0) {
+        return ['success' => false, 'error' => 'House is not open for joining. Please use a join token instead.'];
     }
     
     return ['success' => true];
@@ -297,7 +319,7 @@ function requestLeaveHouse($member_id) {
     $sql = "UPDATE members 
             SET house_status = 'pending_leave', 
                 leave_request_date = NOW() 
-            WHERE member_id = ?";
+            WHERE member_id = ? AND house_status = 'active'";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "i", $member_id);
     
@@ -316,17 +338,35 @@ function requestLeaveHouse($member_id) {
 function requestJoinHouseByCode($member_id, $house_code) {
     $conn = getConnection();
     
-    // Get current house_id
-    $current_sql = "SELECT house_id FROM members WHERE member_id = ?";
-    $current_stmt = mysqli_prepare($conn, $current_sql);
-    mysqli_stmt_bind_param($current_stmt, "i", $member_id);
-    mysqli_stmt_execute($current_stmt);
-    $current_result = mysqli_stmt_get_result($current_stmt);
-    $current_data = mysqli_fetch_assoc($current_result);
-    mysqli_stmt_close($current_stmt);
+    // Get member's current status
+    $member_sql = "SELECT house_status, status, house_id FROM members WHERE member_id = ?";
+    $member_stmt = mysqli_prepare($conn, $member_sql);
+    mysqli_stmt_bind_param($member_stmt, "i", $member_id);
+    mysqli_stmt_execute($member_stmt);
+    $member_result = mysqli_stmt_get_result($member_stmt);
+    $member_data = mysqli_fetch_assoc($member_result);
+    mysqli_stmt_close($member_stmt);
     
-    if (!$current_data) {
+    if (!$member_data) {
         return ['success' => false, 'error' => 'Member not found.'];
+    }
+    
+    // Check if member account is active
+    if ($member_data['status'] != 'active') {
+        return ['success' => false, 'error' => 'Your account is not active. Please contact support.'];
+    }
+    
+    // Check if member has left (ALLOWED)
+    if ($member_data['house_status'] == 'left') {
+        // Allowed - continue
+    }
+    // Check if member has pending requests
+    elseif (in_array($member_data['house_status'], ['pending_join', 'pending_leave'])) {
+        return ['success' => false, 'error' => 'You already have a pending request. Please wait for approval or cancel it first.'];
+    }
+    // Check if member is in an active house
+    elseif ($member_data['house_status'] == 'active') {
+        return ['success' => false, 'error' => 'You are already in an active house. Please leave your current house first.'];
     }
     
     // Check if requested house exists and is open for joining
@@ -350,7 +390,8 @@ function requestJoinHouseByCode($member_id, $house_code) {
         return ['success' => false, 'error' => 'This house is not open for joining. Please use a join token instead.'];
     }
     
-    if ($house_data['house_id'] == $current_data['house_id']) {
+    // Don't check if it's the same house for members who have left
+    if ($member_data['house_status'] == 'active' && $house_data['house_id'] == $member_data['house_id']) {
         return ['success' => false, 'error' => 'You are already a member of this house.'];
     }
     
@@ -362,6 +403,87 @@ function requestJoinHouseByCode($member_id, $house_code) {
             WHERE member_id = ?";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "ii", $house_data['house_id'], $member_id);
+    
+    if (mysqli_stmt_execute($stmt)) {
+        mysqli_stmt_close($stmt);
+        return [
+            'success' => true, 
+            'message' => 'Join request submitted successfully.',
+            'house_name' => $house_data['house_name']
+        ];
+    } else {
+        mysqli_stmt_close($stmt);
+        return ['success' => false, 'error' => 'Failed to submit join request.'];
+    }
+}
+
+/**
+ * Submit join request using token
+ */
+function requestJoinHouseByToken($member_id, $token) {
+    $conn = getConnection();
+    
+    // Validate token first
+    $token_result = useJoinToken($token, $member_id);
+    
+    if (!$token_result['success']) {
+        return $token_result;
+    }
+    
+    $house_id = $token_result['house_id'];
+    
+    // Get member's current status
+    $member_sql = "SELECT house_status, status, house_id FROM members WHERE member_id = ?";
+    $member_stmt = mysqli_prepare($conn, $member_sql);
+    mysqli_stmt_bind_param($member_stmt, "i", $member_id);
+    mysqli_stmt_execute($member_stmt);
+    $member_result = mysqli_stmt_get_result($member_stmt);
+    $member_data = mysqli_fetch_assoc($member_result);
+    mysqli_stmt_close($member_stmt);
+    
+    if (!$member_data) {
+        return ['success' => false, 'error' => 'Member not found.'];
+    }
+    
+    // Check if member account is active
+    if ($member_data['status'] != 'active') {
+        return ['success' => false, 'error' => 'Your account is not active. Please contact support.'];
+    }
+    
+    // Check if member has left (ALLOWED)
+    if ($member_data['house_status'] == 'left') {
+        // Allowed - continue
+    }
+    // Check if member has pending requests
+    elseif (in_array($member_data['house_status'], ['pending_join', 'pending_leave'])) {
+        return ['success' => false, 'error' => 'You already have a pending request. Please wait for approval or cancel it first.'];
+    }
+    // Check if member is in an active house
+    elseif ($member_data['house_status'] == 'active') {
+        return ['success' => false, 'error' => 'You are already in an active house. Please leave your current house first.'];
+    }
+    
+    // Get house info
+    $house_sql = "SELECT house_name FROM houses WHERE house_id = ? AND is_active = 1";
+    $house_stmt = mysqli_prepare($conn, $house_sql);
+    mysqli_stmt_bind_param($house_stmt, "i", $house_id);
+    mysqli_stmt_execute($house_stmt);
+    $house_result = mysqli_stmt_get_result($house_stmt);
+    $house_data = mysqli_fetch_assoc($house_result);
+    mysqli_stmt_close($house_stmt);
+    
+    if (!$house_data) {
+        return ['success' => false, 'error' => 'House not found or is inactive.'];
+    }
+    
+    // Update member to request joining new house
+    $sql = "UPDATE members 
+            SET house_status = 'pending_join', 
+                requested_house_id = ?, 
+                join_request_date = NOW() 
+            WHERE member_id = ?";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "ii", $house_id, $member_id);
     
     if (mysqli_stmt_execute($stmt)) {
         mysqli_stmt_close($stmt);
@@ -402,7 +524,7 @@ function cancelJoinRequest($member_id) {
     $conn = getConnection();
     
     $sql = "UPDATE members 
-            SET house_status = 'active', 
+            SET house_status = 'left', 
                 requested_house_id = NULL, 
                 join_request_date = NULL 
             WHERE member_id = ? AND house_status = 'pending_join'";
@@ -451,5 +573,42 @@ function getHouseByCode($house_code) {
     mysqli_stmt_close($stmt);
     
     return $house;
+}
+
+/**
+ * Check if member can join a new house (helper function)
+ */
+function canMemberJoinNewHouse($member_id) {
+    $conn = getConnection();
+    
+    $sql = "SELECT status, house_status FROM members WHERE member_id = ?";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "i", $member_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $member = mysqli_fetch_assoc($result);
+    mysqli_stmt_close($stmt);
+    
+    if (!$member) {
+        return ['success' => false, 'error' => 'Member not found'];
+    }
+    
+    // Account must be active
+    if ($member['status'] != 'active') {
+        return ['success' => false, 'error' => 'Your account is not active. Please contact support.'];
+    }
+    
+    // Check house status
+    if ($member['house_status'] == 'left') {
+        return ['success' => true, 'message' => 'Eligible to join new house'];
+    } elseif ($member['house_status'] == 'active') {
+        return ['success' => false, 'error' => 'You are already in an active house. Please leave your current house first.'];
+    } elseif ($member['house_status'] == 'pending_join') {
+        return ['success' => false, 'error' => 'You already have a pending join request. Please wait for approval or cancel it.'];
+    } elseif ($member['house_status'] == 'pending_leave') {
+        return ['success' => false, 'error' => 'You already have a pending leave request. Please wait for approval or cancel it.'];
+    } else {
+        return ['success' => false, 'error' => 'Invalid member status. Please contact support.'];
+    }
 }
 ?>

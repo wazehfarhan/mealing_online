@@ -89,15 +89,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         mysqli_stmt_execute($archive_stmt);
                         mysqli_stmt_close($archive_stmt);
                         
-                        // Update member status to inactive
+                        // Update member - set house_status to 'left' but keep status active
+                        // This allows member to view old house data while being able to join new house
                         $update_sql = "UPDATE members 
-                                       SET house_status = 'active', 
+                                       SET house_status = 'left', 
                                            leave_request_date = NULL,
-                                           status = 'inactive'
+                                           status = 'active'
                                        WHERE member_id = ?";
                         $update_stmt = mysqli_prepare($conn, $update_sql);
                         mysqli_stmt_bind_param($update_stmt, "i", $member_id);
-                        mysqli_stmt_execute($update_stmt);
+                        
+                        if (!mysqli_stmt_execute($update_stmt)) {
+                            throw new Exception("Failed to update member: " . mysqli_error($conn));
+                        }
                         mysqli_stmt_close($update_stmt);
                         
                         // Log the action
@@ -112,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         mysqli_stmt_close($log_stmt);
                         
                         mysqli_commit($conn);
-                        $_SESSION['approval_success'] = "Leave request approved. Member has been archived.";
+                        $_SESSION['approval_success'] = "Leave request approved. Member can now join another house.";
                     } catch (Exception $e) {
                         mysqli_rollback($conn);
                         $errors[] = "Failed to process leave request: " . $e->getMessage();
@@ -213,7 +217,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                            WHERE member_id = ?";
                             $update_stmt = mysqli_prepare($conn, $update_sql);
                             mysqli_stmt_bind_param($update_stmt, "ii", $new_house['house_id'], $member_id);
-                            mysqli_stmt_execute($update_stmt);
+                            
+                            if (!mysqli_stmt_execute($update_stmt)) {
+                                throw new Exception("Failed to update member: " . mysqli_error($conn));
+                            }
                             mysqli_stmt_close($update_stmt);
                             
                             // Update user's house_id if user exists
@@ -258,13 +265,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 try {
                     $reject_sql = "UPDATE members 
-                                   SET house_status = 'active', 
+                                   SET house_status = 'left', 
                                        requested_house_id = NULL,
-                                       join_request_date = NULL 
+                                       join_request_date = NULL,
+                                       status = 'active'
                                    WHERE member_id = ?";
                     $reject_stmt = mysqli_prepare($conn, $reject_sql);
                     mysqli_stmt_bind_param($reject_stmt, "i", $member_id);
-                    mysqli_stmt_execute($reject_stmt);
+                    
+                    if (!mysqli_stmt_execute($reject_stmt)) {
+                        throw new Exception("Failed to update member: " . mysqli_error($conn));
+                    }
                     mysqli_stmt_close($reject_stmt);
                     
                     // Log rejection
@@ -279,7 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     mysqli_stmt_close($log_stmt);
                     
                     mysqli_commit($conn);
-                    $_SESSION['approval_success'] = "Join request rejected.";
+                    $_SESSION['approval_success'] = "Join request rejected. Member can try joining another house.";
                 } catch (Exception $e) {
                     mysqli_rollback($conn);
                     $errors[] = "Failed to reject join request: " . $e->getMessage();
@@ -295,7 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Redirect to avoid form resubmission
-        header("Location: approve_request.php");
+        header("Location: approve_requests.php");
         exit();
     }
 }
@@ -454,7 +465,7 @@ require_once '../includes/header.php';
         <!-- Leave Requests Section -->
         <?php if (!empty($leave_requests)): ?>
         <div class="card shadow mb-4">
-            <div class="card-header bg-warning text-dark">
+            <div class="card-header bg-warning">
                 <h5 class="mb-0">
                     <i class="fas fa-sign-out-alt me-2"></i>Leave Requests
                 </h5>
@@ -512,21 +523,17 @@ require_once '../includes/header.php';
                                             <input type="hidden" name="member_id" value="<?php echo $request['member_id']; ?>">
                                             <input type="hidden" name="action" value="approve">
                                             <button type="submit" class="btn btn-success btn-sm" 
-                                                    onclick="return confirm('Approve leave request for <?php echo addslashes($request['name'] ?? ''); ?>?\\n\\nThis will archive the member and mark them as inactive.')">
+                                                    onclick="return confirm('Approve leave request for <?php echo addslashes($request['name'] ?? ''); ?>?\n\nThis will archive the member and mark them as left. They can then join another house.')">
                                                 <i class="fas fa-check me-1"></i>Approve
                                             </button>
                                         </form>
                                         <?php endif; ?>
                                         
-                                        <form method="POST" action="" class="d-inline">
-                                            <input type="hidden" name="member_id" value="<?php echo $request['member_id']; ?>">
-                                            <input type="hidden" name="action" value="reject">
-                                            <button type="button" class="btn btn-danger btn-sm" 
-                                                    data-bs-toggle="modal" 
-                                                    data-bs-target="#rejectLeaveModal<?php echo $request['member_id']; ?>">
-                                                <i class="fas fa-times me-1"></i>Reject
-                                            </button>
-                                        </form>
+                                        <button type="button" class="btn btn-danger btn-sm" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#rejectLeaveModal<?php echo $request['member_id']; ?>">
+                                            <i class="fas fa-times me-1"></i>Reject
+                                        </button>
                                     </div>
                                     
                                     <!-- Reject Reason Modal -->
@@ -580,7 +587,7 @@ require_once '../includes/header.php';
                         <thead>
                             <tr>
                                 <th>Member</th>
-                                <th>Current House</th>
+                                <th>Current/Previous House</th>
                                 <th>Requested House</th>
                                 <th>Request Date</th>
                                 <th>Actions</th>
@@ -597,12 +604,15 @@ require_once '../includes/header.php';
                                     </small>
                                 </td>
                                 <td>
-                                    <?php echo htmlspecialchars($request['current_house_name'] ?? ''); ?><br>
-                                    <small class="badge bg-secondary"><?php echo htmlspecialchars($request['current_house_code'] ?? ''); ?></small>
+                                    <?php echo htmlspecialchars($request['current_house_name'] ?? 'No active house'); ?><br>
+                                    <small class="badge bg-secondary"><?php echo htmlspecialchars($request['current_house_code'] ?? 'LEFT'); ?></small>
+                                    <?php if (empty($request['current_house_id'])): ?>
+                                        <br><small class="text-info">(Previously left)</small>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <?php if (isset($request['requested_house_name']) && $request['requested_house_name']): ?>
-                                        <?php echo htmlspecialchars($request['requested_house_name']); ?><br>
+                                        <strong><?php echo htmlspecialchars($request['requested_house_name']); ?></strong><br>
                                         <small class="badge bg-info"><?php echo htmlspecialchars($request['requested_house_code'] ?? ''); ?></small>
                                     <?php else: ?>
                                         <span class="text-danger">House not found!</span>
@@ -618,21 +628,17 @@ require_once '../includes/header.php';
                                             <input type="hidden" name="member_id" value="<?php echo $request['member_id']; ?>">
                                             <input type="hidden" name="action" value="approve">
                                             <button type="submit" class="btn btn-success btn-sm"
-                                                    onclick="return confirm('Approve join request for <?php echo addslashes($request['name'] ?? ''); ?>?\\n\\nFrom: <?php echo addslashes($request['current_house_name'] ?? ''); ?>\\nTo: <?php echo addslashes($request['requested_house_name'] ?? ''); ?>')">
+                                                    onclick="return confirm('Approve join request for <?php echo addslashes($request['name'] ?? ''); ?>?\n\nFrom: <?php echo addslashes($request['current_house_name'] ?? 'No house'); ?>\nTo: <?php echo addslashes($request['requested_house_name'] ?? ''); ?>\n\nThis will transfer the member to your house.')">
                                                 <i class="fas fa-check me-1"></i>Approve
                                             </button>
                                         </form>
                                         <?php endif; ?>
                                         
-                                        <form method="POST" action="" class="d-inline">
-                                            <input type="hidden" name="member_id" value="<?php echo $request['member_id']; ?>">
-                                            <input type="hidden" name="action" value="reject">
-                                            <button type="button" class="btn btn-danger btn-sm"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#rejectJoinModal<?php echo $request['member_id']; ?>">
-                                                <i class="fas fa-times me-1"></i>Reject
-                                            </button>
-                                        </form>
+                                        <button type="button" class="btn btn-danger btn-sm"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#rejectJoinModal<?php echo $request['member_id']; ?>">
+                                            <i class="fas fa-times me-1"></i>Reject
+                                        </button>
                                     </div>
                                     
                                     <!-- Reject Reason Modal -->
@@ -647,7 +653,7 @@ require_once '../includes/header.php';
                                                     <div class="modal-body">
                                                         <p>Reject join request for <strong><?php echo htmlspecialchars($request['name'] ?? ''); ?></strong>?</p>
                                                         <p>
-                                                            From: <?php echo htmlspecialchars($request['current_house_name'] ?? ''); ?><br>
+                                                            From: <?php echo htmlspecialchars($request['current_house_name'] ?? 'No active house'); ?><br>
                                                             To: <?php echo htmlspecialchars($request['requested_house_name'] ?? 'Unknown'); ?>
                                                         </p>
                                                         <div class="mb-3">
@@ -691,7 +697,7 @@ require_once '../includes/header.php';
         <div class="card shadow mt-4">
             <div class="card-header bg-secondary text-white">
                 <h5 class="mb-0">
-                    <i class="fas fa-history me-2"></i>Transfer History
+                    <i class="fas fa-history me-2"></i>Recent Transfer History
                 </h5>
             </div>
             <div class="card-body">
@@ -708,7 +714,10 @@ require_once '../includes/header.php';
                             </tr>
                         </thead>
                         <tbody>
-                            <?php while ($history = mysqli_fetch_assoc($history_result)): ?>
+                            <?php 
+                            if (mysqli_num_rows($history_result) > 0) {
+                                while ($history = mysqli_fetch_assoc($history_result)): 
+                            ?>
                             <tr>
                                 <td>
                                     <?php echo date('M d, Y', strtotime($history['performed_at'] ?? '')); ?><br>
@@ -724,7 +733,8 @@ require_once '../includes/header.php';
                                         'join_rejected' => ['badge' => 'danger', 'text' => 'Join Rejected'],
                                         'leave_requested' => ['badge' => 'warning', 'text' => 'Leave Requested'],
                                         'join_requested' => ['badge' => 'info', 'text' => 'Join Requested'],
-                                        'leave_cancelled' => ['badge' => 'secondary', 'text' => 'Leave Cancelled']
+                                        'leave_cancelled' => ['badge' => 'secondary', 'text' => 'Leave Cancelled'],
+                                        'join_cancelled' => ['badge' => 'secondary', 'text' => 'Join Cancelled']
                                     ];
                                     $badge = $action_badges[$history['action'] ?? ''] ?? ['badge' => 'secondary', 'text' => $history['action'] ?? 'Unknown'];
                                     ?>
@@ -743,7 +753,12 @@ require_once '../includes/header.php';
                                 <td><?php echo htmlspecialchars($history['performed_by_name'] ?? ''); ?></td>
                                 <td><small><?php echo htmlspecialchars($history['notes'] ?? ''); ?></small></td>
                             </tr>
-                            <?php endwhile; ?>
+                            <?php 
+                                endwhile;
+                            } else {
+                                echo '<tr><td colspan="6" class="text-center text-muted">No transfer history found</td></tr>';
+                            }
+                            ?>
                         </tbody>
                     </table>
                 </div>
@@ -755,7 +770,5 @@ require_once '../includes/header.php';
 <?php
 // Close statements
 if (isset($history_stmt)) mysqli_stmt_close($history_stmt);
-// DO NOT close $conn - it's managed by getConnection() singleton
-
 require_once '../includes/footer.php';
 ?>
