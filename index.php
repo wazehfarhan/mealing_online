@@ -4,7 +4,7 @@ require_once 'config/database.php';
 require_once 'includes/functions.php';
 
 $functions = new Functions();
-$page_title = "mealsa";
+$page_title = "MealSa"; // Changed from "mealsa"
 
 // Check if database needs setup
 $missing_tables = checkDatabaseTables();
@@ -61,7 +61,7 @@ if ($total_money >= 1000000) {
     <meta charset="UTF-8">
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>mealsa</title>
+    <title>MealSa</title> <!-- Changed from "mealsa" -->
     <link rel="icon" type="image/png" href="image/icon.png">
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -117,6 +117,17 @@ if ($total_money >= 1000000) {
             background: rgba(255, 255, 255, 0.98);
         }
         
+        /* Custom logo style if needed */
+        .navbar-brand img {
+            height: 40px; /* Adjust as needed */
+            width: auto;
+            transition: transform 0.3s ease;
+        }
+
+        .navbar-brand img:hover {
+            transform: scale(1.05);
+        }
+
         .hero-section {
             padding: 160px 0 100px;
             background: linear-gradient(135deg, 
@@ -361,7 +372,7 @@ if ($total_money >= 1000000) {
             color: #6c757d !important;
         }
 
-        /* Skill Badge Colors - FIXED FOR VISIBILITY */
+        /* Skill Badge Colors - IMPROVED FOR VISIBILITY */
         .skill-badge {
             padding: 6px 12px;
             border-radius: 20px;
@@ -634,8 +645,12 @@ if ($total_money >= 1000000) {
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-light fixed-top professional-shadow" id="mainNav">
         <div class="container">
+            <!-- LOGO CHANGE HERE -->
             <a class="navbar-brand fw-bold" href="index.php">
-                <i class="bi bi-egg-fried me-2"></i>MealSa
+                <img src="image/icon.png" alt="MealSa Logo" style="height: 40px;" class="me-2">
+                <!-- If you want text next to the logo, uncomment and adjust: -->
+                <!-- MealSa --> 
+                 MealSa
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -679,7 +694,7 @@ if ($total_money >= 1000000) {
                     <p class="text-muted mt-4 animate__animated animate__fadeInUp animate__delay-3s">
                         <i class="bi bi-arrow-up-right-circle me-2"></i>
                         Join <span class="fw-bold counter"><?php echo $stats['total_houses'] ?? 0; ?></span>+ houses and 
-                        <span class="fw-bold counter"><?php echo $stats['total_members'] ?? 0; ?></span>+ members already using MealMaster
+                        <span class="fw-bold counter"><?php echo $stats['total_members'] ?? 0; ?></span>+ members already using MealSa <!-- Changed from MealMaster -->
                     </p>
                 </div>
                 <div class="col-lg-6">
@@ -763,7 +778,7 @@ if ($total_money >= 1000000) {
     <section class="py-5 bg-light">
         <div class="container">
             <div class="text-center mb-5">
-                <h2 class="fw-bold gradient-text mb-3">Why Choose MealMaster?</h2>
+                <h2 class="fw-bold gradient-text mb-3">Why Choose MealSa?</h2> <!-- Changed from MealMaster -->
                 <p class="text-muted">Join thousands already managing their meals efficiently</p>
             </div>
             <div class="row">
@@ -1002,7 +1017,7 @@ if ($total_money >= 1000000) {
             <div class="row">
                 <div class="col-md-4 mb-4">
                     <h5 class="mb-3 text-white">
-                        <i class="bi bi-egg-fried me-2"></i>MealMaster
+                        <i class="bi bi-egg-fried me-2"></i>MealSa <!-- Changed from MealMaster -->
                     </h5>
                     <p class="text-light">
                         Free meal management system for hostels, messes, and shared houses.
@@ -1043,7 +1058,7 @@ if ($total_money >= 1000000) {
             </div>
             <div class="text-center mt-4 pt-4 border-top border-secondary">
                 <p class="text-light small mb-0">
-                    © <?php echo date('Y'); ?> MealMaster - Developed by <?php echo $developerInfo['name']; ?> | 
+                    © <?php echo date('Y'); ?> MealSa - Developed by <?php echo $developerInfo['name']; ?> | <!-- Changed from MealMaster -->
                     Version 1.0
                 </p>
             </div>
