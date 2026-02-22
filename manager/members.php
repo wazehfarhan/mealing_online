@@ -102,24 +102,18 @@ $house = mysqli_fetch_assoc($house_result);
 $house_name = $house ? $house['house_name'] : 'Unknown House';
 
 // Get all members for current house only
+// Show all members including inactive (manager should see all members to manage them)
 $sql = "SELECT m.*, u.username as created_by_name 
         FROM members m 
         LEFT JOIN users u ON m.created_by = u.user_id 
         WHERE m.house_id = ?
+        AND m.house_status != 'left'
         ORDER BY m.status DESC, m.name ASC";
 $stmt = mysqli_prepare($conn, $sql);
 mysqli_stmt_bind_param($stmt, "i", $house_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $members = $result ? mysqli_fetch_all($result, MYSQLI_ASSOC) : [];
-
-// Count active members
-$active_count = 0;
-foreach ($members as $member) {
-    if ($member['status'] == 'active') {
-        $active_count++;
-    }
-}
 ?>
 <div class="row mb-4">
     <div class="col-12">
@@ -128,7 +122,7 @@ foreach ($members as $member) {
                 <h4 class="page-title mb-0">Manage Members</h4>
                 <p class="text-muted mb-0">
                     House: <strong><?php echo htmlspecialchars($house_name); ?></strong> | 
-                    Total: <?php echo count($members); ?> members (<?php echo $active_count; ?> active)
+                    Total: <?php echo count($members); ?> members
                 </p>
             </div>
             <div>
@@ -278,6 +272,15 @@ foreach ($members as $member) {
                                 <h6><i class="fas fa-chart-pie me-2"></i>House Member Statistics</h6>
                                 <div class="row">
                                     <div class="col-6">
+                                        <?php 
+                                        // Count active members from the members array
+                                        $active_count = 0;
+                                        foreach ($members as $m) {
+                                            if ($m['status'] == 'active') {
+                                                $active_count++;
+                                            }
+                                        }
+                                        ?>
                                         <div class="text-center">
                                             <h3 class="text-primary mb-0"><?php echo $active_count; ?></h3>
                                             <small class="text-muted">Active Members</small>
@@ -311,9 +314,17 @@ foreach ($members as $member) {
                                         </div>
                                     </div>
                                     <div class="col-6">
+                                        <?php 
+                                        $invited_count = 0;
+                                        foreach ($members as $member) {
+                                            if (!empty($member['join_token'])) {
+                                                $invited_count++;
+                                            }
+                                        }
+                                        ?>
                                         <div class="text-center">
-                                            <h3 class="text-warning mb-0"><?php echo count($members) - $linked_count; ?></h3>
-                                            <small class="text-muted">Without Accounts</small>
+                                            <h3 class="text-warning mb-0"><?php echo $invited_count; ?></h3>
+                                            <small class="text-muted">Invited (No Account)</small>
                                         </div>
                                     </div>
                                 </div>

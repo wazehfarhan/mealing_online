@@ -225,13 +225,20 @@ function canJoinHouseViaCode($member_id, $house_id) {
         return ['success' => false, 'error' => 'Member not found'];
     }
     
-    // Check if member account is active
-    if ($member['status'] != 'active') {
-        return ['success' => false, 'error' => 'Your account is not active. Please contact support.'];
-    }
+    // Check if member account is active (or if they are inactive but trying to join after leaving)
+    // Inactive members can only join if they have house_status='left' (after leave is approved)
+    // But we need to handle this differently - let them proceed, the approval will handle status
+    
+    // Allow inactive members to check if they can join (the approval process will handle status)
+    // The check for 'left' and 'house_inactive' below will handle most cases
     
     // Check if member has left their previous house (ALLOWED)
     if ($member['house_status'] == 'left') {
+        // Allowed to join - continue
+        // Note: status might still be 'inactive' from manager, but they've left so they can join new house
+    }
+    // Check if member's house is inactive - ALLOWED to join new house
+    elseif ($member['house_status'] == 'house_inactive') {
         // Allowed to join - continue
     }
     // Check if member has pending requests
@@ -351,13 +358,15 @@ function requestJoinHouseByCode($member_id, $house_code) {
         return ['success' => false, 'error' => 'Member not found.'];
     }
     
-    // Check if member account is active
-    if ($member_data['status'] != 'active') {
-        return ['success' => false, 'error' => 'Your account is not active. Please contact support.'];
-    }
+    // Allow inactive members to join if they have left (house_status='left') or house is inactive
+    // The approval process will handle setting status back to active
     
     // Check if member has left (ALLOWED)
     if ($member_data['house_status'] == 'left') {
+        // Allowed - continue
+    }
+    // Check if member's house is inactive - ALLOWED to join new house
+    elseif ($member_data['house_status'] == 'house_inactive') {
         // Allowed - continue
     }
     // Check if member has pending requests
@@ -445,13 +454,15 @@ function requestJoinHouseByToken($member_id, $token) {
         return ['success' => false, 'error' => 'Member not found.'];
     }
     
-    // Check if member account is active
-    if ($member_data['status'] != 'active') {
-        return ['success' => false, 'error' => 'Your account is not active. Please contact support.'];
-    }
+    // Allow inactive members to join if they have left (house_status='left') or house is inactive
+    // The approval process will handle setting status back to active
     
     // Check if member has left (ALLOWED)
     if ($member_data['house_status'] == 'left') {
+        // Allowed - continue
+    }
+    // Check if member's house is inactive - ALLOWED to join new house
+    elseif ($member_data['house_status'] == 'house_inactive') {
         // Allowed - continue
     }
     // Check if member has pending requests
@@ -593,14 +604,14 @@ function canMemberJoinNewHouse($member_id) {
         return ['success' => false, 'error' => 'Member not found'];
     }
     
-    // Account must be active
-    if ($member['status'] != 'active') {
-        return ['success' => false, 'error' => 'Your account is not active. Please contact support.'];
-    }
+    // Allow inactive members to join if they have left (house_status='left') or house is inactive
+    // The approval process will handle setting status back to active
     
     // Check house status
     if ($member['house_status'] == 'left') {
         return ['success' => true, 'message' => 'Eligible to join new house'];
+    } elseif ($member['house_status'] == 'house_inactive') {
+        return ['success' => true, 'message' => 'Eligible to join new house - your previous house is inactive'];
     } elseif ($member['house_status'] == 'active') {
         return ['success' => false, 'error' => 'You are already in an active house. Please leave your current house first.'];
     } elseif ($member['house_status'] == 'pending_join') {

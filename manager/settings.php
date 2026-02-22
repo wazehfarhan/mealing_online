@@ -110,9 +110,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_house'])) {
     $stmt = mysqli_prepare($conn, $sql);
     
     if ($stmt) {
+        // Get current house status before update
+        $check_house_sql = "SELECT is_active FROM houses WHERE house_id = ?";
+        $check_house_stmt = mysqli_prepare($conn, $check_house_sql);
+        mysqli_stmt_bind_param($check_house_stmt, "i", $house_id);
+        mysqli_stmt_execute($check_house_stmt);
+        $check_house_result = mysqli_stmt_get_result($check_house_stmt);
+        $old_house = mysqli_fetch_assoc($check_house_result);
+        $previous_is_active = $old_house['is_active'];
+        mysqli_stmt_close($check_house_stmt);
+        
         mysqli_stmt_bind_param($stmt, "ssii", $house_name, $description, $is_active, $house_id);
         
         if (mysqli_stmt_execute($stmt)) {
+            // Check if house was deactivated (from active to inactive)
+            if ($previous_is_active == 1 && $is_active == 0) {
+                // Update all active members of this house to have house_inactive status
+                $update_members_sql = "UPDATE members 
+                                       SET house_status = 'house_inactive' 
+                                       WHERE house_id = ? 
+                                       AND status = 'active' 
+                                       AND house_status = 'active'";
+                $update_members_stmt = mysqli_prepare($conn, $update_members_sql);
+                mysqli_stmt_bind_param($update_members_stmt, "i", $house_id);
+                mysqli_stmt_execute($update_members_stmt);
+                mysqli_stmt_close($update_members_stmt);
+                
+                error_log("House $house_id deactivated via settings.php. Members notified.");
+            }
+            
+            // Check if house was reactivated (from inactive to active)
+            if ($previous_is_active == 0 && $is_active == 1) {
+                // Update all members who had house_inactive status back to active
+                $update_members_sql = "UPDATE members 
+                                       SET house_status = 'active' 
+                                       WHERE house_id = ? 
+                                       AND house_status = 'house_inactive'";
+                $update_members_stmt = mysqli_prepare($conn, $update_members_sql);
+                mysqli_stmt_bind_param($update_members_stmt, "i", $house_id);
+                mysqli_stmt_execute($update_members_stmt);
+                mysqli_stmt_close($update_members_stmt);
+                
+                error_log("House $house_id reactivated via settings.php. Members status updated.");
+            }
+            
+            // Update session
+            $_SESSION['house_is_active'] = $is_active;
+            
             if ($isAjax) {
                 // Fetch the updated house data to return for AJAX
                 $select_sql = "SELECT * FROM houses WHERE house_id = ?";

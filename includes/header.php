@@ -91,6 +91,32 @@ if (isset($_SESSION['role']) && $_SESSION['role'] === 'member' && isset($_SESSIO
         $_SESSION['house_status'] = $member_status['house_status'];
         $_SESSION['requested_house_id'] = $member_status['requested_house_id'];
     }
+    
+    // Check if member's house is active (only for members)
+    // IMPORTANT: Do NOT logout the member if their house is inactive
+    // Just show them a warning - they should still be able to access their account
+    if (isset($_SESSION['house_id'])) {
+        // Include database connection
+        require_once __DIR__ . '/../config/database.php';
+        $conn = getConnection();
+        
+        $house_check_sql = "SELECT is_active FROM houses WHERE house_id = ?";
+        $house_check_stmt = mysqli_prepare($conn, $house_check_sql);
+        mysqli_stmt_bind_param($house_check_stmt, "i", $_SESSION['house_id']);
+        mysqli_stmt_execute($house_check_stmt);
+        $house_check_result = mysqli_stmt_get_result($house_check_stmt);
+        $house_check = mysqli_fetch_assoc($house_check_result);
+        mysqli_stmt_close($house_check_stmt);
+        
+        // Store house active status in session
+        $_SESSION['house_is_active'] = $house_check['is_active'] ?? 1;
+        
+        // If house is inactive and member's status is active, set to house_inactive
+        // BUT DO NOT LOG THEM OUT - just update the status for display purposes
+        if ($house_check['is_active'] == 0 && $_SESSION['house_status'] == 'active') {
+            $_SESSION['house_status'] = 'house_inactive';
+        }
+    }
 }
 
 // Check for pending approval count (for managers)
@@ -329,8 +355,14 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
                 </span>
                 <?php endif; ?>
                 <?php if (isset($_SESSION['house_status']) && $_SESSION['house_status'] != 'active'): ?>
-                <span class="badge bg-warning ms-2">
-                    <?php echo $_SESSION['house_status'] == 'pending_leave' ? 'Leaving' : 'Joining'; ?>
+                <span class="badge bg-<?php echo $_SESSION['house_status'] == 'house_inactive' ? 'danger' : 'warning'; ?> ms-2">
+                    <?php 
+                    if ($_SESSION['house_status'] == 'house_inactive') {
+                        echo 'House Inactive';
+                    } else {
+                        echo $_SESSION['house_status'] == 'pending_leave' ? 'Leaving' : 'Joining';
+                    }
+                    ?>
                 </span>
                 <?php endif; ?>
             </small>
@@ -481,3 +513,17 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
             <?php unset($_SESSION['error']); endif; ?>
+            
+            <!-- House Inactive Warning Alert -->
+            <?php if (isset($_SESSION['house_status']) && $_SESSION['house_status'] == 'house_inactive'): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
+                    <div>
+                        <strong>Your house is currently inactive!</strong>
+                        <p class="mb-0 mt-1">Please contact your house manager for more information. You can still view your history but cannot perform any activities.</p>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            <?php endif; ?>
