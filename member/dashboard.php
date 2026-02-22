@@ -23,6 +23,26 @@ $conn = getConnection();
 $user_id = $_SESSION['user_id'];
 $member_id = $_SESSION['member_id'];
 
+// Always fetch fresh member data including current house from database
+// This ensures we have the latest house after joining a new house via manager approval
+$fresh_member_sql = "SELECT m.house_id, m.house_status, h.house_name, h.house_code 
+                      FROM members m 
+                      LEFT JOIN houses h ON m.house_id = h.house_id 
+                      WHERE m.member_id = ?";
+$fresh_member_stmt = mysqli_prepare($conn, $fresh_member_sql);
+mysqli_stmt_bind_param($fresh_member_stmt, "i", $member_id);
+mysqli_stmt_execute($fresh_member_stmt);
+$fresh_member_result = mysqli_stmt_get_result($fresh_member_stmt);
+$fresh_member_data = mysqli_fetch_assoc($fresh_member_result);
+mysqli_stmt_close($fresh_member_stmt);
+
+// Update session with fresh data from database
+if ($fresh_member_data && !empty($fresh_member_data['house_id'])) {
+    $_SESSION['house_id'] = $fresh_member_data['house_id'];
+    $_SESSION['house_name'] = $fresh_member_data['house_name'];
+    $_SESSION['house_code'] = $fresh_member_data['house_code'];
+}
+
 // Check if member is viewing history (from a previous house)
 $viewing_history = false;
 $history_house_id = null;
