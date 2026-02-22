@@ -101,7 +101,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             if (empty($error)) {
-                $update_sql = "UPDATE members SET name = ?, phone = ?, email = ?, join_date = ?, status = ? WHERE member_id = ? AND house_id = ?";
+                // If status is being changed to inactive, also set house_status to 'left'
+                if ($status == 'inactive' && $member['status'] == 'active') {
+                    $update_sql = "UPDATE members SET name = ?, phone = ?, email = ?, join_date = ?, status = ?, house_status = 'left' WHERE member_id = ? AND house_id = ?";
+                } else {
+                    $update_sql = "UPDATE members SET name = ?, phone = ?, email = ?, join_date = ?, status = ? WHERE member_id = ? AND house_id = ?";
+                }
                 $update_stmt = mysqli_prepare($conn, $update_sql);
                 mysqli_stmt_bind_param($update_stmt, "sssssii", $name, $phone, $email, $join_date, $status, $member_id, $house_id);
                 

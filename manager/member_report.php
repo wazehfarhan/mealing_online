@@ -68,6 +68,9 @@ $member_id = isset($_GET['member_id']) ? intval($_GET['member_id']) : 0;
 $month = isset($_GET['month']) ? intval($_GET['month']) : date('m');
 $year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
 
+// Optional house_id for previous members
+$report_house_id = isset($_GET['house_id']) ? intval($_GET['house_id']) : $house_id;
+
 // Validate inputs
 if ($member_id <= 0) {
     $_SESSION['error'] = "Invalid member ID. Please select a valid member.";
@@ -80,7 +83,8 @@ if ($year < 2000 || $year > 2100) $year = date('Y');
 
 $month_name = date('F', mktime(0, 0, 0, $month, 1));
 
-// Check if member belongs to current house
+// Check if member belongs to current house OR is a former member
+// First check if member is currently in the house
 $member_check_sql = "SELECT m.*, h.house_name 
                      FROM members m 
                      LEFT JOIN houses h ON m.house_id = h.house_id 
@@ -91,11 +95,37 @@ mysqli_stmt_execute($member_check_stmt);
 $member_result = mysqli_stmt_get_result($member_check_stmt);
 $member = mysqli_fetch_assoc($member_result);
 
+// If not found in current house, check if member is a former member who left
+if (!$member) {
+    // Check in previous_houses table
+    $prev_member_sql = "SELECT m.*, h.house_name, ph.left_at, ph.final_balance, ph.total_deposits, ph.total_meals, ph.total_expenses
+                        FROM members m 
+                        LEFT JOIN houses h ON m.house_id = h.house_id
+                        LEFT JOIN previous_houses ph ON m.member_id = ph.member_id AND ph.house_id = ?
+                        WHERE m.member_id = ?";
+    $prev_member_stmt = mysqli_prepare($conn, $prev_member_sql);
+    mysqli_stmt_bind_param($prev_member_stmt, "ii", $house_id, $member_id);
+    mysqli_stmt_execute($prev_member_stmt);
+    $prev_member_result = mysqli_stmt_get_result($prev_member_stmt);
+    $former_member = mysqli_fetch_assoc($prev_member_result);
+    
+    if ($former_member) {
+        // Member found in previous houses - allow viewing
+        $member = $former_member;
+        $member['is_former_member'] = true;
+        // Use the house_id from previous_houses for queries
+        $report_house_id = $house_id;
+    }
+}
+
 if (!$member) {
     $_SESSION['error'] = "Member not found or you don't have permission to view this report";
     header("Location: members.php");
     exit();
 }
+
+// Check if viewing a former member
+$is_former_member = isset($member['is_former_member']) && $member['is_former_member'];
 
 // Get report data
 $member_report = null;
@@ -112,7 +142,7 @@ try {
                         AND MONTH(meal_date) = ? 
                         AND YEAR(meal_date) = ?";
     $total_meals_stmt = mysqli_prepare($conn, $total_meals_sql);
-    mysqli_stmt_bind_param($total_meals_stmt, "iii", $house_id, $month, $year);
+    mysqli_stmt_bind_param($total_meals_stmt, "iii", $report_house_id, $month, $year);
     mysqli_stmt_execute($total_meals_stmt);
     $total_meals_result = mysqli_stmt_get_result($total_meals_stmt);
     $total_meals_data = mysqli_fetch_assoc($total_meals_result);
@@ -125,7 +155,7 @@ try {
                      AND MONTH(expense_date) = ? 
                      AND YEAR(expense_date) = ?";
     $expenses_stmt = mysqli_prepare($conn, $expenses_sql);
-    mysqli_stmt_bind_param($expenses_stmt, "iii", $house_id, $month, $year);
+    mysqli_stmt_bind_param($expenses_stmt, "iii", $report_house_id, $month, $year);
     mysqli_stmt_execute($expenses_stmt);
     $expenses_result = mysqli_stmt_get_result($expenses_stmt);
     $expenses_data = mysqli_fetch_assoc($expenses_result);
@@ -139,7 +169,7 @@ try {
                          AND MONTH(meal_date) = ? 
                          AND YEAR(meal_date) = ?";
     $member_meals_stmt = mysqli_prepare($conn, $member_meals_sql);
-    mysqli_stmt_bind_param($member_meals_stmt, "iiii", $member_id, $house_id, $month, $year);
+    mysqli_stmt_bind_param($member_meals_stmt, "iiii", $member_id, $report_house_id, $month, $year);
     mysqli_stmt_execute($member_meals_stmt);
     $member_meals_result = mysqli_stmt_get_result($member_meals_stmt);
     $member_meals_data = mysqli_fetch_assoc($member_meals_result);
@@ -153,7 +183,7 @@ try {
                             AND MONTH(deposit_date) = ? 
                             AND YEAR(deposit_date) = ?";
     $member_deposits_stmt = mysqli_prepare($conn, $member_deposits_sql);
-    mysqli_stmt_bind_param($member_deposits_stmt, "iiii", $member_id, $house_id, $month, $year);
+    mysqli_stmt_bind_param($member_deposits_stmt, "iiii", $member_id, $report_house_id, $month, $year);
     mysqli_stmt_execute($member_deposits_stmt);
     $member_deposits_result = mysqli_stmt_get_result($member_deposits_stmt);
     $member_deposits_data = mysqli_fetch_assoc($member_deposits_result);
@@ -190,7 +220,7 @@ try {
                   AND YEAR(meal_date) = ? 
                   ORDER BY meal_date DESC";
     $meals_stmt = mysqli_prepare($conn, $meals_sql);
-    mysqli_stmt_bind_param($meals_stmt, "iiii", $member_id, $house_id, $month, $year);
+    mysqli_stmt_bind_param($meals_stmt, "iiii", $member_id, $report_house_id, $month, $year);
     mysqli_stmt_execute($meals_stmt);
     $meals_result = mysqli_stmt_get_result($meals_stmt);
     $meals = mysqli_fetch_all($meals_result, MYSQLI_ASSOC);
@@ -203,7 +233,7 @@ try {
                      AND YEAR(deposit_date) = ? 
                      ORDER BY deposit_date DESC";
     $deposits_stmt = mysqli_prepare($conn, $deposits_sql);
-    mysqli_stmt_bind_param($deposits_stmt, "iiii", $member_id, $house_id, $month, $year);
+    mysqli_stmt_bind_param($deposits_stmt, "iiii", $member_id, $report_house_id, $month, $year);
     mysqli_stmt_execute($deposits_stmt);
     $deposits_result = mysqli_stmt_get_result($deposits_stmt);
     $deposits = mysqli_fetch_all($deposits_result, MYSQLI_ASSOC);
@@ -236,6 +266,7 @@ require_once '../includes/header.php';
                         <div class="btn-group me-2" role="group">
                             <form method="GET" class="d-flex" action="">
                                 <input type="hidden" name="member_id" value="<?php echo $member_id; ?>">
+                                <input type="hidden" name="house_id" value="<?php echo $report_house_id; ?>">
                                 <select name="month" class="form-select form-select-sm" onchange="this.form.submit()">
                                     <?php for ($m = 1; $m <= 12; $m++): ?>
                                     <option value="<?php echo $m; ?>" <?php echo $m == $month ? 'selected' : ''; ?>>
@@ -256,7 +287,7 @@ require_once '../includes/header.php';
                         <a href="members.php" class="btn btn-secondary">
                             <i class="fas fa-arrow-left me-2"></i>Back
                         </a>
-                        <a href="?member_id=<?php echo $member_id; ?>&month=<?php echo $month; ?>&year=<?php echo $year; ?>&format=pdf" 
+                        <a href="?member_id=<?php echo $member_id; ?>&month=<?php echo $month; ?>&year=<?php echo $year; ?>&house_id=<?php echo $report_house_id; ?>&format=pdf" 
                            class="btn btn-danger ms-2" target="_blank">
                             <i class="fas fa-file-pdf me-2"></i>Download PDF
                         </a>

@@ -62,8 +62,8 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     }
     
     if ($has_records) {
-        // Mark as inactive instead of deleting
-        $update_sql = "UPDATE members SET status = 'inactive' WHERE member_id = ? AND house_id = ?";
+        // Mark as inactive instead of deleting, also set house_status to 'left'
+        $update_sql = "UPDATE members SET status = 'inactive', house_status = 'left' WHERE member_id = ? AND house_id = ?";
         $update_stmt = mysqli_prepare($conn, $update_sql);
         mysqli_stmt_bind_param($update_stmt, "ii", $member_id, $house_id);
         
@@ -114,6 +114,20 @@ mysqli_stmt_bind_param($stmt, "i", $house_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $members = $result ? mysqli_fetch_all($result, MYSQLI_ASSOC) : [];
+
+// Get previous members who have left the house
+$prev_members_sql = "SELECT m.*, u.username as created_by_name, ph.left_at, ph.final_balance
+                     FROM members m 
+                     LEFT JOIN users u ON m.created_by = u.user_id
+                     LEFT JOIN previous_houses ph ON m.member_id = ph.member_id AND ph.house_id = ?
+                     WHERE m.house_id = ?
+                     AND (m.house_status = 'left' OR m.status = 'inactive')
+                     ORDER BY ph.left_at DESC, m.name ASC";
+$prev_members_stmt = mysqli_prepare($conn, $prev_members_sql);
+mysqli_stmt_bind_param($prev_members_stmt, "ii", $house_id, $house_id);
+mysqli_stmt_execute($prev_members_stmt);
+$prev_members_result = mysqli_stmt_get_result($prev_members_stmt);
+$previous_members = $prev_members_result ? mysqli_fetch_all($prev_members_result, MYSQLI_ASSOC) : [];
 ?>
 <div class="row mb-4">
     <div class="col-12">
@@ -337,6 +351,90 @@ $members = $result ? mysqli_fetch_all($result, MYSQLI_ASSOC) : [];
         </div>
     </div>
 </div>
+
+<!-- Previous Members Section -->
+<?php if (!empty($previous_members)): ?>
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow border-warning">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-warning">
+                    <i class="fas fa-history me-2"></i>Previous Members (Left House)
+                </h6>
+                <div>
+                    <span class="badge bg-warning"><?php echo count($previous_members); ?> members</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover datatable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Name</th>
+                                <th>Contact Info</th>
+                                <th>Join Date</th>
+                                <th>Left Date</th>
+                                <th>Final Balance</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php $counter = 1; ?>
+                            <?php foreach ($previous_members as $pmember): ?>
+                            <tr>
+                                <td><?php echo $counter++; ?></td>
+                                <td>
+                                    <strong><?php echo htmlspecialchars($pmember['name']); ?></strong>
+                                    <span class="badge bg-secondary ms-1">Former</span>
+                                </td>
+                                <td>
+                                    <?php if ($pmember['phone']): ?>
+                                    <div><i class="fas fa-phone text-muted me-2"></i><?php echo $pmember['phone']; ?></div>
+                                    <?php endif; ?>
+                                    <?php if ($pmember['email']): ?>
+                                    <div><i class="fas fa-envelope text-muted me-2"></i><?php echo $pmember['email']; ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo $functions->formatDate($pmember['join_date']); ?></td>
+                                <td>
+                                    <?php echo $pmember['left_at'] ? $functions->formatDate($pmember['left_at']) : 'N/A'; ?>
+                                </td>
+                                <td>
+                                    <?php 
+                                    $final_balance = isset($pmember['final_balance']) ? $pmember['final_balance'] : 0;
+                                    $balance_class = $final_balance >= 0 ? 'text-success' : 'text-danger';
+                                    ?>
+                                    <span class="<?php echo $balance_class; ?>">
+                                        <?php echo $functions->formatCurrency($final_balance); ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">Left</span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="member_report.php?member_id=<?php echo $pmember['member_id']; ?>&house_id=<?php echo $house_id; ?>" 
+                                           class="btn btn-info" title="View Report">
+                                            <i class="fas fa-chart-bar"></i> View Report
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    These members have left the house. You can still view their historical reports and download them as PDF.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <script>
 function confirmDelete(memberId, memberName) {

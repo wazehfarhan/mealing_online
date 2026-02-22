@@ -14,9 +14,8 @@ $current_house_id = $_SESSION['house_id'];
 
 $errors = [];
 $success = '';
-$warning = ''; // Initialize warning variable
+$warning = '';
 
-// Function to fetch fresh member data
 function getMemberData($conn, $member_id) {
     $sql = "SELECT m.*, h.house_name, h.house_code 
             FROM members m 
@@ -31,22 +30,16 @@ function getMemberData($conn, $member_id) {
     return $data;
 }
 
-// Get member info
 $member = getMemberData($conn, $member_id);
 
 if (!$member) {
     die("Member not found. Please logout and login again.");
 }
 
-// Check if member is already inactive
-if ($member['status'] == 'inactive') {
-    // Clear session and redirect to login
-    session_destroy();
-    header("Location: ../auth/login.php?error=inactive");
-    exit();
-}
+// Check if member's account is truly inactive vs having left the house:
+$is_truly_inactive = ($member['status'] == 'inactive' && $member['house_status'] != 'left');
+$has_left_house = ($member['house_status'] == 'left');
 
-// Check today's meals
 $today = date('Y-m-d');
 $today_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as total FROM meals WHERE member_id = ? AND meal_date = ?";
 $today_meals_stmt = mysqli_prepare($conn, $today_meals_sql);
@@ -56,7 +49,6 @@ $today_meals_result = mysqli_stmt_get_result($today_meals_stmt);
 $today_meals = mysqli_fetch_assoc($today_meals_result);
 mysqli_stmt_close($today_meals_stmt);
 
-// Get member statistics
 $stats_sql = "
     SELECT 
         (SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE member_id = ?) as total_deposits,
@@ -69,32 +61,24 @@ $stats_result = mysqli_stmt_get_result($stats_stmt);
 $stats = mysqli_fetch_assoc($stats_result);
 mysqli_stmt_close($stats_stmt);
 
-// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Handle leave request submission
     if (isset($_POST['action']) && $_POST['action'] == 'submit_leave') {
-        // Check if member is still active
         if ($member['status'] != 'active') {
             $errors[] = "You are not an active member of this house.";
         }
-        // Check if member already has a pending leave request
         elseif ($member['house_status'] == 'pending_leave') {
             $errors[] = "You already have a pending leave request.";
         }
-        // Check if member has a pending join request
         elseif ($member['house_status'] == 'pending_join') {
             $errors[] = "You have a pending join request. Please cancel it first.";
         }
-        // Check if checkboxes are checked
         elseif (!isset($_POST['confirm_check']) || !isset($_POST['data_check'])) {
             $errors[] = "Please check both confirmation boxes before submitting.";
         }
-        // Check if member has today's meals
         elseif ($today_meals['total'] > 0) {
             $_SESSION['warning'] = "You cannot leave the house today because you have meal entries for today (" . $today_meals['total'] . " meals). Please try again tomorrow.";
         }
         else {
-            // Submit leave request
             $update_sql = "UPDATE members 
                           SET house_status = 'pending_leave', 
                               leave_request_date = NOW() 
@@ -106,7 +90,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (mysqli_stmt_execute($update_stmt)) {
                 if (mysqli_stmt_affected_rows($update_stmt) > 0) {
-                    // Log activity
                     $log_sql = "INSERT INTO house_transfers_log 
                                 (member_id, from_house_id, action, performed_by, notes)
                                 VALUES (?, ?, 'leave_requested', ?, 'Member submitted leave request')";
@@ -116,12 +99,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     mysqli_stmt_close($log_stmt);
                     
                     $_SESSION['success'] = "Your leave request has been submitted successfully! The manager will review and approve your request.";
-                    
-                    // Redirect to refresh the page
                     header("Location: leave_request.php");
                     exit();
                 } else {
-                    $errors[] = "Unable to submit leave request. You may already have a pending request or are not an active member.";
+                    $errors[] = "Unable to submit leave request.";
                 }
             } else {
                 $errors[] = "Failed to submit leave request. Error: " . mysqli_error($conn);
@@ -130,47 +111,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
-    // Handle cancel request
     if (isset($_POST['action']) && $_POST['action'] == 'cancel_leave') {
         if ($member['house_status'] == 'pending_leave') {
-            $cancel_sql = "UPDATE members 
-                          SET house_status = 'active', 
-                              leave_request_date = NULL 
-                          WHERE member_id = ? 
-                          AND house_status = 'pending_leave' 
-                          AND status = 'active'";
+            $cancel_sql = "UPDATE members SET house_status = 'active', leave_request_date = NULL WHERE member_id = ? AND house_status = 'pending_leave' AND status = 'active'";
             $cancel_stmt = mysqli_prepare($conn, $cancel_sql);
             mysqli_stmt_bind_param($cancel_stmt, "i", $member_id);
             
             if (mysqli_stmt_execute($cancel_stmt)) {
                 if (mysqli_stmt_affected_rows($cancel_stmt) > 0) {
-                    // Log activity
-                    $log_sql = "INSERT INTO house_transfers_log 
-                                (member_id, from_house_id, action, performed_by, notes)
-                                VALUES (?, ?, 'leave_cancelled', ?, 'Member cancelled leave request')";
+                    $log_sql = "INSERT INTO house_transfers_log (member_id, from_house_id, action, performed_by, notes) VALUES (?, ?, 'leave_cancelled', ?, 'Member cancelled leave request')";
                     $log_stmt = mysqli_prepare($conn, $log_sql);
                     mysqli_stmt_bind_param($log_stmt, "iii", $member_id, $current_house_id, $member_id);
                     mysqli_stmt_execute($log_stmt);
                     mysqli_stmt_close($log_stmt);
                     
                     $_SESSION['success'] = "Your leave request has been cancelled.";
-                    
-                    // Redirect to refresh the page
                     header("Location: leave_request.php");
                     exit();
                 }
             } else {
-                $errors[] = "Failed to cancel request. Error: " . mysqli_error($conn);
+                $errors[] = "Failed to cancel request.";
             }
             mysqli_stmt_close($cancel_stmt);
         }
     }
 }
 
-// Refresh member data after any processing
 $member = getMemberData($conn, $member_id);
 
-// Get any session messages
 if (isset($_SESSION['success'])) {
     $success = $_SESSION['success'];
     unset($_SESSION['success']);
@@ -186,7 +154,6 @@ if (isset($_SESSION['error'])) {
     unset($_SESSION['error']);
 }
 
-// Include header AFTER all processing
 require_once '../includes/header.php';
 ?>
 
@@ -201,7 +168,6 @@ require_once '../includes/header.php';
             </a>
         </div>
         
-        <!-- Display Messages -->
         <?php if ($success): ?>
         <div class="alert alert-success alert-dismissible fade show" role="alert">
             <i class="fas fa-check-circle me-2"></i><?php echo $success; ?>
@@ -226,8 +192,7 @@ require_once '../includes/header.php';
         </div>
         <?php endif; ?>
         
-        <!-- Check if member is inactive -->
-        <?php if ($member['status'] == 'inactive'): ?>
+        <?php if ($is_truly_inactive): ?>
         <div class="card shadow mb-4 border-danger">
             <div class="card-header bg-danger text-white">
                 <h5 class="mb-0">
@@ -237,16 +202,64 @@ require_once '../includes/header.php';
             <div class="card-body">
                 <div class="alert alert-danger">
                     <strong><i class="fas fa-ban me-2"></i>Your account is inactive.</strong>
-                    <p class="mb-0 mt-2">You have already left this house. Please contact your manager if you believe this is an error.</p>
+                    <p class="mb-0 mt-2">Please contact your manager if you believe this is an error.</p>
                 </div>
                 <a href="../auth/logout.php" class="btn btn-primary">
                     <i class="fas fa-sign-out-alt me-2"></i>Logout
                 </a>
             </div>
         </div>
+        
+        <?php elseif ($has_left_house): ?>
+        <div class="card shadow mb-4 border-success">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-check-circle me-2"></i>You Have Left the House
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-success">
+                    <strong><i class="fas fa-history me-2"></i>Your previous house data is archived.</strong>
+                    <p class="mb-0 mt-2">You can view your historical data and reports from your previous house or join a new house.</p>
+                </div>
+                
+                <div class="row mt-4">
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="fas fa-file-alt fa-3x text-primary mb-3"></i>
+                                <h5>View Previous Reports</h5>
+                                <p class="text-muted">Access your historical meal and deposit data</p>
+                                <a href="view_history.php" class="btn btn-primary">
+                                    <i class="fas fa-history me-2"></i>View History
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="fas fa-home fa-3x text-success mb-3"></i>
+                                <h5>Join a New House</h5>
+                                <p class="text-muted">Become a member of another house</p>
+                                <a href="join.php" class="btn btn-success">
+                                    <i class="fas fa-sign-in-alt me-2"></i>Join House
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <a href="../auth/logout.php" class="btn btn-outline-secondary">
+                        <i class="fas fa-sign-out-alt me-2"></i>Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+        
         <?php else: ?>
         
-        <!-- Current Status -->
         <div class="card shadow mb-4">
             <div class="card-header">
                 <h5 class="mb-0">
@@ -285,7 +298,6 @@ require_once '../includes/header.php';
                                 <?php elseif ($member['house_status'] == 'pending_join'): ?>
                                 <span class="badge bg-info">Pending Join Request</span>
                                 <?php endif; ?>
-                            </dd>
                             
                             <dt class="col-sm-4">Today's Meals</dt>
                             <dd class="col-sm-8">
@@ -306,7 +318,6 @@ require_once '../includes/header.php';
             </div>
         </div>
         
-        <!-- Member Statistics -->
         <div class="row mb-4">
             <div class="col-md-3 mb-3">
                 <div class="card border-primary">
@@ -342,7 +353,6 @@ require_once '../includes/header.php';
             </div>
         </div>
         
-        <!-- Leave Request Form -->
         <div class="card shadow">
             <div class="card-header bg-danger text-white">
                 <h5 class="mb-0">
@@ -364,7 +374,6 @@ require_once '../includes/header.php';
                 </div>
                 
                 <?php if ($member['house_status'] == 'pending_leave'): ?>
-                <!-- Already submitted request -->
                 <div class="alert alert-warning">
                     <strong><i class="fas fa-clock me-2"></i>Your leave request is pending</strong>
                     <p class="mb-0 mt-2">Submitted on: <?php echo date('M d, Y g:i A', strtotime($member['leave_request_date'])); ?></p>
@@ -380,7 +389,6 @@ require_once '../includes/header.php';
                 </form>
                 
                 <?php elseif ($member['house_status'] == 'pending_join'): ?>
-                <!-- Cannot leave due to pending join request -->
                 <div class="alert alert-info">
                     <strong><i class="fas fa-info-circle me-2"></i>Pending Join Request</strong>
                     <p class="mb-0 mt-2">You have a pending join request. Please cancel it before requesting to leave.</p>
@@ -390,7 +398,6 @@ require_once '../includes/header.php';
                 </a>
                 
                 <?php elseif ($today_meals['total'] > 0): ?>
-                <!-- Cannot leave due to today's meals -->
                 <div class="alert alert-danger">
                     <strong><i class="fas fa-ban me-2"></i>Cannot submit leave request</strong>
                     <p class="mb-0 mt-2">You have <?php echo $today_meals['total']; ?> meal(s) recorded for today (<?php echo date('M d, Y'); ?>).</p>
@@ -398,7 +405,6 @@ require_once '../includes/header.php';
                 </div>
                 
                 <?php else: ?>
-                <!-- Can submit request -->
                 <div class="alert alert-success">
                     <strong><i class="fas fa-check-circle me-2"></i>You are eligible to leave</strong>
                     <p class="mb-0 mt-2">You have no meal entries for today.</p>
@@ -457,7 +463,6 @@ require_once '../includes/header.php';
             </div>
         </div>
         
-        <!-- Contact Manager -->
         <div class="card shadow mt-4">
             <div class="card-header">
                 <h5 class="mb-0">
@@ -466,11 +471,7 @@ require_once '../includes/header.php';
             </div>
             <div class="card-body">
                 <?php
-                // Get manager info
-                $manager_sql = "SELECT u.username, u.email 
-                              FROM users u 
-                              WHERE u.house_id = ? AND u.role = 'manager' 
-                              LIMIT 1";
+                $manager_sql = "SELECT u.username, u.email FROM users u WHERE u.house_id = ? AND u.role = 'manager' LIMIT 1";
                 $manager_stmt = mysqli_prepare($conn, $manager_sql);
                 mysqli_stmt_bind_param($manager_stmt, "i", $current_house_id);
                 mysqli_stmt_execute($manager_stmt);
@@ -496,6 +497,5 @@ require_once '../includes/header.php';
 </div>
 
 <?php
-// The connection is managed by getConnection() singleton
 require_once '../includes/footer.php';
 ?>

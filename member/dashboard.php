@@ -182,6 +182,8 @@ if ($view_type === 'year') {
     // Calculate average meal rate for the year
     if ($year_summary['total_house_meals'] > 0) {
         $year_summary['average_meal_rate'] = $year_summary['total_expenses'] / $year_summary['total_house_meals'];
+    } else {
+        $year_summary['average_meal_rate'] = 0;
     }
     
     // Get monthly breakdown for the year

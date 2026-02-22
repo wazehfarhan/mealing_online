@@ -532,6 +532,7 @@ if (isset($stmt)) {
                                         <tr>
                                             <th>#</th>
                                             <th>Member Name</th>
+                                            <th class="text-center">Status</th>
                                             <th class="text-center">Total Meals</th>
                                             <th class="text-center">Meal Cost</th>
                                             <th class="text-center">Total Deposits</th>
@@ -550,6 +551,13 @@ if (isset($stmt)) {
                                         <tr>
                                             <td><?php echo $counter++; ?></td>
                                             <td><?php echo htmlspecialchars($member['name'] ?? 'N/A'); ?></td>
+                                            <td class="text-center">
+                                                <?php if (($member['status'] ?? 'active') === 'active'): ?>
+                                                    <span class="badge bg-success">Active</span>
+                                                <?php else: ?>
+                                                    <span class="badge bg-secondary">Former</span>
+                                                <?php endif; ?>
+                                            </td>
                                             <td class="text-center"><?php echo number_format($member['total_meals'] ?? 0, 2); ?></td>
                                             <td class="text-center"><?php echo $functions->formatCurrency($member['member_cost'] ?? 0); ?></td>
                                             <td class="text-center"><?php echo $functions->formatCurrency($member['total_deposits'] ?? 0); ?></td>

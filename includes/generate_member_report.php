@@ -66,10 +66,27 @@ $member_result = mysqli_stmt_get_result($stmt); // FIX: Get result set
 $member = mysqli_fetch_assoc($member_result); // FIX: Pass result set, not statement
 
 if (!$member) {
-    die('<div style="padding: 20px; text-align: center; font-family: Arial; color: #dc3545;">
-        <h2>Error</h2>
-        <p>Member not found.</p>
-    </div>');
+    // Check if member is a former member who left the house
+    $prev_member_sql = "SELECT m.*, h.house_name, h.house_code, ph.left_at
+                        FROM members m 
+                        LEFT JOIN houses h ON m.house_id = h.house_id
+                        LEFT JOIN previous_houses ph ON m.member_id = ph.member_id AND ph.house_id = ?
+                        WHERE m.member_id = ?";
+    $prev_member_stmt = mysqli_prepare($conn, $prev_member_sql);
+    mysqli_stmt_bind_param($prev_member_stmt, "ii", $house_id, $member_id);
+    mysqli_stmt_execute($prev_member_stmt);
+    $prev_member_result = mysqli_stmt_get_result($prev_member_stmt);
+    $former_member = mysqli_fetch_assoc($prev_member_result);
+    
+    if ($former_member) {
+        $member = $former_member;
+        $member['is_former_member'] = true;
+    } else {
+        die('<div style="padding: 20px; text-align: center; font-family: Arial; color: #dc3545;">
+            <h2>Error</h2>
+            <p>Member not found.</p>
+        </div>');
+    }
 }
 
 // Create Functions instance
@@ -508,10 +525,17 @@ mysqli_stmt_close($stmt);
         <div class="info-row">
             <div class="info-label">Status:</div>
             <div>
+                <?php if (isset($member['is_former_member']) && $member['is_former_member']): ?>
+                <span style="background: #6c757d; 
+                      color: white; padding: 2px 8px; border-radius: 3px; font-size: 10px;">
+                    Former Member
+                </span>
+                <?php else: ?>
                 <span style="background: <?php echo $member['status'] == 'active' ? '#27ae60' : '#95a5a6'; ?>; 
                       color: white; padding: 2px 8px; border-radius: 3px; font-size: 10px;">
                     <?php echo ucfirst($member['status']); ?>
                 </span>
+                <?php endif; ?>
             </div>
         </div>
     </div>

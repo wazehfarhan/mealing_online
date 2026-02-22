@@ -62,10 +62,10 @@ try {
         }
     }
     
-    // Update member status to inactive
+    // Update member status to inactive and set house_status to 'left'
     $sql = "UPDATE members m 
             INNER JOIN users u ON m.member_id = u.member_id 
-            SET m.status = 'inactive' 
+            SET m.status = 'inactive', m.house_status = 'left' 
             WHERE u.user_id = ? AND m.house_id = ?";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "ii", $user_id, $house_id);

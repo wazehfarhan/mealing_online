@@ -480,7 +480,27 @@ class Functions {
         $month_end = date('Y-m-t', strtotime($month_start));
         
         $report = array();
-        $members = $this->getActiveMembers($house_id);
+        
+        // Get all members who have data (meals or deposits) in this specific month
+        // This includes former members who were active during that month
+        $members_sql = "
+            SELECT DISTINCT m.member_id, m.name, m.phone, m.email, m.status, m.house_id
+            FROM members m
+            LEFT JOIN meals mt ON m.member_id = mt.member_id AND mt.meal_date BETWEEN ? AND ?
+            LEFT JOIN deposits d ON m.member_id = d.member_id AND d.deposit_date BETWEEN ? AND ?
+            WHERE m.house_id = ? 
+            AND (mt.meal_count IS NOT NULL OR d.amount IS NOT NULL)
+            ORDER BY m.name ASC
+        ";
+        $stmt = mysqli_prepare($this->conn, $members_sql);
+        mysqli_stmt_bind_param($stmt, "ssssi", $month_start, $month_end, $month_start, $month_end, $house_id);
+        mysqli_stmt_execute($stmt);
+        $members_result = mysqli_stmt_get_result($stmt);
+        
+        $members = array();
+        while ($row = mysqli_fetch_assoc($members_result)) {
+            $members[] = $row;
+        }
         
         if (empty($members)) {
             return $report;
