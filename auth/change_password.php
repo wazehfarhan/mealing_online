@@ -1,8 +1,11 @@
 <?php
-// Start session
+// Start session FIRST before any output
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+
+// Output buffering to prevent "headers already sent" errors
+ob_start();
 
 require_once '../config/database.php';
 require_once '../includes/auth.php';
@@ -20,8 +23,8 @@ $success = '';
 $user_id = $_SESSION['user_id'] ?? '';
 $email = $_SESSION['email'] ?? '';
 
-// Get user role from session
-$user_role = $_SESSION['user_role'] ?? 'member'; // Default to member
+// Get user role from session (use 'role' not 'user_role')
+$user_role = $_SESSION['role'] ?? 'member'; // Default to member
 
 // Determine redirect URL based on user role
 if ($user_role === 'manager' || $user_role === 'admin') {
@@ -53,6 +56,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Clear password fields
             $_POST['current_password'] = $_POST['new_password'] = $_POST['confirm_password'] = '';
+            
+            // Use PHP redirect instead of JavaScript for more reliable redirect
+            // Store success message in session for the redirect target page
+            $_SESSION['password_changed'] = true;
+            $_SESSION['success'] = "Password changed successfully!";
+            
+            // Redirect based on user role
+            $redirect_url = ($user_role === 'manager' || $user_role === 'admin') 
+                ? '../manager/dashboard.php' 
+                : '../member/dashboard.php';
+            
+            header("Location: $redirect_url");
+            exit();
         } else {
             $error = "Current password is incorrect or failed to change password";
         }

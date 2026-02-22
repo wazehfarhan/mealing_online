@@ -43,39 +43,59 @@ $security_questions = [
 
 // If token is provided, validate it
 if (!empty($token)) {
-    $sql = "SELECT m.*, h.house_name, h.house_code, h.description as house_description
-            FROM members m 
-            JOIN houses h ON m.house_id = h.house_id 
-            WHERE m.join_token = ? AND m.token_expiry > NOW() AND m.status = 'active' 
-            AND h.is_active = 1";
-    $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, "s", $token);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
+    // First check if token exists in members table
+    $check_sql = "SELECT m.*, h.house_name, h.house_code, h.description as house_description
+                  FROM members m 
+                  JOIN houses h ON m.house_id = h.house_id 
+                  WHERE m.join_token = ?";
+    $check_stmt = mysqli_prepare($conn, $check_sql);
+    mysqli_stmt_bind_param($check_stmt, "s", $token);
+    mysqli_stmt_execute($check_stmt);
+    $check_result = mysqli_stmt_get_result($check_stmt);
     
-    if (mysqli_num_rows($result) === 1) {
-        $member_info = mysqli_fetch_assoc($result);
-        $house_info = [
-            'house_name' => $member_info['house_name'],
-            'house_code' => $member_info['house_code'],
-            'description' => $member_info['house_description']
-        ];
-        
-        // Check if this member already has a user account
-        $check_sql = "SELECT user_id FROM users WHERE member_id = ?";
-        $check_stmt = mysqli_prepare($conn, $check_sql);
-        mysqli_stmt_bind_param($check_stmt, "i", $member_info['member_id']);
-        mysqli_stmt_execute($check_stmt);
-        mysqli_stmt_store_result($check_stmt);
-        
-        if (mysqli_stmt_num_rows($check_stmt) > 0) {
-            $error = "This member already has an account. Please login instead.";
-            $token = '';
-            $member_info = null;
-        }
-    } else {
-        $error = "Invalid or expired join link. Please request a new one from your house manager.";
+    if (mysqli_num_rows($check_result) === 0) {
+        // Token not found in database
+        $error = "Invalid join token. The token you entered was not found in our system. Please check with your house manager for a valid join link.";
         $token = '';
+    } else {
+        $member_check = mysqli_fetch_assoc($check_result);
+        
+        // Check if token is expired
+        if (empty($member_check['token_expiry']) || strtotime($member_check['token_expiry']) < time()) {
+            $error = "This join link has expired. The token was valid until " . date('M d, Y h:i A', strtotime($member_check['token_expiry'])) . ". Please request a new join link from your house manager.";
+            $token = '';
+        }
+        // Check if member status is active
+        elseif ($member_check['status'] != 'active') {
+            $error = "This member account is not active. Please contact your house manager.";
+            $token = '';
+        }
+        // Check if house is active
+        elseif (empty($member_check['house_name'])) {
+            $error = "The house associated with this token is no longer active.";
+            $token = '';
+        } else {
+            // Token is valid - proceed
+            $member_info = $member_check;
+            $house_info = [
+                'house_name' => $member_info['house_name'],
+                'house_code' => $member_info['house_code'],
+                'description' => $member_info['house_description']
+            ];
+            
+            // Check if this member already has a user account
+            $user_sql = "SELECT user_id FROM users WHERE member_id = ?";
+            $user_stmt = mysqli_prepare($conn, $user_sql);
+            mysqli_stmt_bind_param($user_stmt, "i", $member_info['member_id']);
+            mysqli_stmt_execute($user_stmt);
+            mysqli_stmt_store_result($user_stmt);
+            
+            if (mysqli_stmt_num_rows($user_stmt) > 0) {
+                $error = "This member already has an account. Please <a href='../auth/login.php'>login here</a> instead.";
+                $token = '';
+                $member_info = null;
+            }
+        }
     }
 }
 
@@ -100,37 +120,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sql = "SELECT m.*, h.house_name, h.house_code, h.description as house_description
                     FROM members m 
                     JOIN houses h ON m.house_id = h.house_id 
-                    WHERE m.join_token = ? AND m.token_expiry > NOW() AND m.status = 'active' 
-                    AND h.is_active = 1";
+                    WHERE m.join_token = ?";
             $stmt = mysqli_prepare($conn, $sql);
             mysqli_stmt_bind_param($stmt, "s", $input_token);
             mysqli_stmt_execute($stmt);
             $result = mysqli_stmt_get_result($stmt);
             
-            if (mysqli_num_rows($result) === 1) {
-                $member_info = mysqli_fetch_assoc($result);
-                $house_info = [
-                    'house_name' => $member_info['house_name'],
-                    'house_code' => $member_info['house_code'],
-                    'description' => $member_info['house_description']
-                ];
-                
-                // Check if this member already has a user account
-                $check_sql = "SELECT user_id FROM users WHERE member_id = ?";
-                $check_stmt = mysqli_prepare($conn, $check_sql);
-                mysqli_stmt_bind_param($check_stmt, "i", $member_info['member_id']);
-                mysqli_stmt_execute($check_stmt);
-                mysqli_stmt_store_result($check_stmt);
-                
-                if (mysqli_stmt_num_rows($check_stmt) > 0) {
-                    $error = "This member already has an account. Please login instead.";
-                    $member_info = null;
-                } else {
-                    $token = $input_token;
-                    $success = "Valid join link! You're joining: <strong>" . htmlspecialchars($member_info['house_name']) . "</strong>";
-                }
+            if (mysqli_num_rows($result) === 0) {
+                $error = "Invalid join token. The token you entered was not found in our system. Please check with your house manager.";
             } else {
-                $error = "Invalid or expired join token. Please check with your house manager.";
+                $token_check = mysqli_fetch_assoc($result);
+                
+                // Check token expiry
+                if (empty($token_check['token_expiry']) || strtotime($token_check['token_expiry']) < time()) {
+                    $error = "This join link has expired on " . date('M d, Y h:i A', strtotime($token_check['token_expiry'])) . ". Please request a new one.";
+                }
+                // Check member status
+                elseif ($token_check['status'] != 'active') {
+                    $error = "This member account is not active.";
+                }
+                // Check house status
+                elseif (empty($token_check['house_name'])) {
+                    $error = "The house for this token is no longer active.";
+                } else {
+                    // Token is valid
+                    $member_info = $token_check;
+                    $house_info = [
+                        'house_name' => $member_info['house_name'],
+                        'house_code' => $member_info['house_code'],
+                        'description' => $member_info['house_description']
+                    ];
+                    
+                    // Check if this member already has a user account
+                    $check_sql = "SELECT user_id FROM users WHERE member_id = ?";
+                    $check_stmt = mysqli_prepare($conn, $check_sql);
+                    mysqli_stmt_bind_param($check_stmt, "i", $member_info['member_id']);
+                    mysqli_stmt_execute($check_stmt);
+                    mysqli_stmt_store_result($check_stmt);
+                    
+                    if (mysqli_stmt_num_rows($check_stmt) > 0) {
+                        $error = "This member already has an account. Please login instead.";
+                        $member_info = null;
+                    } else {
+                        $token = $input_token;
+                        $success = "Valid join link! You're joining: <strong>" . htmlspecialchars($member_info['house_name']) . "</strong>";
+                    }
+                }
             }
         }
     }
@@ -161,9 +196,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_begin_transaction($conn);
             
             try {
-                // Validate token again
-                $sql = "SELECT m.* FROM members m 
-                        WHERE m.join_token = ? AND m.token_expiry > NOW() AND m.status = 'active'";
+                // Validate token again with detailed checks
+                $sql = "SELECT m.* FROM members m
+                        WHERE m.join_token = ?";
                 $stmt = mysqli_prepare($conn, $sql);
                 mysqli_stmt_bind_param($stmt, "s", $token);
                 mysqli_stmt_execute($stmt);
@@ -171,7 +206,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $member_info = mysqli_fetch_assoc($result);
                 
                 if (!$member_info) {
-                    throw new Exception("Invalid or expired token");
+                    throw new Exception("Invalid join token. The token was not found in our system.");
+                }
+                
+                // Check token expiry
+                if (empty($member_info['token_expiry']) || strtotime($member_info['token_expiry']) < time()) {
+                    throw new Exception("This join link has expired. Please request a new join link from your house manager.");
+                }
+                
+                // Check member status
+                if ($member_info['status'] != 'active') {
+                    throw new Exception("This member account is not active. Please contact your house manager.");
                 }
                 
                 // Check if username/email already exists
@@ -892,11 +937,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </html>
 
 <?php
-// Close database connection
-if (isset($stmt)) {
-    mysqli_stmt_close($stmt);
-}
-if (isset($check_stmt)) {
-    mysqli_stmt_close($check_stmt);
-}
-mysqli_close($conn);
+// Note: Database connection is managed by config/database.php
+// Do not close the connection here as it may be used by included files
+// mysqli_close($conn);

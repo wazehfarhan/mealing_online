@@ -1,6 +1,15 @@
 <?php
+// Start session FIRST before any output
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Output buffering to prevent "headers already sent" errors
+ob_start();
+
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/transfer_functions.php';
 require_once '../includes/header.php';
 
 $auth = new Auth();
@@ -13,7 +22,38 @@ $page_title = "Member Dashboard";
 $conn = getConnection();
 $user_id = $_SESSION['user_id'];
 $member_id = $_SESSION['member_id'];
-$house_id = $_SESSION['house_id'];
+
+// Check if member is viewing history (from a previous house)
+$viewing_history = false;
+$history_house_id = null;
+
+$history_check_sql = "SELECT is_viewing_history, history_house_id FROM members WHERE member_id = ?";
+$history_check_stmt = mysqli_prepare($conn, $history_check_sql);
+mysqli_stmt_bind_param($history_check_stmt, "i", $member_id);
+mysqli_stmt_execute($history_check_stmt);
+$history_check_result = mysqli_stmt_get_result($history_check_stmt);
+$history_check = mysqli_fetch_assoc($history_check_result);
+mysqli_stmt_close($history_check_stmt);
+
+if ($history_check && $history_check['is_viewing_history'] && $history_check['history_house_id']) {
+    $viewing_history = true;
+    $history_house_id = $history_check['history_house_id'];
+}
+
+// Use history house_id if viewing history, otherwise use current house_id
+$house_id = $viewing_history ? $history_house_id : ($_SESSION['house_id'] ?? null);
+
+// Get house information (either current or history)
+if ($house_id) {
+    $house_sql = "SELECT house_name, house_code FROM houses WHERE house_id = ?";
+    $house_stmt = mysqli_prepare($conn, $house_sql);
+    mysqli_stmt_bind_param($house_stmt, "i", $house_id);
+    mysqli_stmt_execute($house_stmt);
+    $house_result = mysqli_stmt_get_result($house_stmt);
+    $house = mysqli_fetch_assoc($house_result);
+} else {
+    $house = null;
+}
 
 // Get current month and year for filtering
 $current_month = date('m');
@@ -39,14 +79,6 @@ mysqli_stmt_bind_param($stmt, "i", $member_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $member = mysqli_fetch_assoc($result);
-
-// Get house information
-$house_sql = "SELECT house_name, house_code FROM houses WHERE house_id = ?";
-$house_stmt = mysqli_prepare($conn, $house_sql);
-mysqli_stmt_bind_param($house_stmt, "i", $house_id);
-mysqli_stmt_execute($house_stmt);
-$house_result = mysqli_stmt_get_result($house_stmt);
-$house = mysqli_fetch_assoc($house_result);
 
 // Initialize variables for yearly view
 $yearly_expense_totals = [];
@@ -407,6 +439,9 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                     <div>
                         <h1 class="h3 mb-0">
                             <i class="fas fa-tachometer-alt me-2"></i>Member Dashboard
+                            <?php if ($viewing_history): ?>
+                                <span class="badge bg-warning ms-2">Viewing History</span>
+                            <?php endif; ?>
                             <?php if ($view_type === 'year'): ?>
                                 <span class="badge bg-info ms-2">Year View: <?php echo $selected_year; ?></span>
                             <?php else: ?>
@@ -414,11 +449,20 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                             <?php endif; ?>
                         </h1>
                         <div class="text-muted">
-                            <span class="badge bg-primary me-2"><?php echo htmlspecialchars($house['house_name']); ?></span>
+                            <?php if ($viewing_history && $history_house_id): ?>
+                            <span class="badge bg-warning me-2">History: <?php echo htmlspecialchars($house['house_name'] ?? 'Unknown'); ?></span>
+                            <?php else: ?>
+                            <span class="badge bg-primary me-2"><?php echo htmlspecialchars($house['house_name'] ?? 'No House'); ?></span>
+                            <?php endif; ?>
                             <span class="me-2"><?php echo htmlspecialchars($member['name']); ?></span>
                         </div>
                     </div>
-                    <div>
+                    <div class="d-flex align-items-center">
+                        <?php if ($viewing_history): ?>
+                        <a href="settings.php?return=1" class="btn btn-warning me-2">
+                            <i class="fas fa-arrow-left me-2"></i>Return to Current House
+                        </a>
+                        <?php endif; ?>
                         <!-- View Toggle -->
                         <div class="btn-group me-2" role="group">
                             <a href="?month=<?php echo $selected_month; ?>&year=<?php echo $selected_year; ?>&view=month" 
@@ -1230,6 +1274,81 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                         </div>
                     </div>
                 </div>
+                
+                <!-- House Transfer Status Card -->
+                <?php
+                // Get member's house status
+                $status_sql = "SELECT house_status, requested_house_id, leave_request_date, join_request_date 
+                              FROM members WHERE member_id = ?";
+                $status_stmt = mysqli_prepare($conn, $status_sql);
+                mysqli_stmt_bind_param($status_stmt, "i", $member_id);
+                mysqli_stmt_execute($status_stmt);
+                $status_result = mysqli_stmt_get_result($status_stmt);
+                $house_status = mysqli_fetch_assoc($status_result);
+                ?>
+                <div class="card shadow mt-3">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0"><i class="fas fa-home me-2"></i>House Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <?php if ($house_status): ?>
+                        <div class="mb-3">
+                            <span class="badge <?php 
+                                echo match($house_status['house_status'] ?? '') {
+                                    'active' => 'bg-success',
+                                    'pending_leave' => 'bg-warning',
+                                    'pending_join' => 'bg-info',
+                                    'house_inactive' => 'bg-danger',
+                                    default => 'bg-secondary'
+                                };
+                            ?>">
+                                <?php echo ucwords(str_replace('_', ' ', $house_status['house_status'] ?? 'Active')); ?>
+                            </span>
+                        </div>
+                        
+                        <?php if ($house_status['house_status'] == 'pending_join' && $house_status['requested_house_id']): 
+                            // Get requested house info
+                            $req_house_sql = "SELECT house_name, house_code FROM houses WHERE house_id = ?";
+                            $req_house_stmt = mysqli_prepare($conn, $req_house_sql);
+                            mysqli_stmt_bind_param($req_house_stmt, "i", $house_status['requested_house_id']);
+                            mysqli_stmt_execute($req_house_stmt);
+                            $req_house_result = mysqli_stmt_get_result($req_house_stmt);
+                            $req_house = mysqli_fetch_assoc($req_house_stmt->get_result());
+                        ?>
+                        <p class="text-muted mb-2">
+                            <small>Requesting to join:</small><br>
+                            <strong><?php echo htmlspecialchars($req_house['house_name'] ?? 'Unknown'); ?></strong>
+                            <span class="badge bg-info"><?php echo htmlspecialchars($req_house['house_code'] ?? ''); ?></span>
+                        </p>
+                        <p class="text-muted mb-0">
+                            <small>Submitted: <?php echo $house_status['join_request_date'] ? date('M d, Y g:i A', strtotime($house_status['join_request_date'])) : '-'; ?></small>
+                        </p>
+                        <?php endif; ?>
+                        
+                        <?php if ($house_status['house_status'] == 'pending_leave'): ?>
+                        <p class="text-muted mb-0">
+                            <small>Leave request submitted: <?php echo $house_status['leave_request_date'] ? date('M d, Y g:i A', strtotime($house_status['leave_request_date'])) : '-'; ?></small>
+                        </p>
+                        <?php endif; ?>
+                        <?php endif; ?>
+                        
+                        <hr>
+                        
+                        <div class="d-grid gap-2">
+                            <a href="settings.php" class="btn btn-outline-primary text-start">
+                                <i class="fas fa-cog me-2"></i>Manage House
+                            </a>
+                            <?php if ($house_status['house_status'] == 'active'): ?>
+                            <a href="leave_request.php" class="btn btn-outline-danger text-start">
+                                <i class="fas fa-sign-out-alt me-2"></i>Leave House
+                            </a>
+                            <a href="join_request.php" class="btn btn-outline-success text-start">
+                                <i class="fas fa-sign-in-alt me-2"></i>Join New House
+                            </a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1299,7 +1418,7 @@ if (isset($member_deposits_stmt)) mysqli_stmt_close($member_deposits_stmt);
 if (isset($deposits_stmt)) mysqli_stmt_close($deposits_stmt);
 if (isset($expenses_list_stmt)) mysqli_stmt_close($expenses_list_stmt);
 if (isset($available_months_stmt)) mysqli_stmt_close($available_months_stmt);
-mysqli_close($conn);
+// DO NOT close $conn - it's managed by getConnection() singleton
 
 require_once '../includes/footer.php';
 ?>

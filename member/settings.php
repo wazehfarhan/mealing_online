@@ -1,234 +1,103 @@
 <?php
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
-require_once '../includes/header.php';
+require_once '../includes/transfer_functions.php';
 
 $auth = new Auth();
-$functions = new Functions();
-
 $auth->requireRole('member');
 
-$page_title = "Settings";
+$page_title = "Member Settings";
 
 $conn = getConnection();
-$user_id = $_SESSION['user_id'];
 $member_id = $_SESSION['member_id'];
-$house_id = $_SESSION['house_id'];
+$current_house_id = $_SESSION['house_id'];
 
 $errors = [];
 $success = '';
 
-// Check for session messages from redirect
-if (isset($_SESSION['settings_success'])) {
-    $success = $_SESSION['settings_success'];
-    unset($_SESSION['settings_success']);
-}
-
-if (isset($_SESSION['settings_errors'])) {
-    $errors = $_SESSION['settings_errors'];
-    unset($_SESSION['settings_errors']);
-}
-
-// Get current user information - FIXED: Get result from statement
-$sql = "SELECT u.username, u.email, u.created_at, u.last_login, u.is_active,
-               m.member_id, m.name, m.phone, m.email as member_email, m.join_date, m.status
-        FROM users u 
-        JOIN members m ON u.member_id = m.member_id 
-        WHERE u.user_id = ?";
-$stmt = mysqli_prepare($conn, $sql);
-mysqli_stmt_bind_param($stmt, "i", $user_id);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt); // Get result from statement
-$user = mysqli_fetch_assoc($result); // Now use the result
-
-// Get house information
-$house_sql = "SELECT house_name, house_code FROM houses WHERE house_id = ?";
-$house_stmt = mysqli_prepare($conn, $house_sql);
-mysqli_stmt_bind_param($house_stmt, "i", $house_id);
-mysqli_stmt_execute($house_stmt);
-$house_result = mysqli_stmt_get_result($house_stmt);
-$house = mysqli_fetch_assoc($house_result);
-
-// Handle form submissions - using PRG pattern
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Handle password change
-    if (isset($_POST['change_password'])) {
-        // First get the current password hash
-        $password_sql = "SELECT password FROM users WHERE user_id = ?";
-        $password_stmt = mysqli_prepare($conn, $password_sql);
-        mysqli_stmt_bind_param($password_stmt, "i", $user_id);
-        mysqli_stmt_execute($password_stmt);
-        $password_result = mysqli_stmt_get_result($password_stmt);
-        $password_data = mysqli_fetch_assoc($password_result);
-        
-        $current_password = $_POST['current_password'] ?? '';
-        $new_password = $_POST['new_password'] ?? '';
-        $confirm_password = $_POST['confirm_password'] ?? '';
-        
-        // Validate
-        if (empty($current_password)) {
-            $errors[] = "Current password is required.";
-        } elseif (empty($new_password)) {
-            $errors[] = "New password is required.";
-        } elseif (strlen($new_password) < 6) {
-            $errors[] = "New password must be at least 6 characters long.";
-        } elseif ($new_password !== $confirm_password) {
-            $errors[] = "New passwords do not match.";
-        } else {
-            // Verify current password
-            if (password_verify($current_password, $password_data['password'])) {
-                // Update password
-                $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
-                $update_sql = "UPDATE users SET password = ? WHERE user_id = ?";
-                $update_stmt = mysqli_prepare($conn, $update_sql);
-                mysqli_stmt_bind_param($update_stmt, "si", $hashed_password, $user_id);
-                
-                if (mysqli_stmt_execute($update_stmt)) {
-                    $_SESSION['settings_success'] = "Password changed successfully!";
-                } else {
-                    $errors[] = "Failed to update password.";
-                }
-            } else {
-                $errors[] = "Current password is incorrect.";
-            }
-        }
-        
-        // Store errors in session for redirect
-        if (!empty($errors)) {
-            $_SESSION['settings_errors'] = $errors;
-        }
-        
-        // Redirect to prevent form resubmission
-        header("Location: settings.php");
-        exit();
+// Handle return to current house (clear viewing history)
+if (isset($_GET['return']) && $_GET['return'] == 1) {
+    // Use existing connection, don't call getConnection() again
+    $return_stmt = mysqli_prepare($conn, "UPDATE members SET is_viewing_history = 0, history_house_id = NULL WHERE member_id = ?");
+    if ($return_stmt) {
+        mysqli_stmt_bind_param($return_stmt, "i", $member_id);
+        mysqli_stmt_execute($return_stmt);
+        mysqli_stmt_close($return_stmt);
     }
     
-    // Handle data export - this should exit, so no redirect needed
-    if (isset($_POST['export_data'])) {
-        $export_type = $_POST['export_type'] ?? 'all';
-        
-        // Generate CSV file
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="member_data_' . date('Y-m-d') . '.csv"');
-        
-        $output = fopen('php://output', 'w');
-        
-        if ($export_type == 'all' || $export_type == 'meals') {
-            fputcsv($output, ['Meal History']);
-            fputcsv($output, ['Date', 'Meal Count', 'Recorded At']);
-            
-            $meals_sql = "SELECT meal_date, meal_count, created_at FROM meals 
-                          WHERE member_id = ? AND house_id = ? 
-                          ORDER BY meal_date DESC";
-            $meals_stmt = mysqli_prepare($conn, $meals_sql);
-            mysqli_stmt_bind_param($meals_stmt, "ii", $member_id, $house_id);
-            mysqli_stmt_execute($meals_stmt);
-            $meals_result = mysqli_stmt_get_result($meals_stmt);
-            
-            if (mysqli_num_rows($meals_result) > 0) {
-                while ($meal = mysqli_fetch_assoc($meals_result)) {
-                    fputcsv($output, [
-                        $meal['meal_date'],
-                        $meal['meal_count'],
-                        $meal['created_at']
-                    ]);
-                }
-            } else {
-                fputcsv($output, ['No meal records found']);
-            }
-            
-            fputcsv($output, []); // Empty row for separation
-        }
-        
-        if ($export_type == 'all' || $export_type == 'deposits') {
-            fputcsv($output, ['Deposit History']);
-            fputcsv($output, ['Date', 'Amount', 'Description', 'Recorded At']);
-            
-            $deposits_sql = "SELECT deposit_date, amount, description, created_at FROM deposits 
-                             WHERE member_id = ? AND house_id = ? 
-                             ORDER BY deposit_date DESC";
-            $deposits_stmt = mysqli_prepare($conn, $deposits_sql);
-            mysqli_stmt_bind_param($deposits_stmt, "ii", $member_id, $house_id);
-            mysqli_stmt_execute($deposits_stmt);
-            $deposits_result = mysqli_stmt_get_result($deposits_stmt);
-            
-            if (mysqli_num_rows($deposits_result) > 0) {
-                while ($deposit = mysqli_fetch_assoc($deposits_result)) {
-                    fputcsv($output, [
-                        $deposit['deposit_date'],
-                        $deposit['amount'],
-                        $deposit['description'] ?? '',
-                        $deposit['created_at']
-                    ]);
-                }
-            } else {
-                fputcsv($output, ['No deposit records found']);
-            }
-            
-            fputcsv($output, []); // Empty row for separation
-        }
-        
-        if ($export_type == 'all' || $export_type == 'summary') {
-            fputcsv($output, ['Account Summary']);
-            fputcsv($output, ['Member Name', 'House', 'Total Deposits', 'Total Meals', 'Last Updated']);
-            
-            // Get total deposits
-            $total_deposits_sql = "SELECT COALESCE(SUM(amount), 0) as total FROM deposits WHERE member_id = ?";
-            $total_deposits_stmt = mysqli_prepare($conn, $total_deposits_sql);
-            mysqli_stmt_bind_param($total_deposits_stmt, "i", $member_id);
-            mysqli_stmt_execute($total_deposits_stmt);
-            $total_deposits_result = mysqli_stmt_get_result($total_deposits_stmt);
-            $total_deposits = mysqli_fetch_assoc($total_deposits_result);
-            
-            // Get total meals count
-            $total_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as total FROM meals WHERE member_id = ?";
-            $total_meals_stmt = mysqli_prepare($conn, $total_meals_sql);
-            mysqli_stmt_bind_param($total_meals_stmt, "i", $member_id);
-            mysqli_stmt_execute($total_meals_stmt);
-            $total_meals_result = mysqli_stmt_get_result($total_meals_stmt);
-            $total_meals = mysqli_fetch_assoc($total_meals_result);
-            
-            fputcsv($output, [
-                $user['name'] ?? '',
-                $house['house_name'] ?? '',
-                number_format($total_deposits['total'] ?? 0, 2),
-                $total_meals['total'] ?? '0',
-                date('Y-m-d H:i:s')
-            ]);
-        }
-        
-        fclose($output);
-        exit();
-    }
+    // Clear session variables
+    unset($_SESSION['viewing_history']);
+    unset($_SESSION['history_house_id']);
+    
+    // Redirect to dashboard
+    header("Location: dashboard.php");
+    exit();
 }
 
-// Get statistics for display
-$meals_count_sql = "SELECT COUNT(*) as count, COALESCE(SUM(meal_count), 0) as total_meals FROM meals WHERE member_id = ?";
-$meals_stmt = mysqli_prepare($conn, $meals_count_sql);
-mysqli_stmt_bind_param($meals_stmt, "i", $member_id);
-mysqli_stmt_execute($meals_stmt);
-$meals_result = mysqli_stmt_get_result($meals_stmt);
-$meals_stats = mysqli_fetch_assoc($meals_result);
+// Get member's current status
+$member_status = getMemberHouseStatus($member_id);
 
-$deposits_count_sql = "SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount FROM deposits WHERE member_id = ?";
-$deposits_stmt = mysqli_prepare($conn, $deposits_count_sql);
-mysqli_stmt_bind_param($deposits_stmt, "i", $member_id);
-mysqli_stmt_execute($deposits_stmt);
-$deposits_result = mysqli_stmt_get_result($deposits_stmt);
-$deposits_stats = mysqli_fetch_assoc($deposits_result);
+// Get member's current house info
+$current_house_sql = "SELECT h.house_name, h.house_code, h.house_id 
+                      FROM members m 
+                      LEFT JOIN houses h ON m.house_id = h.house_id 
+                      WHERE m.member_id = ?";
+$current_house_stmt = mysqli_prepare($conn, $current_house_sql);
+$current_house = null; // Initialize variable
+if ($current_house_stmt) {
+    mysqli_stmt_bind_param($current_house_stmt, "i", $member_id);
+    mysqli_stmt_execute($current_house_stmt);
+    $current_house_result = mysqli_stmt_get_result($current_house_stmt);
+    $current_house = mysqli_fetch_assoc($current_house_result);
+    mysqli_stmt_close($current_house_stmt);
+}
+
+// Get all previous houses from member_archive
+$previous_houses_sql = "SELECT ma.*, h.house_name, h.house_code, h.house_id
+                        FROM member_archive ma
+                        JOIN houses h ON ma.original_house_id = h.house_id
+                        WHERE ma.member_id = ?
+                        ORDER BY ma.archived_at DESC";
+$previous_houses_stmt = mysqli_prepare($conn, $previous_houses_sql);
+$previous_houses = []; // Initialize variable
+if ($previous_houses_stmt) {
+    mysqli_stmt_bind_param($previous_houses_stmt, "i", $member_id);
+    mysqli_stmt_execute($previous_houses_stmt);
+    $previous_houses_result = mysqli_stmt_get_result($previous_houses_stmt);
+    while ($row = mysqli_fetch_assoc($previous_houses_result)) {
+        $previous_houses[] = $row;
+    }
+    mysqli_stmt_close($previous_houses_stmt);
+}
+
+// Remove the code that adds current house to previous houses
+// Only show archived houses, not the current house
+
+// Get member info for display
+$info_sql = "SELECT m.*, h.house_name, h.house_code, u.username 
+            FROM members m
+            LEFT JOIN houses h ON m.house_id = h.house_id
+            LEFT JOIN users u ON m.user_id = u.user_id
+            WHERE m.member_id = ?";
+$info_stmt = mysqli_prepare($conn, $info_sql);
+$member_info = null; // Initialize variable
+if ($info_stmt) {
+    mysqli_stmt_bind_param($info_stmt, "i", $member_id);
+    mysqli_stmt_execute($info_stmt);
+    $info_result = mysqli_stmt_get_result($info_stmt);
+    $member_info = mysqli_fetch_assoc($info_result);
+    mysqli_stmt_close($info_stmt);
+}
 ?>
 
+<?php require_once '../includes/header.php'; ?>
+
 <div class="row">
-    <div class="col-lg-10 mx-auto">
+    <div class="col-lg-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1 class="h3 mb-0">
-                <i class="fas fa-cog me-2"></i>Settings
+                <i class="fas fa-cog me-2"></i>Member Settings
             </h1>
-            <div>
-                <a href="dashboard.php" class="btn btn-outline-secondary">
-                    <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
-                </a>
-            </div>
         </div>
         
         <!-- Display Messages -->
@@ -249,405 +118,285 @@ $deposits_stats = mysqli_fetch_assoc($deposits_result);
         </div>
         <?php endif; ?>
         
-        <!-- Settings Cards -->
-        <div class="row">
-            <!-- Account Information -->
-            <div class="col-md-6 mb-4">
-                <div class="card shadow">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">
-                            <i class="fas fa-user-circle me-2"></i>Account Information
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-borderless">
-                                <tr>
-                                    <th width="40%">Member ID:</th>
-                                    <td><span class="badge bg-secondary">M<?php echo str_pad($member_id, 4, '0', STR_PAD_LEFT); ?></span></td>
-                                </tr>
-                                <tr>
-                                    <th>Username:</th>
-                                    <td><?php echo htmlspecialchars($user['username'] ?? ''); ?></td>
-                                </tr>
-                                <tr>
-                                    <th>Email:</th>
-                                    <td><?php echo htmlspecialchars($user['email'] ?? ''); ?></td>
-                                </tr>
-                                <tr>
-                                    <th>Full Name:</th>
-                                    <td><?php echo !empty($user['name']) ? htmlspecialchars($user['name']) : 'Not set'; ?></td>
-                                </tr>
-                                <tr>
-                                    <th>Phone:</th>
-                                    <td><?php echo !empty($user['phone']) ? htmlspecialchars($user['phone']) : 'Not set'; ?></td>
-                                </tr>
-                                <tr>
-                                    <th>House:</th>
-                                    <td><?php echo htmlspecialchars($house['house_name'] ?? ''); ?></td>
-                                </tr>
-                                <tr>
-                                    <th>House Code:</th>
-                                    <td><span class="badge bg-info"><?php echo $house['house_code'] ?? ''; ?></span></td>
-                                </tr>
-                                <tr>
-                                    <th>Joined:</th>
-                                    <td><?php echo !empty($user['join_date']) ? date('M d, Y', strtotime($user['join_date'])) : 'Unknown'; ?></td>
-                                </tr>
-                                <tr>
-                                    <th>Member Status:</th>
-                                    <td>
-                                        <span class="badge bg-<?php echo ($user['status'] == 'active') ? 'success' : 'danger'; ?>">
-                                            <?php echo ucfirst($user['status'] ?? 'active'); ?>
-                                        </span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <th>Account Status:</th>
-                                    <td>
-                                        <span class="badge bg-<?php echo ($user['is_active'] ?? 1) ? 'success' : 'danger'; ?>">
-                                            <?php echo ($user['is_active'] ?? 1) ? 'Active' : 'Inactive'; ?>
-                                        </span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <th>Last Login:</th>
-                                    <td><?php echo !empty($user['last_login']) ? date('M d, Y g:i A', strtotime($user['last_login'])) : 'Never'; ?></td>
-                                </tr>
-                            </table>
-                        </div>
-                        
-                        <div class="d-grid gap-2">
-                            <a href="profile.php" class="btn btn-outline-primary">
-                                <i class="fas fa-edit me-2"></i>Edit Profile
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Change Password -->
-            <div class="col-md-6 mb-4">
-                <div class="card shadow">
-                    <div class="card-header bg-warning text-dark">
-                        <h5 class="mb-0">
-                            <i class="fas fa-key me-2"></i>Change Password
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="">
-                            <div class="mb-3">
-                                <label for="current_password" class="form-label">Current Password</label>
-                                <div class="input-group">
-                                    <input type="password" class="form-control" id="current_password" 
-                                           name="current_password" required>
-                                    <button class="btn btn-outline-secondary" type="button" id="toggleCurrentPassword">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="new_password" class="form-label">New Password</label>
-                                <div class="input-group">
-                                    <input type="password" class="form-control" id="new_password" 
-                                           name="new_password" required minlength="6">
-                                    <button class="btn btn-outline-secondary" type="button" id="toggleNewPassword">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
-                                </div>
-                                <div class="form-text">Minimum 6 characters</div>
-                                <div class="progress mt-2" id="passwordStrength" style="height: 5px; display: none;">
-                                    <div class="progress-bar" role="progressbar" style="width: 0%"></div>
-                                </div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="confirm_password" class="form-label">Confirm New Password</label>
-                                <div class="input-group">
-                                    <input type="password" class="form-control" id="confirm_password" 
-                                           name="confirm_password" required>
-                                    <button class="btn btn-outline-secondary" type="button" id="toggleConfirmPassword">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="alert alert-info">
-                                <i class="fas fa-info-circle me-2"></i>
-                                Make sure your new password is strong and different from your previous passwords.
-                            </div>
-                            
-                            <div class="d-grid">
-                                <button type="submit" name="change_password" class="btn btn-warning">
-                                    <i class="fas fa-key me-2"></i>Change Password
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Data Management -->
-            <div class="col-md-6 mb-4">
-                <div class="card shadow">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">
-                            <i class="fas fa-database me-2"></i>Data Management
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="" id="exportForm">
-                            <div class="mb-3">
-                                <label for="export_type" class="form-label">Export Data</label>
-                                <select class="form-select" id="export_type" name="export_type">
-                                    <option value="all">All Data (Meals & Deposits)</option>
-                                    <option value="meals">Meal History Only</option>
-                                    <option value="deposits">Deposit History Only</option>
-                                    <option value="summary">Account Summary</option>
-                                </select>
-                                <div class="form-text">Download your data as CSV file</div>
-                            </div>
-                            
-                            <div class="alert alert-warning">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                This will generate a CSV file with your selected data. The download will start immediately.
-                            </div>
-                            
-                            <div class="d-grid">
-                                <button type="submit" name="export_data" class="btn btn-success">
-                                    <i class="fas fa-download me-2"></i>Export Data
-                                </button>
-                            </div>
-                        </form>
-                        
-                        <hr class="my-4">
-                        
-                        <h6 class="mb-3">Data Statistics</h6>
-                        <div class="row text-center">
-                            <div class="col-6 mb-3">
-                                <div class="card border-primary">
-                                    <div class="card-body p-3">
-                                        <h3 class="text-primary mb-1"><?php echo $meals_stats['count'] ?? 0; ?></h3>
-                                        <small class="text-muted">Meal Records</small>
-                                        <br>
-                                        <small class="text-muted"><?php echo $meals_stats['total_meals'] ?? 0; ?> total meals</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <div class="card border-success">
-                                    <div class="card-body p-3">
-                                        <h3 class="text-success mb-1"><?php echo $deposits_stats['count'] ?? 0; ?></h3>
-                                        <small class="text-muted">Deposit Records</small>
-                                        <br>
-                                        <small class="text-muted">$<?php echo number_format($deposits_stats['total_amount'] ?? 0, 2); ?> total</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Security & Session -->
-            <div class="col-md-6 mb-4">
-                <div class="card shadow border-danger">
+        <!-- House Transfer Section -->
+        <div class="row mb-4">
+            <!-- Leave House Card -->
+            <div class="col-md-6 mb-3">
+                <div class="card shadow h-100 border-danger">
                     <div class="card-header bg-danger text-white">
                         <h5 class="mb-0">
-                            <i class="fas fa-shield-alt me-2"></i>Security & Session
+                            <i class="fas fa-sign-out-alt me-2"></i>Leave Current House
                         </h5>
                     </div>
                     <div class="card-body">
+                        <p class="text-muted">Request to leave your current house. Your data will be archived.</p>
+                        
+                        <?php if ($member_status && $member_status['house_status'] == 'pending_leave'): ?>
                         <div class="alert alert-warning">
-                            <h6><i class="fas fa-exclamation-triangle me-2"></i>Security Information</h6>
-                            <ul class="mb-0">
-                                <li>Account created: <?php echo !empty($user['created_at']) ? date('M d, Y', strtotime($user['created_at'])) : 'Unknown'; ?></li>
-                                <li>Current session: <?php echo date('M d, Y g:i A'); ?></li>
-                            </ul>
+                            <strong>Leave Request Pending</strong>
+                            <p class="mb-0 mt-1">Submitted on: <?php echo date('M d, Y g:i A', strtotime($member_status['leave_request_date'])); ?></p>
                         </div>
-                        
+                        <a href="leave_request.php" class="btn btn-secondary">
+                            <i class="fas fa-eye me-2"></i>View Request
+                        </a>
+                        <?php elseif ($member_status && $member_status['house_status'] == 'pending_join'): ?>
                         <div class="alert alert-info">
-                            <h6><i class="fas fa-lightbulb me-2"></i>Security Tips</h6>
-                            <ul class="mb-0">
-                                <li>Change your password every 90 days</li>
-                                <li>Use a combination of letters, numbers, and symbols</li>
-                                <li>Never share your password with anyone</li>
-                                <li>Log out when using public computers</li>
-                            </ul>
+                            <strong>Join Request Pending</strong>
+                            <p class="mb-0 mt-1">You have a pending join request. Cancel it to leave this house.</p>
                         </div>
-                        
-                        <div class="d-grid gap-3">
-                            <a href="../auth/logout.php" class="btn btn-danger">
-                                <i class="fas fa-sign-out-alt me-2"></i>Logout
-                            </a>
-                            
-                            <a href="../auth/forgot_password.php" class="btn btn-outline-warning">
-                                <i class="fas fa-question-circle me-2"></i>Forgot Password?
-                            </a>
+                        <a href="join_request.php" class="btn btn-info">
+                            <i class="fas fa-eye me-2"></i>View Join Request
+                        </a>
+                        <?php elseif ($member_status && $member_status['house_status'] == 'left'): ?>
+                        <div class="alert alert-warning">
+                            <strong>You have left this house</strong>
+                            <p class="mb-0 mt-1">You can view your history below or join a new house.</p>
                         </div>
+                        <a href="join_request.php" class="btn btn-success">
+                            <i class="fas fa-sign-in-alt me-2"></i>Join New House
+                        </a>
+                        <?php elseif ($member_status && $member_status['house_status'] == 'house_inactive'): ?>
+                        <div class="alert alert-danger">
+                            <strong>Your house is inactive</strong>
+                            <p class="mb-0 mt-1">Your house has been deactivated by the manager. Please join a new house to continue using the system.</p>
+                        </div>
+                        <a href="join_request.php" class="btn btn-success">
+                            <i class="fas fa-sign-in-alt me-2"></i>Join New House
+                        </a>
+                        <?php elseif ($member_status && $member_info && $member_info['status'] == 'inactive'): ?>
+                        <div class="alert alert-danger">
+                            <strong>Your account is inactive for this house</strong>
+                            <p class="mb-0 mt-1">You have been made inactive by the manager. You can request to leave this house. Your data will be saved as historical record.</p>
+                        </div>
+                        <a href="leave_request.php" class="btn btn-danger">
+                            <i class="fas fa-sign-out-alt me-2"></i>Request to Leave
+                        </a>
+                        <?php else: ?>
+                        <a href="leave_request.php" class="btn btn-danger">
+                            <i class="fas fa-sign-out-alt me-2"></i>Request to Leave
+                        </a>
+                        <?php endif; ?>
                     </div>
                 </div>
+            </div>
+            
+            <!-- Join New House Card -->
+            <div class="col-md-6 mb-3">
+                <div class="card shadow h-100 border-success">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-sign-in-alt me-2"></i>Join New House
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Join a new house using a token or house code.</p>
+                        
+                        <?php if ($member_status && $member_status['house_status'] == 'pending_join'): ?>
+                        <div class="alert alert-warning">
+                            <strong>Join Request Pending</strong>
+                            <p class="mb-0 mt-1">Submitted on: <?php echo date('M d, Y g:i A', strtotime($member_status['join_request_date'])); ?></p>
+                        </div>
+                        <a href="join_request.php" class="btn btn-secondary">
+                            <i class="fas fa-eye me-2"></i>View Request
+                        </a>
+                        <?php elseif ($member_status && $member_status['house_status'] == 'pending_leave'): ?>
+                        <div class="alert alert-warning">
+                            <strong>Leave Request Pending</strong>
+                            <p class="mb-0 mt-1">You have a pending leave request. Wait for approval to join a new house.</p>
+                        </div>
+                        <a href="leave_request.php" class="btn btn-warning">
+                            <i class="fas fa-eye me-2"></i>View Leave Request
+                        </a>
+                        <?php elseif ($member_status && $member_status['house_status'] == 'left'): ?>
+                        <a href="join_request.php" class="btn btn-success btn-lg">
+                            <i class="fas fa-sign-in-alt me-2"></i>Join New House Now
+                        </a>
+                        <?php elseif ($member_status && $member_status['house_status'] == 'house_inactive'): ?>
+                        <div class="alert alert-danger">
+                            <strong>Your house is inactive</strong>
+                            <p class="mb-0 mt-1">Your house has been deactivated by the manager. Please join a new house.</p>
+                        </div>
+                        <a href="join_request.php" class="btn btn-success btn-lg">
+                            <i class="fas fa-sign-in-alt me-2"></i>Join New House Now
+                        </a>
+                        <?php elseif ($member_info && $member_info['status'] == 'inactive'): ?>
+                        <div class="alert alert-danger">
+                            <strong>Your account is inactive for this house</strong>
+                            <p class="mb-0 mt-1">You have been made inactive by the manager. Your data will be saved as historical record when you leave.</p>
+                        </div>
+                        <a href="leave_request.php" class="btn btn-danger">
+                            <i class="fas fa-sign-out-alt me-2"></i>Request to Leave
+                        </a>
+                        <?php else: ?>
+                        <a href="join_request.php" class="btn btn-success">
+                            <i class="fas fa-sign-in-alt me-2"></i>Join New House
+                        </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Current House Summary (if active) -->
+        <?php if (($member_status && $member_status['house_status'] == 'active' || $member_status && $member_status['house_status'] == 'house_inactive') && $current_house): ?>
+        <div class="card shadow mb-4 <?php echo $member_status['house_status'] == 'house_inactive' ? 'border-danger' : 'border-success'; ?>">
+            <div class="card-header <?php echo $member_status['house_status'] == 'house_inactive' ? 'bg-danger' : 'bg-success'; ?> text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-home me-2"></i>Current House
+                    <?php if ($member_status['house_status'] == 'house_inactive'): ?>
+                    <span class="badge bg-warning ms-2">INACTIVE</span>
+                    <?php endif; ?>
+                </h5>
+            </div>
+            <div class="card-body">
+                <?php if ($member_status['house_status'] == 'house_inactive'): ?>
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Your house is currently inactive!</strong> This house has been deactivated by the manager.
+                </div>
+                <?php endif; ?>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>House Name:</strong> <?php echo htmlspecialchars($current_house['house_name']); ?></p>
+                        <p><strong>House Code:</strong> <span class="badge bg-info"><?php echo htmlspecialchars($current_house['house_code']); ?></span></p>
+                    </div>
+                    <div class="col-md-6 text-md-end">
+                        <a href="dashboard.php" class="btn btn-primary">
+                            <i class="fas fa-tachometer-alt me-2"></i>Go to Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+        
+        <!-- Previous Houses List -->
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-history me-2"></i>Your House History (Previous Houses)
+                </h5>
+            </div>
+            <div class="card-body">
+                <?php if (empty($previous_houses)): ?>
+                <div class="alert alert-info">
+                    <p class="mb-0">You haven't been a member of any previous houses yet.</p>
+                </div>
+                <?php else: ?>
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>House Name</th>
+                                <th>House Code</th>
+                                <th>Period</th>
+                                <th>Total Deposits</th>
+                                <th>Total Meals</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($previous_houses as $house): ?>
+                            <tr>
+                                <td>
+                                    <strong><?php echo htmlspecialchars($house['house_name']); ?></strong>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info"><?php echo htmlspecialchars($house['house_code']); ?></span>
+                                </td>
+                                <td>
+                                    <?php 
+                                    $archived_date = new DateTime($house['archived_at']);
+                                    echo $archived_date->format('M Y');
+                                    ?>
+                                    <br>
+                                    <small class="text-muted">Left: <?php echo date('M d, Y', strtotime($house['archived_at'])); ?></small>
+                                </td>
+                                <td>৳<?php echo number_format($house['total_deposits'] ?? 0, 2); ?></td>
+                                <td><?php echo number_format($house['total_meals'] ?? 0, 2); ?></td>
+                                <td>
+                                    <a href="view_history.php?house_id=<?php echo $house['original_house_id']; ?>" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-eye me-1"></i>View Details
+                                    </a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+                
+                <div class="alert alert-light mt-3">
+                    <h6><i class="fas fa-info-circle me-2"></i>About House History:</h6>
+                    <ul class="mb-0">
+                        <li>This section shows houses you have left in the past</li>
+                        <li>Click "View Details" to see your complete historical data from any previous house</li>
+                        <li>Historical data includes your deposits, meals, expenses, and final balance</li>
+                        <li>Data from previous houses is preserved even after you leave</li>
+                        <li>Your current house is shown separately above if you're an active member</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Account Information -->
+        <div class="card shadow">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-user me-2"></i>Account Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-3">Name</dt>
+                    <dd class="col-sm-9"><?php echo htmlspecialchars($member_info['name'] ?? ''); ?></dd>
+                    
+                    <dt class="col-sm-3">Email</dt>
+                    <dd class="col-sm-9"><?php echo htmlspecialchars($member_info['email'] ?? ''); ?></dd>
+                    
+                    <dt class="col-sm-3">Phone</dt>
+                    <dd class="col-sm-9"><?php echo htmlspecialchars($member_info['phone'] ?? 'Not provided'); ?></dd>
+                    
+                    <dt class="col-sm-3">Current House</dt>
+                    <dd class="col-sm-9">
+                        <?php if (!empty($member_info['house_name'])): ?>
+                            <?php echo htmlspecialchars($member_info['house_name']); ?>
+                            <span class="badge bg-info ms-2"><?php echo htmlspecialchars($member_info['house_code'] ?? ''); ?></span>
+                        <?php else: ?>
+                            <span class="text-muted">No active house</span>
+                        <?php endif; ?>
+                    </dd>
+                    
+                    <dt class="col-sm-3">House Status</dt>
+                    <dd class="col-sm-9">
+                        <?php
+                        $status_badges = [
+                            'active' => 'success',
+                            'pending_leave' => 'warning',
+                            'pending_join' => 'info',
+                            'house_inactive' => 'danger',
+                            'left' => 'secondary'
+                        ];
+                        $badge = $status_badges[$member_info['house_status'] ?? 'left'] ?? 'secondary';
+                        $status_text = ucwords(str_replace('_', ' ', $member_info['house_status'] ?? 'left'));
+                        ?>
+                        <span class="badge bg-<?php echo $badge; ?>"><?php echo $status_text; ?></span>
+                    </dd>
+                    
+                    <dt class="col-sm-3">Join Date</dt>
+                    <dd class="col-sm-9"><?php echo !empty($member_info['join_date']) ? date('M d, Y', strtotime($member_info['join_date'])) : 'N/A'; ?></dd>
+                    
+                    <dt class="col-sm-3">Username</dt>
+                    <dd class="col-sm-9"><?php echo htmlspecialchars($member_info['username'] ?? 'Not linked'); ?></dd>
+                </dl>
             </div>
         </div>
     </div>
 </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Password visibility toggle
-    function togglePasswordVisibility(inputId, button) {
-        const input = document.getElementById(inputId);
-        if (input.type === 'password') {
-            input.type = 'text';
-            button.innerHTML = '<i class="fas fa-eye-slash"></i>';
-        } else {
-            input.type = 'password';
-            button.innerHTML = '<i class="fas fa-eye"></i>';
-        }
-    }
-    
-    // Setup toggle buttons
-    document.getElementById('toggleCurrentPassword')?.addEventListener('click', function() {
-        togglePasswordVisibility('current_password', this);
-    });
-    
-    document.getElementById('toggleNewPassword')?.addEventListener('click', function() {
-        togglePasswordVisibility('new_password', this);
-    });
-    
-    document.getElementById('toggleConfirmPassword')?.addEventListener('click', function() {
-        togglePasswordVisibility('confirm_password', this);
-    });
-    
-    // Password strength checker
-    const newPasswordInput = document.getElementById('new_password');
-    const passwordStrengthBar = document.getElementById('passwordStrength');
-    
-    if (newPasswordInput && passwordStrengthBar) {
-        newPasswordInput.addEventListener('input', function() {
-            const password = this.value;
-            const bar = passwordStrengthBar.querySelector('.progress-bar');
-            
-            if (password.length === 0) {
-                passwordStrengthBar.style.display = 'none';
-                return;
-            }
-            
-            passwordStrengthBar.style.display = 'block';
-            
-            let strength = 0;
-            if (password.length >= 6) strength += 25;
-            if (/[A-Z]/.test(password)) strength += 25;
-            if (/[0-9]/.test(password)) strength += 25;
-            if (/[^A-Za-z0-9]/.test(password)) strength += 25;
-            
-            bar.style.width = strength + '%';
-            
-            if (strength < 50) {
-                bar.className = 'progress-bar bg-danger';
-            } else if (strength < 75) {
-                bar.className = 'progress-bar bg-warning';
-            } else {
-                bar.className = 'progress-bar bg-success';
-            }
-        });
-    }
-    
-    // Form validation for password change
-    const changePasswordForm = document.querySelector('button[name="change_password"]');
-    if (changePasswordForm) {
-        changePasswordForm.addEventListener('click', function(e) {
-            const form = this.closest('form');
-            const newPassword = document.getElementById('new_password').value;
-            const confirmPassword = document.getElementById('confirm_password').value;
-            const currentPassword = document.getElementById('current_password').value;
-            
-            if (!currentPassword) {
-                e.preventDefault();
-                alert('Current password is required!');
-                return false;
-            }
-            
-            if (newPassword !== confirmPassword) {
-                e.preventDefault();
-                alert('New passwords do not match!');
-                return false;
-            }
-            
-            if (newPassword.length < 6) {
-                e.preventDefault();
-                alert('Password must be at least 6 characters long!');
-                return false;
-            }
-            
-            return true;
-        });
-    }
-    
-    // Handle export form with confirmation
-    const exportForm = document.getElementById('exportForm');
-    if (exportForm) {
-        exportForm.addEventListener('submit', function(e) {
-            if (!confirm('This will download your data as a CSV file. Continue?')) {
-                e.preventDefault();
-                return false;
-            }
-            // Show loading indicator
-            const submitBtn = this.querySelector('button[name="export_data"]');
-            if (submitBtn) {
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Preparing Download...';
-                submitBtn.disabled = true;
-            }
-        });
-    }
-    
-    // Logout confirmation
-    const logoutLink = document.querySelector('a[href*="logout.php"]');
-    if (logoutLink) {
-        logoutLink.addEventListener('click', function(e) {
-            if (!confirm('Are you sure you want to logout?')) {
-                e.preventDefault();
-            }
-        });
-    }
-    
-    // Clear form fields after successful password change
-    // Check URL for success parameter or check for success message
-    const successAlert = document.querySelector('.alert-success');
-    if (successAlert && successAlert.textContent.includes('Password changed')) {
-        // Clear password fields
-        document.getElementById('current_password').value = '';
-        document.getElementById('new_password').value = '';
-        document.getElementById('confirm_password').value = '';
-        if (passwordStrengthBar) {
-            passwordStrengthBar.style.display = 'none';
-        }
-    }
-});
-
-// Add beforeunload event to prevent accidental navigation during export
-window.addEventListener('beforeunload', function(e) {
-    const exportBtn = document.querySelector('button[name="export_data"]:disabled');
-    if (exportBtn && exportBtn.innerHTML.includes('Preparing')) {
-        e.preventDefault();
-        e.returnValue = 'Your data export is being prepared. Are you sure you want to leave?';
-        return e.returnValue;
-    }
-});
-</script>
-
 <?php
-// Close statements
-if (isset($stmt)) mysqli_stmt_close($stmt);
-if (isset($house_stmt)) mysqli_stmt_close($house_stmt);
-if (isset($password_stmt)) mysqli_stmt_close($password_stmt);
-if (isset($update_stmt)) mysqli_stmt_close($update_stmt);
-if (isset($meals_stmt)) mysqli_stmt_close($meals_stmt);
-if (isset($deposits_stmt)) mysqli_stmt_close($deposits_stmt);
-if (isset($total_deposits_stmt)) mysqli_stmt_close($total_deposits_stmt);
-if (isset($total_meals_stmt)) mysqli_stmt_close($total_meals_stmt);
-mysqli_close($conn);
+// No need to close statements here since they're already closed after each query
+// DO NOT close $conn - let footer handle it
 
 require_once '../includes/footer.php';
 ?>

@@ -155,12 +155,6 @@ class Functions {
     /**
      * Get system-wide statistics for homepage - REAL TIME
      */
-    /**
- * Get system-wide statistics for homepage - REAL TIME
- */
-    /**
-     * Get system-wide statistics for homepage - REAL TIME
-     */
     public function getSystemStats() {
         $stats = array(
             'total_houses' => 0,
@@ -218,75 +212,53 @@ class Functions {
         return $stats;
     }
 
-
     /**
-     * Calculate time ago from a given timestamp
+     * Get developer information for the homepage
      */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    /**
- * Get developer information for the homepage
- */
-public function getDeveloperInfo() {
-    return array(
-        'name' => 'Kazi Md. Wazeh Ullah Farhan',
-        'title' => 'Software Engineering Student | Full-Stack & Cloud Enthusiast',
-        'bio' => 'I am a Computer Science and Engineering (CSE) student at American International University-Bangladesh (AIUB), currently in my 10th semester. I have a strong passion for software engineering, full-stack web development, and cloud computing.',
-        'education' => array(
-            'degree' => 'BSc in Computer Science & Engineering (CSE)',
-            'university' => 'American International University-Bangladesh (AIUB)',
-            'semester' => '10th Semester',
-            'student_id' => '23-50577-1'
-        ),
-        'skills' => array(
-            'Programming' => 'C, C++, Java, C#, JavaScript, SQL',
-            'Web Technologies' => 'HTML, CSS, JavaScript, PHP',
-            'Frameworks' => '.NET (Windows Forms), MySQL',
-            'Concepts' => 'OOP, Data Structures & Algorithms, Database Management, CRUD Operations',
-            'Learning' => 'Full-Stack Web Development, AWS Cloud Engineering, AI & Machine Learning'
-        ),
-        'projects' => array(
-            'AgriCore Operation Platform' => 'A C# Windows Application for smart agriculture and farm resource management',
-            'SmartField Resource Platform' => 'A desktop-based system for crop, field, irrigation, and market tracking using C# and SQL Server',
-            'Car Rental Management System' => 'A database-driven system for managing vehicles, customers, drivers, and rentals',
-            'Meal Management System' => 'A web-based application for meal entry, cost calculation, and member management',
-            'Digital School Management System' => 'A complete academic management system for students, teachers, attendance, and results',
-            'Crop Management Module' => 'A CRUD-based C# module for farmer-wise crop tracking with secure authentication',
-            'Field Management Module' => 'A resource allocation and monitoring system for agricultural fields',
-            'Irrigation & Fertilizer Scheduler' => 'An automated scheduling module for efficient water and fertilizer usage',
-            'Pest and Disease Control System' => 'A monitoring and record-keeping module for crop health management',
-            'Market & Sales Tracking System' => 'A sales analytics and profit tracking module for agricultural products',
-            'User Management System' => 'A role-based authentication and authorization system using C# and encrypted credentials',
-            'Full Stack Web Projects' => 'PHP, MySQL, HTML, CSS, JavaScript based academic and management systems'
-
-        ),
-        'contact' => array(
-            'email' => 'wzullah.farhan@gmail.com',
-            'phone' => '+880 1828-658811',
-            'location' => 'Bangladesh'
-        ),
-        'profiles' => array(
-            'github' => 'https://github.com/wazehfarhan',
-            'linkedin' => 'https://www.linkedin.com/in/w2zfrhn'
-        ),
-        'quote' => 'Driven by curiosity, powered by code, and focused on building meaningful software.'
-    );
-}
+    public function getDeveloperInfo() {
+        return array(
+            'name' => 'Kazi Md. Wazeh Ullah Farhan',
+            'title' => 'Software Engineering Student | Full-Stack & Cloud Enthusiast',
+            'bio' => 'I am a Computer Science and Engineering (CSE) student at American International University-Bangladesh (AIUB), currently in my 10th semester. I have a strong passion for software engineering, full-stack web development, and cloud computing.',
+            'education' => array(
+                'degree' => 'BSc in Computer Science & Engineering (CSE)',
+                'university' => 'American International University-Bangladesh (AIUB)',
+                'semester' => '10th Semester',
+                'student_id' => '23-50577-1'
+            ),
+            'skills' => array(
+                'Programming' => 'C, C++, Java, C#, JavaScript, SQL',
+                'Web Technologies' => 'HTML, CSS, JavaScript, PHP',
+                'Frameworks' => '.NET (Windows Forms), MySQL',
+                'Concepts' => 'OOP, Data Structures & Algorithms, Database Management, CRUD Operations',
+                'Learning' => 'Full-Stack Web Development, AWS Cloud Engineering, AI & Machine Learning'
+            ),
+            'projects' => array(
+                'AgriCore Operation Platform' => 'A C# Windows Application for smart agriculture and farm resource management',
+                'SmartField Resource Platform' => 'A desktop-based system for crop, field, irrigation, and market tracking using C# and SQL Server',
+                'Car Rental Management System' => 'A database-driven system for managing vehicles, customers, drivers, and rentals',
+                'Meal Management System' => 'A web-based application for meal entry, cost calculation, and member management',
+                'Digital School Management System' => 'A complete academic management system for students, teachers, attendance, and results',
+                'Crop Management Module' => 'A CRUD-based C# module for farmer-wise crop tracking with secure authentication',
+                'Field Management Module' => 'A resource allocation and monitoring system for agricultural fields',
+                'Irrigation & Fertilizer Scheduler' => 'An automated scheduling module for efficient water and fertilizer usage',
+                'Pest and Disease Control System' => 'A monitoring and record-keeping module for crop health management',
+                'Market & Sales Tracking System' => 'A sales analytics and profit tracking module for agricultural products',
+                'User Management System' => 'A role-based authentication and authorization system using C# and encrypted credentials',
+                'Full Stack Web Projects' => 'PHP, MySQL, HTML, CSS, JavaScript based academic and management systems'
+            ),
+            'contact' => array(
+                'email' => 'wzullah.farhan@gmail.com',
+                'phone' => '+880 1828-658811',
+                'location' => 'Bangladesh'
+            ),
+            'profiles' => array(
+                'github' => 'https://github.com/wazehfarhan',
+                'linkedin' => 'https://www.linkedin.com/in/w2zfrhn'
+            ),
+            'quote' => 'Driven by curiosity, powered by code, and focused on building meaningful software.'
+        );
+    }
     
     /**
      * Get all active members for a specific house
@@ -1144,6 +1116,780 @@ public function getDeveloperInfo() {
         mysqli_stmt_execute($stmt);
         
         return true;
+    }
+
+    /**
+     * Count pending requests for manager's house only
+     * @param mysqli|null $conn Database connection (optional, for backward compatibility)
+     * @param int|null $house_id House ID to count requests for
+     * @return int Number of pending requests
+     */
+    public function countPendingRequests($conn = null, $house_id = null) {
+        // Use provided connection or default to $this->conn
+        $db = $conn ?: $this->conn;
+        
+        // If house_id not provided, get from session
+        if (!$house_id && isset($_SESSION['house_id'])) {
+            $house_id = $_SESSION['house_id'];
+        }
+        
+        // If still no house_id, return 0
+        if (!$house_id) {
+            return 0;
+        }
+        
+        $sql = "SELECT COUNT(*) as count FROM members 
+                WHERE house_status IN ('pending_leave', 'pending_join')
+                AND (house_id = ? OR requested_house_id = ?)";
+        
+        $stmt = mysqli_prepare($db, $sql);
+        mysqli_stmt_bind_param($stmt, "ii", $house_id, $house_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        $data = mysqli_fetch_assoc($result);
+        
+        return $data['count'] ?? 0;
+    }
+    
+    /**
+     * Get member's house status and request info
+     */
+    public function getMemberHouseStatus($member_id) {
+        $sql = "SELECT house_status, requested_house_id, leave_request_date, join_request_date 
+                FROM members WHERE member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $member_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        return mysqli_fetch_assoc($result);
+    }
+    
+    /**
+     * Get all pending leave requests
+     */
+    public function getPendingLeaveRequests($house_id = null) {
+        $sql = "SELECT m.*, h.house_name as current_house_name 
+                FROM members m 
+                JOIN houses h ON m.house_id = h.house_id 
+                WHERE m.house_status = 'pending_leave'";
+        
+        if ($house_id) {
+            $sql .= " AND m.house_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "i", $house_id);
+        } else {
+            $stmt = mysqli_prepare($this->conn, $sql);
+        }
+        
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        $requests = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $requests[] = $row;
+        }
+        
+        return $requests;
+    }
+    
+    /**
+     * Get all pending join requests
+     */
+    public function getPendingJoinRequests($house_id = null) {
+        $sql = "SELECT m.*, 
+                       h_current.house_name as current_house_name,
+                       h_requested.house_name as requested_house_name,
+                       h_requested.house_id as requested_house_id
+                FROM members m 
+                JOIN houses h_current ON m.house_id = h_current.house_id
+                LEFT JOIN houses h_requested ON m.requested_house_id = h_requested.house_id
+                WHERE m.house_status = 'pending_join'";
+        
+        if ($house_id) {
+            $sql .= " AND (m.house_id = ? OR m.requested_house_id = ?)";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "ii", $house_id, $house_id);
+        } else {
+            $stmt = mysqli_prepare($this->conn, $sql);
+        }
+        
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        $requests = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $requests[] = $row;
+        }
+        
+        return $requests;
+    }
+    
+    /**
+     * Request to leave house
+     */
+    public function requestLeaveHouse($member_id, $house_id) {
+        // Check if member has any meal entries for today
+        $today = date('Y-m-d');
+        $check_sql = "SELECT COUNT(*) as count FROM meals 
+                      WHERE member_id = ? AND house_id = ? AND meal_date = ?";
+        $check_stmt = mysqli_prepare($this->conn, $check_sql);
+        mysqli_stmt_bind_param($check_stmt, "iis", $member_id, $house_id, $today);
+        mysqli_stmt_execute($check_stmt);
+        $check_result = mysqli_stmt_get_result($check_stmt);
+        $check_data = mysqli_fetch_assoc($check_result);
+        
+        if ($check_data['count'] > 0) {
+            return ['success' => false, 'error' => 'Cannot leave house today. You have meal entries for today.'];
+        }
+        
+        // Update member status to pending_leave
+        $sql = "UPDATE members 
+                SET house_status = 'pending_leave', 
+                    leave_request_date = NOW() 
+                WHERE member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $member_id);
+        
+        if (mysqli_stmt_execute($stmt)) {
+            return ['success' => true, 'message' => 'Leave request submitted successfully.'];
+        } else {
+            return ['success' => false, 'error' => 'Failed to submit leave request.'];
+        }
+    }
+    
+    /**
+     * Request to join house
+     */
+    public function requestJoinHouse($member_id, $requested_house_id) {
+        // Get current house_id
+        $current_sql = "SELECT house_id FROM members WHERE member_id = ?";
+        $current_stmt = mysqli_prepare($this->conn, $current_sql);
+        mysqli_stmt_bind_param($current_stmt, "i", $member_id);
+        mysqli_stmt_execute($current_stmt);
+        $current_result = mysqli_stmt_get_result($current_stmt);
+        $current_data = mysqli_fetch_assoc($current_result);
+        
+        if (!$current_data) {
+            return ['success' => false, 'error' => 'Member not found.'];
+        }
+        
+        // Check if requested house exists and is open for joining
+        $house_sql = "SELECT house_id, house_name, is_open_for_join 
+                      FROM houses 
+                      WHERE house_id = ? AND is_open_for_join = 1";
+        $house_stmt = mysqli_prepare($this->conn, $house_sql);
+        mysqli_stmt_bind_param($house_stmt, "i", $requested_house_id);
+        mysqli_stmt_execute($house_stmt);
+        $house_result = mysqli_stmt_get_result($house_stmt);
+        
+        if (mysqli_num_rows($house_result) === 0) {
+            return ['success' => false, 'error' => 'Requested house is not available for joining.'];
+        }
+        
+        $house_data = mysqli_fetch_assoc($house_result);
+        
+        // Update member to request joining new house
+        $sql = "UPDATE members 
+                SET house_status = 'pending_join', 
+                    requested_house_id = ?, 
+                    join_request_date = NOW() 
+                WHERE member_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "ii", $requested_house_id, $member_id);
+        
+        if (mysqli_stmt_execute($stmt)) {
+            return [
+                'success' => true, 
+                'message' => 'Join request submitted successfully.',
+                'house_name' => $house_data['house_name']
+            ];
+        } else {
+            return ['success' => false, 'error' => 'Failed to submit join request.'];
+        }
+    }
+    
+    /**
+     * Cancel leave request
+     */
+    public function cancelLeaveRequest($member_id) {
+        $sql = "UPDATE members 
+                SET house_status = 'active', 
+                    leave_request_date = NULL 
+                WHERE member_id = ? AND house_status = 'pending_leave'";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $member_id);
+        
+        return mysqli_stmt_execute($stmt);
+    }
+    
+    /**
+     * Cancel join request
+     */
+    public function cancelJoinRequest($member_id) {
+        $sql = "UPDATE members 
+                SET house_status = 'active', 
+                    requested_house_id = NULL, 
+                    join_request_date = NULL 
+                WHERE member_id = ? AND house_status = 'pending_join'";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $member_id);
+        
+        return mysqli_stmt_execute($stmt);
+    }
+    
+    /**
+     * Approve leave request
+     */
+    public function approveLeaveRequest($member_id, $performed_by) {
+        // Get member details
+        $member_sql = "SELECT * FROM members WHERE member_id = ?";
+        $member_stmt = mysqli_prepare($this->conn, $member_sql);
+        mysqli_stmt_bind_param($member_stmt, "i", $member_id);
+        mysqli_stmt_execute($member_stmt);
+        $member_result = mysqli_stmt_get_result($member_stmt);
+        $member = mysqli_fetch_assoc($member_result);
+        
+        if (!$member) {
+            return ['success' => false, 'error' => 'Member not found.'];
+        }
+        
+        // Check if member has any balance or pending meals
+        $balance_check_sql = "
+            SELECT 
+                (SELECT COALESCE(SUM(amount), 0) FROM deposits WHERE member_id = ?) as total_deposits,
+                (SELECT COALESCE(SUM(meal_count), 0) FROM meals WHERE member_id = ?) as total_meals
+        ";
+        $balance_stmt = mysqli_prepare($this->conn, $balance_check_sql);
+        mysqli_stmt_bind_param($balance_stmt, "ii", $member_id, $member_id);
+        mysqli_stmt_execute($balance_stmt);
+        $balance_result = mysqli_stmt_get_result($balance_stmt);
+        $balance = mysqli_fetch_assoc($balance_result);
+        
+        mysqli_begin_transaction($this->conn);
+        
+        try {
+            // Archive member data
+            $archive_sql = "INSERT INTO member_archive 
+                            (member_id, name, email, phone, original_house_id, 
+                             total_deposits, total_meals, archived_at, archived_by)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?)";
+            $archive_stmt = mysqli_prepare($this->conn, $archive_sql);
+            mysqli_stmt_bind_param($archive_stmt, "issisiii", 
+                $member_id, $member['name'], $member['email'], $member['phone'], 
+                $member['house_id'], $balance['total_deposits'], $balance['total_meals'], 
+                $performed_by);
+            
+            if (!mysqli_stmt_execute($archive_stmt)) {
+                throw new Exception("Failed to archive member.");
+            }
+            
+            // Update member status
+            $update_sql = "UPDATE members 
+                           SET house_status = 'active', 
+                               leave_request_date = NULL,
+                               status = 'inactive'
+                           WHERE member_id = ?";
+            $update_stmt = mysqli_prepare($this->conn, $update_sql);
+            mysqli_stmt_bind_param($update_stmt, "i", $member_id);
+            
+            if (!mysqli_stmt_execute($update_stmt)) {
+                throw new Exception("Failed to update member status.");
+            }
+            
+            // Log the action
+            $log_sql = "INSERT INTO house_transfers_log 
+                        (member_id, from_house_id, to_house_id, action, 
+                         performed_by, performed_at, notes)
+                        VALUES (?, ?, NULL, 'leave_approved', ?, NOW(), ?)";
+            $log_stmt = mysqli_prepare($this->conn, $log_sql);
+            $notes = "Member left house via manager approval";
+            mysqli_stmt_bind_param($log_stmt, "iiis", $member_id, $member['house_id'], $performed_by, $notes);
+            
+            if (!mysqli_stmt_execute($log_stmt)) {
+                throw new Exception("Failed to log action.");
+            }
+            
+            mysqli_commit($this->conn);
+            
+            return ['success' => true, 'message' => 'Leave request approved successfully.'];
+            
+        } catch (Exception $e) {
+            mysqli_rollback($this->conn);
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Approve join request
+     */
+    public function approveJoinRequest($member_id, $performed_by) {
+        // Get member details including requested house
+        $member_sql = "SELECT m.*, h_requested.house_id as requested_house_id, 
+                              h_requested.house_name as requested_house_name
+                       FROM members m
+                       LEFT JOIN houses h_requested ON m.requested_house_id = h_requested.house_id
+                       WHERE m.member_id = ?";
+        $member_stmt = mysqli_prepare($this->conn, $member_sql);
+        mysqli_stmt_bind_param($member_stmt, "i", $member_id);
+        mysqli_stmt_execute($member_stmt);
+        $member_result = mysqli_stmt_get_result($member_stmt);
+        $member = mysqli_fetch_assoc($member_result);
+        
+        if (!$member || !$member['requested_house_id']) {
+            return ['success' => false, 'error' => 'Member or requested house not found.'];
+        }
+        
+        $old_house_id = $member['house_id'];
+        $new_house_id = $member['requested_house_id'];
+        
+        mysqli_begin_transaction($this->conn);
+        
+        try {
+            // Update member to new house
+            $update_sql = "UPDATE members 
+                           SET house_id = ?, 
+                               house_status = 'active',
+                               requested_house_id = NULL,
+                               join_request_date = NULL,
+                               status = 'active'
+                           WHERE member_id = ?";
+            $update_stmt = mysqli_prepare($this->conn, $update_sql);
+            mysqli_stmt_bind_param($update_stmt, "ii", $new_house_id, $member_id);
+            
+            if (!mysqli_stmt_execute($update_stmt)) {
+                throw new Exception("Failed to update member house.");
+            }
+            
+            // Update user session data if user exists
+            $user_update_sql = "UPDATE users SET house_id = ? WHERE member_id = ?";
+            $user_update_stmt = mysqli_prepare($this->conn, $user_update_sql);
+            mysqli_stmt_bind_param($user_update_stmt, "ii", $new_house_id, $member_id);
+            mysqli_stmt_execute($user_update_stmt);
+            
+            // Log the transfer
+            $log_sql = "INSERT INTO house_transfers_log 
+                        (member_id, from_house_id, to_house_id, action, 
+                         performed_by, performed_at, notes)
+                        VALUES (?, ?, ?, 'join_approved', ?, NOW(), ?)";
+            $log_stmt = mysqli_prepare($this->conn, $log_sql);
+            $notes = "Member joined house via manager approval";
+            mysqli_stmt_bind_param($log_stmt, "iiiis", $member_id, $old_house_id, $new_house_id, $performed_by, $notes);
+            
+            if (!mysqli_stmt_execute($log_stmt)) {
+                throw new Exception("Failed to log transfer.");
+            }
+            
+            mysqli_commit($this->conn);
+            
+            return [
+                'success' => true, 
+                'message' => 'Join request approved successfully.',
+                'new_house_name' => $member['requested_house_name']
+            ];
+            
+        } catch (Exception $e) {
+            mysqli_rollback($this->conn);
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Reject leave request
+     */
+    public function rejectLeaveRequest($member_id, $performed_by, $reason = '') {
+        $sql = "UPDATE members 
+                SET house_status = 'active', 
+                    leave_request_date = NULL 
+                WHERE member_id = ? AND house_status = 'pending_leave'";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $member_id);
+        
+        if (mysqli_stmt_execute($stmt)) {
+            // Get current house for logging
+            $house_sql = "SELECT house_id FROM members WHERE member_id = ?";
+            $house_stmt = mysqli_prepare($this->conn, $house_sql);
+            mysqli_stmt_bind_param($house_stmt, "i", $member_id);
+            mysqli_stmt_execute($house_stmt);
+            $house_result = mysqli_stmt_get_result($house_stmt);
+            $house = mysqli_fetch_assoc($house_result);
+            
+            // Log rejection
+            $log_sql = "INSERT INTO house_transfers_log 
+                        (member_id, from_house_id, action, 
+                         performed_by, performed_at, notes)
+                        VALUES (?, ?, 'leave_rejected', ?, NOW(), ?)";
+            $log_stmt = mysqli_prepare($this->conn, $log_sql);
+            mysqli_stmt_bind_param($log_stmt, "iiss", $member_id, $house['house_id'], $performed_by, $reason);
+            mysqli_stmt_execute($log_stmt);
+            
+            return ['success' => true, 'message' => 'Leave request rejected successfully.'];
+        } else {
+            return ['success' => false, 'error' => 'Failed to reject leave request.'];
+        }
+    }
+    
+    /**
+     * Reject join request
+     */
+    public function rejectJoinRequest($member_id, $performed_by, $reason = '') {
+        $sql = "UPDATE members 
+                SET house_status = 'active', 
+                    requested_house_id = NULL,
+                    join_request_date = NULL 
+                WHERE member_id = ? AND house_status = 'pending_join'";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $member_id);
+        
+        if (mysqli_stmt_execute($stmt)) {
+            // Get requested house for logging
+            $member_sql = "SELECT requested_house_id FROM members WHERE member_id = ?";
+            $member_stmt = mysqli_prepare($this->conn, $member_sql);
+            mysqli_stmt_bind_param($member_stmt, "i", $member_id);
+            mysqli_stmt_execute($member_stmt);
+            $member_result = mysqli_stmt_get_result($member_stmt);
+            $member_data = mysqli_fetch_assoc($member_result);
+            
+            // Log rejection
+            $log_sql = "INSERT INTO house_transfers_log 
+                        (member_id, to_house_id, action, 
+                         performed_by, performed_at, notes)
+                        VALUES (?, ?, 'join_rejected', ?, NOW(), ?)";
+            $log_stmt = mysqli_prepare($this->conn, $log_sql);
+            mysqli_stmt_bind_param($log_stmt, "iiss", $member_id, $member_data['requested_house_id'], $performed_by, $reason);
+            mysqli_stmt_execute($log_stmt);
+            
+            return ['success' => true, 'message' => 'Join request rejected successfully.'];
+        } else {
+            return ['success' => false, 'error' => 'Failed to reject join request.'];
+        }
+    }
+    
+    /**
+     * Get houses open for joining (excluding current house)
+     */
+    public function getHousesOpenForJoining($current_house_id = null) {
+        $sql = "SELECT house_id, house_name, house_code, created_at 
+                FROM houses 
+                WHERE is_open_for_join = 1 
+                AND is_active = 1";
+        
+        if ($current_house_id) {
+            $sql .= " AND house_id != ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "i", $current_house_id);
+        } else {
+            $stmt = mysqli_prepare($this->conn, $sql);
+        }
+        
+        $sql .= " ORDER BY house_name ASC";
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        $houses = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $houses[] = $row;
+        }
+        
+        return $houses;
+    }
+    
+    /**
+     * Get transfer history for a member or house
+     */
+    public function getTransferHistory($member_id = null, $house_id = null, $limit = 50) {
+        $sql = "SELECT 
+                    l.*,
+                    m.name as member_name,
+                    h_from.house_name as from_house_name,
+                    h_to.house_name as to_house_name,
+                    u.username as performed_by_name
+                FROM house_transfers_log l
+                LEFT JOIN members m ON l.member_id = m.member_id
+                LEFT JOIN houses h_from ON l.from_house_id = h_from.house_id
+                LEFT JOIN houses h_to ON l.to_house_id = h_to.house_id
+                LEFT JOIN users u ON l.performed_by = u.user_id
+                WHERE 1=1";
+        
+        $params = [];
+        $types = "";
+        
+        if ($member_id) {
+            $sql .= " AND l.member_id = ?";
+            $params[] = $member_id;
+            $types .= "i";
+        }
+        
+        if ($house_id) {
+            $sql .= " AND (l.from_house_id = ? OR l.to_house_id = ?)";
+            $params[] = $house_id;
+            $params[] = $house_id;
+            $types .= "ii";
+        }
+        
+        $sql .= " ORDER BY l.performed_at DESC LIMIT ?";
+        $params[] = $limit;
+        $types .= "i";
+        
+        $stmt = mysqli_prepare($this->conn, $sql);
+        if (!empty($params)) {
+            mysqli_stmt_bind_param($stmt, $types, ...$params);
+        }
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        $history = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $history[] = $row;
+        }
+        
+        return $history;
+    }
+    
+    /**
+     * Get archived members
+     */
+    public function getArchivedMembers($original_house_id = null, $limit = 100) {
+        $sql = "SELECT a.*, u.username as archived_by_name 
+                FROM member_archive a
+                LEFT JOIN users u ON a.archived_by = u.user_id";
+        
+        if ($original_house_id) {
+            $sql .= " WHERE a.original_house_id = ?";
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "i", $original_house_id);
+        } else {
+            $stmt = mysqli_prepare($this->conn, $sql);
+        }
+        
+        $sql .= " ORDER BY a.archived_at DESC LIMIT ?";
+        
+        if ($original_house_id) {
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "ii", $original_house_id, $limit);
+        } else {
+            $stmt = mysqli_prepare($this->conn, $sql);
+            mysqli_stmt_bind_param($stmt, "i", $limit);
+        }
+        
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        $archived = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $archived[] = $row;
+        }
+        
+        return $archived;
+    }
+    
+    /**
+     * Toggle house join status (open/closed for joining)
+     */
+    public function toggleHouseJoinStatus($house_id, $status) {
+        $sql = "UPDATE houses SET is_open_for_join = ? WHERE house_id = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "ii", $status, $house_id);
+        
+        return mysqli_stmt_execute($stmt);
+    }
+    
+    /**
+     * Get member's house history based on email and house code
+     * Used for viewing past house data
+     */
+    public function getMemberHouseHistory($email, $house_code) {
+        // First, find the house by code
+        $house_sql = "SELECT house_id, house_name, house_code FROM houses WHERE house_code = ? AND is_active = 1";
+        $house_stmt = mysqli_prepare($this->conn, $house_sql);
+        mysqli_stmt_bind_param($house_stmt, "s", $house_code);
+        mysqli_stmt_execute($house_stmt);
+        $house_result = mysqli_stmt_get_result($house_stmt);
+        $house = mysqli_fetch_assoc($house_result);
+        
+        if (!$house) {
+            return false;
+        }
+        
+        // Check if member was part of this house using their email
+        // Look in both current members and archived members
+        $member_sql = "SELECT member_id, name, email FROM members 
+                       WHERE house_id = ? AND email = ? AND status = 'active'";
+        $member_stmt = mysqli_prepare($this->conn, $member_sql);
+        mysqli_stmt_bind_param($member_stmt, "is", $house['house_id'], $email);
+        mysqli_stmt_execute($member_stmt);
+        $member_result = mysqli_stmt_get_result($member_stmt);
+        $member = mysqli_fetch_assoc($member_result);
+        
+        if (!$member) {
+            // Check archived members
+            $archive_sql = "SELECT archive_id as member_id, name, email FROM member_archive 
+                           WHERE original_house_id = ? AND email = ?";
+            $archive_stmt = mysqli_prepare($this->conn, $archive_sql);
+            mysqli_stmt_bind_param($archive_stmt, "is", $house['house_id'], $email);
+            mysqli_stmt_execute($archive_stmt);
+            $archive_result = mysqli_stmt_get_result($archive_stmt);
+            $member = mysqli_fetch_assoc($archive_result);
+            
+            if (!$member) {
+                return false;
+            }
+        }
+        
+        return [
+            'house_id' => $house['house_id'],
+            'house_name' => $house['house_name'],
+            'house_code' => $house['house_code'],
+            'member_id' => $member['member_id'],
+            'name' => $member['name'],
+            'email' => $member['email']
+        ];
+    }
+    
+    /**
+     * Calculate statistics for member's house history
+     */
+    public function calculateHouseHistoryStats($member_id, $house_id) {
+        // Get deposits for this member and house
+        $deposit_sql = "SELECT COALESCE(SUM(amount), 0) as total FROM deposits 
+                         WHERE member_id = ? AND house_id = ?";
+        $deposit_stmt = mysqli_prepare($this->conn, $deposit_sql);
+        mysqli_stmt_bind_param($deposit_stmt, "ii", $member_id, $house_id);
+        mysqli_stmt_execute($deposit_stmt);
+        $deposit_result = mysqli_stmt_get_result($deposit_stmt);
+        $deposits = mysqli_fetch_assoc($deposit_result);
+        
+        // Get meals for this member and house
+        $meal_sql = "SELECT COALESCE(SUM(meal_count), 0) as total FROM meals 
+                     WHERE member_id = ? AND house_id = ?";
+        $meal_stmt = mysqli_prepare($this->conn, $meal_sql);
+        mysqli_stmt_bind_param($meal_stmt, "ii", $member_id, $house_id);
+        mysqli_stmt_execute($meal_stmt);
+        $meal_result = mysqli_stmt_get_result($meal_stmt);
+        $meals = mysqli_fetch_assoc($meal_result);
+        
+        // Get total expenses for this house
+        $expense_sql = "SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE house_id = ?";
+        $expense_stmt = mysqli_prepare($this->conn, $expense_sql);
+        mysqli_stmt_bind_param($expense_stmt, "i", $house_id);
+        mysqli_stmt_execute($expense_stmt);
+        $expense_result = mysqli_stmt_get_result($expense_stmt);
+        $house_expenses = mysqli_fetch_assoc($expense_result);
+        
+        // Get total meals for the house
+        $total_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as total FROM meals WHERE house_id = ?";
+        $total_meals_stmt = mysqli_prepare($this->conn, $total_meals_sql);
+        mysqli_stmt_bind_param($total_meals_stmt, "i", $house_id);
+        $total_meals_stmt->execute();
+        $total_meals_result = $total_meals_stmt->get_result();
+        $total_meals = mysqli_fetch_assoc($total_meals_result);
+        
+        // Calculate meal rate
+        $meal_rate = 0;
+        if ($total_meals['total'] > 0) {
+            $meal_rate = $house_expenses['total'] / $total_meals['total'];
+        }
+        
+        // Calculate member's expenses based on their meals
+        $member_expenses = $meals['total'] * $meal_rate;
+        
+        // Calculate balance
+        $balance = $deposits['total'] - $member_expenses;
+        
+        return [
+            'total_deposits' => $deposits['total'],
+            'total_meals' => $meals['total'],
+            'member_expenses' => $member_expenses,
+            'balance' => $balance,
+            'meal_rate' => $meal_rate
+        ];
+    }
+    
+    /**
+     * Generate a unique join token for house transfer
+     */
+    public function generateJoinToken($house_id, $member_id = null, $token_type = 'house_transfer') {
+        // Generate unique token
+        do {
+            $token = strtoupper(bin2hex(random_bytes(8)));
+            $check_sql = "SELECT token_id FROM join_tokens WHERE token = ?";
+            $check_stmt = mysqli_prepare($this->conn, $check_sql);
+            mysqli_stmt_bind_param($check_stmt, "s", $token);
+            mysqli_stmt_execute($check_stmt);
+            mysqli_stmt_store_result($check_stmt);
+        } while (mysqli_stmt_num_rows($check_stmt) > 0);
+        
+        // Set expiry to 7 days from now
+        $expires_at = date('Y-m-d H:i:s', strtotime('+7 days'));
+        
+        // Insert the token
+        $sql = "INSERT INTO join_tokens (token, house_id, member_id, token_type, expires_at, created_by) 
+                VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "siisss", $token, $house_id, $member_id, $token_type, $expires_at, $_SESSION['user_id'] ?? null);
+        
+        if (mysqli_stmt_execute($stmt)) {
+            return [
+                'success' => true,
+                'token' => $token,
+                'expires_at' => $expires_at
+            ];
+        }
+        
+        return ['success' => false, 'error' => mysqli_error($this->conn)];
+    }
+    
+    /**
+     * Validate and use a join token
+     */
+    public function useJoinToken($token, $member_id) {
+        // Check if token exists and is valid
+        $sql = "SELECT * FROM join_tokens 
+                WHERE token = ? AND is_used = 0 AND expires_at > NOW()";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "s", $token);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        $token_data = mysqli_fetch_assoc($result);
+        
+        if (!$token_data) {
+            return ['success' => false, 'error' => 'Invalid or expired token.'];
+        }
+        
+        // Mark token as used
+        $update_sql = "UPDATE join_tokens 
+                       SET is_used = 1, used_by = ?, used_at = NOW() 
+                       WHERE token_id = ?";
+        $update_stmt = mysqli_prepare($this->conn, $update_sql);
+        mysqli_stmt_bind_param($update_stmt, "ii", $member_id, $token_data['token_id']);
+        mysqli_stmt_execute($update_stmt);
+        
+        return [
+            'success' => true,
+            'house_id' => $token_data['house_id'],
+            'token_type' => $token_data['token_type']
+        ];
+    }
+    
+    /**
+     * Get pending join requests for a member (incoming requests to join member's current house)
+     */
+    public function getIncomingJoinRequests($house_id) {
+        $sql = "SELECT m.*, h_requested.house_name as requested_house_name
+                FROM members m
+                LEFT JOIN houses h_requested ON m.requested_house_id = h_requested.house_id
+                WHERE m.requested_house_id = ? AND m.house_status = 'pending_join'";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "i", $house_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        $requests = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $requests[] = $row;
+        }
+        
+        return $requests;
     }
     
     /**

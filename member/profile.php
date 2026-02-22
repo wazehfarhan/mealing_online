@@ -475,6 +475,6 @@ document.addEventListener('DOMContentLoaded', function() {
 // Close statements
 if (isset($user_stmt)) mysqli_stmt_close($user_stmt);
 if (isset($member_stmt)) mysqli_stmt_close($member_stmt);
-mysqli_close($conn);
+// DO NOT close $conn - it's managed by getConnection() singleton
 
 require_once '../includes/footer.php';

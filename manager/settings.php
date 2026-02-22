@@ -1,6 +1,5 @@
 <?php
 session_start();
-// Enable debugging
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -34,11 +33,32 @@ if (!$user_data || !$user_data['house_id']) {
 
 // Set house_id from database (not session)
 $house_id = $user_data['house_id'];
-$_SESSION['house_id'] = $house_id; // Ensure session has it
+$_SESSION['house_id'] = $house_id;
 
 // Initialize variables for regular form submissions
 $message = '';
 $error = '';
+
+// Handle house join status toggle
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_join_status'])) {
+    $new_status = isset($_POST['is_open_for_join']) ? 1 : 0;
+    
+    $sql = "UPDATE houses SET is_open_for_join = ? WHERE house_id = ?";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "ii", $new_status, $house_id);
+    
+    if (mysqli_stmt_execute($stmt)) {
+        $_SESSION['success'] = "House join status updated successfully!";
+        // Redirect to refresh the page
+        header("Location: settings.php");
+        exit();
+    } else {
+        $_SESSION['error'] = "Failed to update join status: " . mysqli_error($conn);
+        header("Location: settings.php");
+        exit();
+    }
+    mysqli_stmt_close($stmt);
+}
 
 // Fetch house details FIRST
 $sql = "SELECT * FROM houses WHERE house_id = ?";
@@ -47,6 +67,7 @@ mysqli_stmt_bind_param($stmt, "i", $house_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $house = mysqli_fetch_assoc($result);
+mysqli_stmt_close($stmt);
 
 // Check if house exists
 if (!$house) {
@@ -60,30 +81,127 @@ $current_user = $auth->getCurrentUser();
 
 // Handle AJAX house update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_house'])) {
+    
+    // Check if it's an AJAX request
+    $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+    
+    // Set header for JSON response if AJAX
+    if ($isAjax) {
+        header('Content-Type: application/json');
+    }
+    
     $house_name = trim($_POST['house_name']);
-    $description = trim($_POST['description']);
-    $is_active = isset($_POST['is_active']) ? 1 : 0;
+    $description = isset($_POST['description']) ? trim($_POST['description']) : '';
+    // Handle checkbox properly
+    $is_active = (isset($_POST['is_active']) && ($_POST['is_active'] == 1 || $_POST['is_active'] === 'on')) ? 1 : 0;
     
     if (empty($house_name)) {
-        echo json_encode(['success' => false, 'message' => 'House name is required']);
-        exit();
+        if ($isAjax) {
+            echo json_encode(['success' => false, 'message' => 'House name is required']);
+            exit();
+        } else {
+            $_SESSION['error'] = 'House name is required';
+            header("Location: settings.php");
+            exit();
+        }
     }
     
     $sql = "UPDATE houses SET house_name = ?, description = ?, is_active = ? WHERE house_id = ?";
     $stmt = mysqli_prepare($conn, $sql);
     
     if ($stmt) {
+        // Get current house status before update
+        $check_house_sql = "SELECT is_active FROM houses WHERE house_id = ?";
+        $check_house_stmt = mysqli_prepare($conn, $check_house_sql);
+        mysqli_stmt_bind_param($check_house_stmt, "i", $house_id);
+        mysqli_stmt_execute($check_house_stmt);
+        $check_house_result = mysqli_stmt_get_result($check_house_stmt);
+        $old_house = mysqli_fetch_assoc($check_house_result);
+        $previous_is_active = $old_house['is_active'];
+        mysqli_stmt_close($check_house_stmt);
+        
         mysqli_stmt_bind_param($stmt, "ssii", $house_name, $description, $is_active, $house_id);
         
         if (mysqli_stmt_execute($stmt)) {
-            echo json_encode(['success' => true, 'message' => 'House updated successfully']);
+            // Check if house was deactivated (from active to inactive)
+            if ($previous_is_active == 1 && $is_active == 0) {
+                // Update all active members of this house to have house_inactive status
+                $update_members_sql = "UPDATE members 
+                                       SET house_status = 'house_inactive' 
+                                       WHERE house_id = ? 
+                                       AND status = 'active' 
+                                       AND house_status = 'active'";
+                $update_members_stmt = mysqli_prepare($conn, $update_members_sql);
+                mysqli_stmt_bind_param($update_members_stmt, "i", $house_id);
+                mysqli_stmt_execute($update_members_stmt);
+                mysqli_stmt_close($update_members_stmt);
+                
+                error_log("House $house_id deactivated via settings.php. Members notified.");
+            }
+            
+            // Check if house was reactivated (from inactive to active)
+            if ($previous_is_active == 0 && $is_active == 1) {
+                // Update all members who had house_inactive status back to active
+                $update_members_sql = "UPDATE members 
+                                       SET house_status = 'active' 
+                                       WHERE house_id = ? 
+                                       AND house_status = 'house_inactive'";
+                $update_members_stmt = mysqli_prepare($conn, $update_members_sql);
+                mysqli_stmt_bind_param($update_members_stmt, "i", $house_id);
+                mysqli_stmt_execute($update_members_stmt);
+                mysqli_stmt_close($update_members_stmt);
+                
+                error_log("House $house_id reactivated via settings.php. Members status updated.");
+            }
+            
+            // Update session
+            $_SESSION['house_is_active'] = $is_active;
+            
+            if ($isAjax) {
+                // Fetch the updated house data to return for AJAX
+                $select_sql = "SELECT * FROM houses WHERE house_id = ?";
+                $select_stmt = mysqli_prepare($conn, $select_sql);
+                mysqli_stmt_bind_param($select_stmt, "i", $house_id);
+                mysqli_stmt_execute($select_stmt);
+                $select_result = mysqli_stmt_get_result($select_stmt);
+                $updated_house = mysqli_fetch_assoc($select_result);
+                mysqli_stmt_close($select_stmt);
+                
+                echo json_encode([
+                    'success' => true, 
+                    'message' => 'House updated successfully',
+                    'house' => $updated_house
+                ]);
+                exit();
+            } else {
+                // For regular form submission, redirect with success message
+                $_SESSION['success'] = 'House updated successfully';
+                header("Location: settings.php");
+                exit();
+            }
         } else {
-            echo json_encode(['success' => false, 'message' => 'Update failed: ' . mysqli_error($conn)]);
+            $error_msg = mysqli_error($conn);
+            if ($isAjax) {
+                echo json_encode(['success' => false, 'message' => 'Update failed: ' . $error_msg]);
+                exit();
+            } else {
+                $_SESSION['error'] = 'Update failed: ' . $error_msg;
+                header("Location: settings.php");
+                exit();
+            }
         }
+        mysqli_stmt_close($stmt);
     } else {
-        echo json_encode(['success' => false, 'message' => 'Prepare failed: ' . mysqli_error($conn)]);
+        $error_msg = mysqli_error($conn);
+        if ($isAjax) {
+            echo json_encode(['success' => false, 'message' => 'Prepare failed: ' . $error_msg]);
+            exit();
+        } else {
+            $_SESSION['error'] = 'Prepare failed: ' . $error_msg;
+            header("Location: settings.php");
+            exit();
+        }
     }
-    exit();
 }
 
 // Handle member updates and invites (NON-AJAX)
@@ -105,10 +223,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_stmt_bind_param($stmt, "ssssii", $name, $phone, $email, $status, $member_id, $house_id);
             
             if (mysqli_stmt_execute($stmt)) {
-                $message = "Member updated successfully";
+                $_SESSION['success'] = "Member updated successfully";
+                header("Location: settings.php");
+                exit();
             } else {
                 $error = "Failed to update member: " . mysqli_error($conn);
             }
+            mysqli_stmt_close($stmt);
         }
     }
     
@@ -126,10 +247,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         mysqli_stmt_bind_param($stmt, "ssii", $token, $token_expiry, $member_id, $house_id);
         
         if (mysqli_stmt_execute($stmt)) {
-            $message = "Invite link generated successfully";
+            $_SESSION['success'] = "Invite link generated successfully";
         } else {
-            $error = "Failed to generate invite: " . mysqli_error($conn);
+            $_SESSION['error'] = "Failed to generate invite: " . mysqli_error($conn);
         }
+        mysqli_stmt_close($stmt);
+        
+        // Refresh the page to show the new link
+        header("Location: settings.php");
+        exit();
     }
 }
 
@@ -140,6 +266,7 @@ mysqli_stmt_bind_param($stmt, "i", $house_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $members = mysqli_fetch_all($result, MYSQLI_ASSOC);
+mysqli_stmt_close($stmt);
 
 // Fetch user accounts linked to members
 $sql = "SELECT u.*, m.name as member_name 
@@ -151,6 +278,7 @@ mysqli_stmt_bind_param($stmt, "i", $house_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $user_accounts = mysqli_fetch_all($result, MYSQLI_ASSOC);
+mysqli_stmt_close($stmt);
 
 // NOW include the header
 $page_title = "House Settings - " . htmlspecialchars($house['house_name'] ?? 'Unknown House');
@@ -175,9 +303,6 @@ require_once '../includes/header.php';
         </div>
     </div>
 </div>
-
-<!-- Toast Container for success messages -->
-<div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
 
 <!-- Messages will appear here -->
 <div id="messageContainer"></div>
@@ -227,12 +352,13 @@ require_once '../includes/header.php';
         <div class="card stat-card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0"><i class="fas fa-house-user me-2"></i>House Details</h5>
-                <span class="badge <?php echo ($house['is_active'] ?? 0) ? 'bg-success' : 'bg-secondary'; ?>">
+                <span class="badge <?php echo ($house['is_active'] ?? 0) ? 'bg-success' : 'bg-secondary'; ?>" id="statusBadge">
                     <?php echo ($house['is_active'] ?? 0) ? 'Active' : 'Inactive'; ?>
                 </span>
             </div>
             <div class="card-body">
-                <form id="houseForm" method="POST" class="needs-validation" novalidate>
+                <!-- Main House Update Form -->
+                <form id="houseForm" method="POST" action="settings.php" class="needs-validation" novalidate>
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="house_name" class="form-label">House Name *</label>
@@ -257,18 +383,37 @@ require_once '../includes/header.php';
                     
                     <div class="mb-3 form-check">
                         <input type="checkbox" class="form-check-input" id="is_active" name="is_active" 
-                               <?php echo ($house['is_active'] ?? 1) ? 'checked' : ''; ?>>
+                               value="1" <?php echo ($house['is_active'] ?? 1) ? 'checked' : ''; ?>>
                         <label class="form-check-label" for="is_active">Active House</label>
                     </div>
                     
-                    <button type="submit" name="update_house" class="btn btn-primary">
+                    <button type="submit" name="update_house" class="btn btn-primary" id="updateHouseBtn">
                         <i class="fas fa-save me-2"></i> Update House
                     </button>
                 </form>
+                
+                <!-- Separate Form for Join Status Toggle -->
+                <?php if ($_SESSION['role'] === 'manager'): ?>
+                <hr>
+                <form method="POST" action="" id="joinToggleForm" class="mt-3">
+                    <input type="hidden" name="toggle_join_status" value="1">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="is_open_for_join" name="is_open_for_join" 
+                               value="1" <?php echo ($house['is_open_for_join'] ?? 1) ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="is_open_for_join">
+                            <strong>Open for New Members</strong>
+                            <br><small class="text-muted">Allow members to request joining this house by house code</small>
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-outline-primary mt-2">
+                        <i class="fas fa-save me-1"></i> Save Join Status
+                    </button>
+                </form>
+                <?php endif; ?>
             </div>
         </div>
     </div>
-    
+
     <div class="col-lg-6">
         <!-- Quick Stats Card -->
         <div class="card stat-card mb-4">
@@ -315,7 +460,7 @@ require_once '../includes/header.php';
     <div class="card-body">
         <div class="row">
             <div class="col-md-6">
-                <div class="alert-su alert-info">
+                <div class="alert alert-info">
                     <h6><i class="fas fa-user-crown me-2"></i>Manager Privileges</h6>
                     <p class="mb-2">As the house manager, you can:</p>
                     <ul class="mb-0">
@@ -327,7 +472,7 @@ require_once '../includes/header.php';
                 </div>
             </div>
             <div class="col-md-6">
-                <div class="alert-su alert-warning">
+                <div class="alert alert-warning">
                     <h6><i class="fas fa-exclamation-triangle me-2"></i>Important</h6>
                     <p class="mb-2">House Code: <code><?php echo $house['house_code']; ?></code></p>
                     <p class="small mb-0">Share this code with members so they can join your house.</p>
@@ -371,6 +516,7 @@ require_once '../includes/header.php';
                 $result = mysqli_stmt_get_result($stmt);
                 $manager = mysqli_fetch_assoc($result);
                 echo $manager ? htmlspecialchars($manager['username']) : 'Not assigned';
+                mysqli_stmt_close($stmt);
                 ?>
             </p>
         </div>
@@ -593,65 +739,117 @@ require_once '../includes/header.php';
 
 <!-- JavaScript for AJAX House Update -->
 <script>
-document.getElementById('houseForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    formData.append('update_house', '1');
-    
-    fetch('settings.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        const container = document.getElementById('messageContainer');
-        if (data.success) {
-            container.innerHTML = `
-                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                    <i class="fas fa-check-circle me-2"></i>${data.message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            `;
-            // Update the house name in the title
-            document.querySelector('.page-title small').textContent = ' - ' + document.getElementById('house_name').value;
-        } else {
-            container.innerHTML = `
-                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    <i class="fas fa-exclamation-circle me-2"></i>${data.message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            `;
-        }
-        
-        // Auto-hide after 5 seconds
-        setTimeout(() => {
-            const alert = container.querySelector('.alert');
-            if (alert) {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
-            }
-        }, 5000);
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        document.getElementById('messageContainer').innerHTML = `
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <i class="fas fa-exclamation-circle me-2"></i>An error occurred
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-        `;
-    });
-});
-
-// Copy link to clipboard functionality - SIMPLIFIED AND WORKING
 document.addEventListener('DOMContentLoaded', function() {
-    // Add click event to all copy link buttons
+    const houseForm = document.getElementById('houseForm');
+    
+    if (houseForm) {
+        houseForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Validate form
+            if (!houseForm.checkValidity()) {
+                e.stopPropagation();
+                houseForm.classList.add('was-validated');
+                return false;
+            }
+            
+            const formData = new FormData(this);
+            formData.append('update_house', '1');
+            
+            // Show loading state
+            const submitBtn = document.getElementById('updateHouseBtn');
+            const originalBtnText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Updating...';
+            submitBtn.disabled = true;
+            
+            fetch('settings.php', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('messageContainer');
+                if (data.success) {
+                    // Update the UI with new data
+                    if (data.house) {
+                        // Update house name in title
+                        const titleSmall = document.querySelector('.page-title small');
+                        if (titleSmall) {
+                            titleSmall.textContent = ' - ' + data.house.house_name;
+                        }
+                        
+                        // Update status badge
+                        const statusBadge = document.getElementById('statusBadge');
+                        if (statusBadge) {
+                            statusBadge.className = 'badge ' + (data.house.is_active == 1 ? 'bg-success' : 'bg-secondary');
+                            statusBadge.textContent = data.house.is_active == 1 ? 'Active' : 'Inactive';
+                        }
+                        
+                        // Update the checkbox
+                        const isActiveCheckbox = document.getElementById('is_active');
+                        if (isActiveCheckbox) {
+                            isActiveCheckbox.checked = data.house.is_active == 1;
+                        }
+                        
+                        // Update description field
+                        const descriptionField = document.getElementById('description');
+                        if (descriptionField && data.house.description !== undefined) {
+                            descriptionField.value = data.house.description;
+                        }
+                    }
+                    
+                    container.innerHTML = `
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            <i class="fas fa-check-circle me-2"></i>${data.message}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="fas fa-exclamation-circle me-2"></i>${data.message}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                }
+                
+                // Reset button state
+                submitBtn.innerHTML = originalBtnText;
+                submitBtn.disabled = false;
+                
+                // Auto-hide after 5 seconds
+                setTimeout(() => {
+                    const alert = container.querySelector('.alert');
+                    if (alert) {
+                        const bsAlert = new bootstrap.Alert(alert);
+                        bsAlert.close();
+                    }
+                }, 5000);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('messageContainer').innerHTML = `
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <i class="fas fa-exclamation-circle me-2"></i>An error occurred while updating.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
+                
+                // Reset button state
+                submitBtn.innerHTML = originalBtnText;
+                submitBtn.disabled = false;
+            });
+        });
+    }
+    
+    // Copy link to clipboard functionality
     document.querySelectorAll('.copy-link-btn').forEach(button => {
         button.addEventListener('click', function() {
             const link = this.getAttribute('data-link');
             const originalHTML = this.innerHTML;
-            const originalTitle = this.getAttribute('title');
             
             // Create a temporary textarea to copy the text
             const textarea = document.createElement('textarea');
@@ -661,100 +859,49 @@ document.addEventListener('DOMContentLoaded', function() {
             textarea.style.top = '-999999px';
             document.body.appendChild(textarea);
             textarea.select();
+            textarea.setSelectionRange(0, 99999);
             
             try {
-                // Copy the text
                 const successful = document.execCommand('copy');
                 
                 if (successful) {
                     // Success - Change button appearance
-                    this.innerHTML = '<i class="fas fa-check"></i>';
+                    this.innerHTML = '<i class="fas fa-check"></i> Copied!';
                     this.classList.remove('btn-outline-info');
                     this.classList.add('btn-success');
                     
-                    // Show simple success message
-                    showSuccessMessage('Invite link copied to clipboard!');
+                    // Show success message
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed bottom-0 end-0 m-3';
+                    alertDiv.style.zIndex = '9999';
+                    alertDiv.style.maxWidth = '300px';
+                    alertDiv.innerHTML = `
+                        <i class="fas fa-check-circle me-2"></i>Invite link copied!
+                        <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+                    `;
+                    document.body.appendChild(alertDiv);
                     
                     // Reset button after 2 seconds
                     setTimeout(() => {
                         this.innerHTML = originalHTML;
                         this.classList.remove('btn-success');
                         this.classList.add('btn-outline-info');
-                        this.setAttribute('title', originalTitle);
+                        alertDiv.remove();
                     }, 2000);
                 } else {
-                    // If copy fails, show the link in a prompt
                     prompt('Copy this link manually:', link);
                 }
             } catch (err) {
                 console.error('Failed to copy: ', err);
-                // If copy fails, show the link in a prompt
                 prompt('Copy this link manually:', link);
             } finally {
-                // Remove the textarea
                 document.body.removeChild(textarea);
             }
         });
     });
-    
-    // Function to show simple success message
-    function showSuccessMessage(message) {
-        // Create a simple alert instead of toast to avoid Bootstrap issues
-        const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed bottom-0 end-0 m-3';
-        alertDiv.style.zIndex = '9999';
-        alertDiv.innerHTML = `
-            <i class="fas fa-check-circle me-2"></i>${message}
-            <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
-        `;
-        document.body.appendChild(alertDiv);
-        
-        // Auto remove after 3 seconds
-        setTimeout(() => {
-            if (alertDiv.parentElement) {
-                alertDiv.remove();
-            }
-        }, 3000);
-    }
 });
 </script>
 
 <?php 
-$custom_js = "
-$(document).ready(function() {
-    // Form validation for non-AJAX forms
-    (function () {
-        'use strict'
-        var forms = document.querySelectorAll('.needs-validation')
-        Array.prototype.slice.call(forms).forEach(function (form) {
-            form.addEventListener('submit', function (event) {
-                if (!form.checkValidity()) {
-                    event.preventDefault()
-                    event.stopPropagation()
-                }
-                form.classList.add('was-validated')
-            }, false)
-        })
-    })();
-    
-    // Initialize DataTables only if not already initialized
-    if ($.fn.DataTable.isDataTable('#membersTable')) {
-        $('#membersTable').DataTable().destroy();
-    }
-    
-    $('#membersTable').DataTable({
-        pageLength: 10,
-        responsive: true,
-        order: [],
-        columnDefs: [
-            { orderable: false, targets: -1 } // Disable sorting for actions column
-        ],
-        language: {
-            search: '_INPUT_',
-            searchPlaceholder: 'Search members...'
-        }
-    });
-});
-";
-
 require_once '../includes/footer.php';
+?>

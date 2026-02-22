@@ -150,6 +150,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Invalid house code. Please check and try again.";
             } elseif (!$house['is_active']) {
                 $error = "This house is currently inactive. Please contact the house manager.";
+            } elseif (!isset($house['is_open_for_join']) || $house['is_open_for_join'] == 0) {
+                $error = "This house is not accepting new members via house code. Please ask the manager for a join link instead.";
             } else {
                 // Start transaction
                 mysqli_begin_transaction($conn);
