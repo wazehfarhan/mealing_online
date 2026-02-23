@@ -101,17 +101,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             if (empty($error)) {
-                // If status is being changed to inactive, also set house_status to 'left'
+                // IMPORTANT: When setting status to inactive, we should NOT automatically set house_status to 'left'
+                // The proper way is to either:
+                // 1. If member has a pending leave request, approve it (set to 'left')
+                // 2. If no pending request, just set status to inactive but keep house_status as is
+                
                 if ($status == 'inactive' && $member['status'] == 'active') {
-                    $update_sql = "UPDATE members SET name = ?, phone = ?, email = ?, join_date = ?, status = ?, house_status = 'left' WHERE member_id = ? AND house_id = ?";
+                    // Check if member has pending leave request
+                    if ($member['house_status'] == 'pending_leave') {
+                        // If pending leave, approve it and set to 'left'
+                        $update_sql = "UPDATE members SET name = ?, phone = ?, email = ?, join_date = ?, status = ?, 
+                                      house_status = 'left', leave_request_date = NULL 
+                                      WHERE member_id = ? AND house_id = ?";
+                        
+                        // Log the approval
+                        $log_sql = "INSERT INTO house_transfers_log 
+                                    (member_id, from_house_id, action, performed_by, notes)
+                                    VALUES (?, ?, 'leave_approved', ?, 'Manager approved leave request via edit')";
+                    } else {
+                        // No pending leave request, just set status to inactive but keep house_status
+                        $update_sql = "UPDATE members SET name = ?, phone = ?, email = ?, join_date = ?, status = ? 
+                                      WHERE member_id = ? AND house_id = ?";
+                    }
                 } else {
-                    $update_sql = "UPDATE members SET name = ?, phone = ?, email = ?, join_date = ?, status = ? WHERE member_id = ? AND house_id = ?";
+                    // Regular update without status change to inactive
+                    $update_sql = "UPDATE members SET name = ?, phone = ?, email = ?, join_date = ?, status = ? 
+                                  WHERE member_id = ? AND house_id = ?";
                 }
+                
                 $update_stmt = mysqli_prepare($conn, $update_sql);
-                mysqli_stmt_bind_param($update_stmt, "sssssii", $name, $phone, $email, $join_date, $status, $member_id, $house_id);
+                
+                if ($status == 'inactive' && $member['status'] == 'active' && $member['house_status'] == 'pending_leave') {
+                    // For approving pending leave request (7 parameters + 2 for WHERE = 9 total)
+                    mysqli_stmt_bind_param($update_stmt, "sssssii", $name, $phone, $email, $join_date, $status, $member_id, $house_id);
+                } else {
+                    // Regular update (5 parameters + 2 for WHERE = 7 total)
+                    mysqli_stmt_bind_param($update_stmt, "sssssii", $name, $phone, $email, $join_date, $status, $member_id, $house_id);
+                }
                 
                 if (mysqli_stmt_execute($update_stmt)) {
                     $success = "Member updated successfully!";
+                    
+                    // If we approved a pending leave request, log it
+                    if ($status == 'inactive' && $member['status'] == 'active' && $member['house_status'] == 'pending_leave') {
+                        $log_stmt = mysqli_prepare($conn, $log_sql);
+                        mysqli_stmt_bind_param($log_stmt, "iiii", $member_id, $house_id, $user_id, $house_id);
+                        mysqli_stmt_execute($log_stmt);
+                        mysqli_stmt_close($log_stmt);
+                        
+                        // Archive member data to previous_houses table
+                        $archive_sql = "INSERT INTO previous_houses 
+                                       (member_id, house_id, joined_at, left_at, total_deposits, total_meals, final_balance, is_active)
+                                       SELECT ?, ?, join_date, NOW(), 
+                                              COALESCE((SELECT SUM(amount) FROM deposits WHERE member_id = ?), 0),
+                                              COALESCE((SELECT SUM(meal_count) FROM meals WHERE member_id = ?), 0),
+                                              0, 0
+                                       FROM members WHERE member_id = ?";
+                        $archive_stmt = mysqli_prepare($conn, $archive_sql);
+                        mysqli_stmt_bind_param($archive_stmt, "iiiiii", $member_id, $house_id, $member_id, $member_id, $member_id);
+                        mysqli_stmt_execute($archive_stmt);
+                        mysqli_stmt_close($archive_stmt);
+                    }
                     
                     // If member has an account, update their email in users table
                     if (!empty($email)) {
@@ -136,6 +186,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     $member = mysqli_fetch_assoc($result);
+}
+
+// Handle member deletion (separate from edit form)
+if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
+    $delete_id = intval($_GET['delete']);
+    
+    // Check if member belongs to current house
+    $check_sql = "SELECT house_id, status, house_status FROM members WHERE member_id = ? AND house_id = ?";
+    $check_stmt = mysqli_prepare($conn, $check_sql);
+    mysqli_stmt_bind_param($check_stmt, "ii", $delete_id, $house_id);
+    mysqli_stmt_execute($check_stmt);
+    $check_result = mysqli_stmt_get_result($check_stmt);
+    $delete_member = mysqli_fetch_assoc($check_result);
+    
+    if (!$delete_member) {
+        $_SESSION['error'] = "Member not found or you don't have permission to delete this member";
+        header("Location: members.php");
+        exit();
+    }
+    
+    // Check if member has any records
+    $has_records_sql = "SELECT 
+        (SELECT COUNT(*) FROM meals WHERE member_id = ?) as meal_count,
+        (SELECT COUNT(*) FROM deposits WHERE member_id = ?) as deposit_count";
+    $has_records_stmt = mysqli_prepare($conn, $has_records_sql);
+    mysqli_stmt_bind_param($has_records_stmt, "ii", $delete_id, $delete_id);
+    mysqli_stmt_execute($has_records_stmt);
+    $has_records_result = mysqli_stmt_get_result($has_records_stmt);
+    $has_records = mysqli_fetch_assoc($has_records_result);
+    
+    if ($has_records['meal_count'] > 0 || $has_records['deposit_count'] > 0) {
+        // Has records - mark as inactive but don't change house_status automatically
+        $update_sql = "UPDATE members SET status = 'inactive' WHERE member_id = ? AND house_id = ?";
+        $update_stmt = mysqli_prepare($conn, $update_sql);
+        mysqli_stmt_bind_param($update_stmt, "ii", $delete_id, $house_id);
+        
+        if (mysqli_stmt_execute($update_stmt)) {
+            $_SESSION['success'] = "Member marked as inactive (has existing records)";
+        } else {
+            $_SESSION['error'] = "Error updating member status";
+        }
+    } else {
+        // No records - can delete
+        $delete_sql = "DELETE FROM members WHERE member_id = ? AND house_id = ?";
+        $delete_stmt = mysqli_prepare($conn, $delete_sql);
+        mysqli_stmt_bind_param($delete_stmt, "ii", $delete_id, $house_id);
+        
+        if (mysqli_stmt_execute($delete_stmt)) {
+            $_SESSION['success'] = "Member deleted successfully (no records found)";
+        } else {
+            $_SESSION['error'] = "Error deleting member";
+        }
+    }
+    
+    header("Location: members.php");
+    exit();
 }
 
 // Now include the header AFTER all processing
@@ -213,12 +319,34 @@ require_once '../includes/header.php';
                                 <option value="active" <?php echo $member['status'] == 'active' ? 'selected' : ''; ?>>Active</option>
                                 <option value="inactive" <?php echo $member['status'] == 'inactive' ? 'selected' : ''; ?>>Inactive</option>
                             </select>
-                            <div class="form-text">Inactive members cannot login</div>
+                            <div class="form-text">
+                                <?php if ($member['house_status'] == 'pending_leave'): ?>
+                                <span class="text-warning">⚠️ Member has pending leave request. Setting to inactive will approve their leave.</span>
+                                <?php else: ?>
+                                Inactive members cannot login. This does NOT automatically mark them as having left the house.
+                                <?php endif; ?>
+                            </div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Member ID</label>
+                            <label class="form-label">House Status</label>
                             <div class="form-control" style="background-color: #f8f9fa;">
-                                #<?php echo $member['member_id']; ?>
+                                <?php 
+                                $status_colors = [
+                                    'active' => 'success',
+                                    'pending_leave' => 'warning',
+                                    'pending_join' => 'info',
+                                    'left' => 'secondary'
+                                ];
+                                $color = $status_colors[$member['house_status']] ?? 'secondary';
+                                ?>
+                                <span class="badge bg-<?php echo $color; ?>">
+                                    <?php echo ucfirst(str_replace('_', ' ', $member['house_status'])); ?>
+                                </span>
+                                <?php if ($member['leave_request_date']): ?>
+                                <small class="d-block text-muted mt-1">
+                                    Leave requested: <?php echo date('M d, Y', strtotime($member['leave_request_date'])); ?>
+                                </small>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
@@ -334,7 +462,7 @@ require_once '../includes/header.php';
                         ?>
                         
                         <?php if ($user_account): ?>
-                        <div class="alert-su alert-success">
+                        <div class="alert alert-success">
                             <h6><i class="fas fa-check-circle me-2"></i>Account Created</h6>
                             <p class="mb-1"><strong>Username:</strong> <?php echo htmlspecialchars($user_account['username']); ?></p>
                             <p class="mb-1"><strong>Email:</strong> <?php echo htmlspecialchars($user_account['email']); ?></p>
@@ -348,7 +476,7 @@ require_once '../includes/header.php';
                             </p>
                         </div>
                         <?php elseif ($member['join_token'] && strtotime($member['token_expiry']) > time()): ?>
-                        <div class="alert-su alert-warning">
+                        <div class="alert alert-warning">
                             <h6><i class="fas fa-clock me-2"></i>Pending Account Creation</h6>
                             <p class="mb-2">Member has not created their account yet.</p>
                             <p class="mb-1">Invite link is active.</p>
