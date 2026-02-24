@@ -71,6 +71,7 @@ if ($house_id) {
     mysqli_stmt_execute($house_stmt);
     $house_result = mysqli_stmt_get_result($house_stmt);
     $house = mysqli_fetch_assoc($house_result);
+    mysqli_stmt_close($house_stmt);
 } else {
     $house = null;
 }
@@ -99,6 +100,7 @@ mysqli_stmt_bind_param($stmt, "i", $member_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $member = mysqli_fetch_assoc($result);
+mysqli_stmt_close($stmt);
 
 // Initialize variables for yearly view
 $yearly_expense_totals = [];
@@ -127,6 +129,10 @@ $year_summary = [
     'monthly_breakdown' => []
 ];
 
+// Initialize yearly balance variable
+$yearly_balance = 0;
+$yearly_member_cost = 0;
+
 // If viewing by year
 if ($view_type === 'year') {
     // Get total expenses for the entire year
@@ -140,6 +146,7 @@ if ($view_type === 'year') {
     $expenses_result = mysqli_stmt_get_result($expenses_stmt);
     $expenses_data = mysqli_fetch_assoc($expenses_result);
     $year_summary['total_expenses'] = $expenses_data['total_expenses'] ?? 0;
+    mysqli_stmt_close($expenses_stmt);
     
     // Get total meals for the house for the entire year
     $total_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as total_meals 
@@ -152,6 +159,7 @@ if ($view_type === 'year') {
     $total_meals_result = mysqli_stmt_get_result($total_meals_stmt);
     $total_meals_data = mysqli_fetch_assoc($total_meals_result);
     $year_summary['total_house_meals'] = $total_meals_data['total_meals'] ?? 0;
+    mysqli_stmt_close($total_meals_stmt);
     
     // Get member's total meals for the entire year
     $member_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as member_meals 
@@ -165,6 +173,7 @@ if ($view_type === 'year') {
     $member_meals_result = mysqli_stmt_get_result($member_meals_stmt);
     $member_meals_data = mysqli_fetch_assoc($member_meals_result);
     $year_summary['total_member_meals'] = $member_meals_data['member_meals'] ?? 0;
+    mysqli_stmt_close($member_meals_stmt);
     
     // Get member's total deposits for the entire year
     $member_deposits_sql = "SELECT COALESCE(SUM(amount), 0) as member_deposits 
@@ -178,6 +187,7 @@ if ($view_type === 'year') {
     $member_deposits_result = mysqli_stmt_get_result($member_deposits_stmt);
     $member_deposits_data = mysqli_fetch_assoc($member_deposits_result);
     $year_summary['total_deposits'] = $member_deposits_data['member_deposits'] ?? 0;
+    mysqli_stmt_close($member_deposits_stmt);
     
     // Calculate average meal rate for the year
     if ($year_summary['total_house_meals'] > 0) {
@@ -199,6 +209,7 @@ if ($view_type === 'year') {
         mysqli_stmt_execute($month_expenses_stmt);
         $month_expenses_result = mysqli_stmt_get_result($month_expenses_stmt);
         $month_expenses_data = mysqli_fetch_assoc($month_expenses_result);
+        mysqli_stmt_close($month_expenses_stmt);
         
         // Get monthly house meals
         $month_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as month_meals 
@@ -211,6 +222,7 @@ if ($view_type === 'year') {
         mysqli_stmt_execute($month_meals_stmt);
         $month_meals_result = mysqli_stmt_get_result($month_meals_stmt);
         $month_meals_data = mysqli_fetch_assoc($month_meals_result);
+        mysqli_stmt_close($month_meals_stmt);
         
         // Get monthly member meals
         $month_member_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as month_member_meals 
@@ -224,6 +236,7 @@ if ($view_type === 'year') {
         mysqli_stmt_execute($month_member_meals_stmt);
         $month_member_meals_result = mysqli_stmt_get_result($month_member_meals_stmt);
         $month_member_meals_data = mysqli_fetch_assoc($month_member_meals_result);
+        mysqli_stmt_close($month_member_meals_stmt);
         
         // Get monthly member deposits
         $month_deposits_sql = "SELECT COALESCE(SUM(amount), 0) as month_deposits 
@@ -237,6 +250,7 @@ if ($view_type === 'year') {
         mysqli_stmt_execute($month_deposits_stmt);
         $month_deposits_result = mysqli_stmt_get_result($month_deposits_stmt);
         $month_deposits_data = mysqli_fetch_assoc($month_deposits_result);
+        mysqli_stmt_close($month_deposits_stmt);
         
         // Calculate monthly meal rate
         $month_meal_rate = 0;
@@ -287,6 +301,7 @@ if ($view_type === 'year') {
     mysqli_stmt_execute($expenses_list_stmt);
     $expenses_list_result = mysqli_stmt_get_result($expenses_list_stmt);
     $all_expenses = mysqli_fetch_all($expenses_list_result, MYSQLI_ASSOC);
+    mysqli_stmt_close($expenses_list_stmt);
     
     // Get ALL deposits for the member for selected year
     $deposits_sql = "SELECT * FROM deposits 
@@ -299,6 +314,7 @@ if ($view_type === 'year') {
     mysqli_stmt_execute($deposits_stmt);
     $deposits_result = mysqli_stmt_get_result($deposits_stmt);
     $all_deposits = mysqli_fetch_all($deposits_result, MYSQLI_ASSOC);
+    mysqli_stmt_close($deposits_stmt);
 } 
 // Viewing by month (default)
 else {
@@ -314,6 +330,7 @@ else {
     $total_meals_result = mysqli_stmt_get_result($total_meals_stmt);
     $total_meals_data = mysqli_fetch_assoc($total_meals_result);
     $house_total_meals = $total_meals_data['total_meals'] ?? 0;
+    mysqli_stmt_close($total_meals_stmt);
 
     // Get total expenses for the house for the month
     $expenses_sql = "SELECT COALESCE(SUM(amount), 0) as total_expenses 
@@ -327,6 +344,7 @@ else {
     $expenses_result = mysqli_stmt_get_result($expenses_stmt);
     $expenses_data = mysqli_fetch_assoc($expenses_result);
     $house_total_expenses = $expenses_data['total_expenses'] ?? 0;
+    mysqli_stmt_close($expenses_stmt);
 
     // Get member's total meals for the month
     $member_meals_sql = "SELECT COALESCE(SUM(meal_count), 0) as member_meals 
@@ -341,6 +359,7 @@ else {
     $member_meals_result = mysqli_stmt_get_result($member_meals_stmt);
     $member_meals_data = mysqli_fetch_assoc($member_meals_result);
     $member_total_meals = $member_meals_data['member_meals'] ?? 0;
+    mysqli_stmt_close($member_meals_stmt);
 
     // Get member's total deposits for the month
     $member_deposits_sql = "SELECT COALESCE(SUM(amount), 0) as member_deposits 
@@ -355,6 +374,7 @@ else {
     $member_deposits_result = mysqli_stmt_get_result($member_deposits_stmt);
     $member_deposits_data = mysqli_fetch_assoc($member_deposits_result);
     $member_total_deposits = $member_deposits_data['member_deposits'] ?? 0;
+    mysqli_stmt_close($member_deposits_stmt);
 
     // Calculate meal rate
     $meal_rate = 0;
@@ -389,6 +409,7 @@ else {
     mysqli_stmt_execute($expenses_list_stmt);
     $expenses_list_result = mysqli_stmt_get_result($expenses_list_stmt);
     $all_expenses = mysqli_fetch_all($expenses_list_result, MYSQLI_ASSOC);
+    mysqli_stmt_close($expenses_list_stmt);
     
     // Get ALL deposits for the member for selected month
     $deposits_sql = "SELECT * FROM deposits 
@@ -402,6 +423,7 @@ else {
     mysqli_stmt_execute($deposits_stmt);
     $deposits_result = mysqli_stmt_get_result($deposits_stmt);
     $all_deposits = mysqli_fetch_all($deposits_result, MYSQLI_ASSOC);
+    mysqli_stmt_close($deposits_stmt);
 }
 
 // Calculate totals for display
@@ -451,9 +473,104 @@ mysqli_stmt_bind_param($available_months_stmt, "iii", $member_id, $member_id, $h
 mysqli_stmt_execute($available_months_stmt);
 $available_months_result = mysqli_stmt_get_result($available_months_stmt);
 $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
+mysqli_stmt_close($available_months_stmt);
+
+// Check if member recently joined from another house (for showing transfer heading)
+// Only show if: 
+// 1. Member has a previous house record in member_archive
+// 2. Previous house is different from current house
+// 3. Member has joined a new house (house_status = 'active' in a different house)
+
+// First check if member_archive has data for this member
+$check_archive_sql = "SELECT COUNT(*) as archive_count FROM member_archive WHERE member_id = ?";
+$check_archive_stmt = mysqli_prepare($conn, $check_archive_sql);
+mysqli_stmt_bind_param($check_archive_stmt, "i", $member_id);
+mysqli_stmt_execute($check_archive_stmt);
+$check_archive_result = mysqli_stmt_get_result($check_archive_stmt);
+$archive_count = mysqli_fetch_assoc($check_archive_result);
+mysqli_stmt_close($check_archive_stmt);
+
+$previous_house = null;
+$show_transfer_heading = false;
+$transfer_date = null;
+
+// Only query previous house if there's archive data
+if ($archive_count && $archive_count['archive_count'] > 0) {
+    $previous_house_sql = "SELECT ma.*, h.house_name as previous_house_name, h.house_code as previous_house_code
+                           FROM member_archive ma
+                           JOIN houses h ON ma.original_house_id = h.house_id
+                           WHERE ma.member_id = ?
+                           ORDER BY ma.archived_at DESC
+                           LIMIT 1";
+    $previous_house_stmt = mysqli_prepare($conn, $previous_house_sql);
+    mysqli_stmt_bind_param($previous_house_stmt, "i", $member_id);
+    mysqli_stmt_execute($previous_house_stmt);
+    $previous_house_result = mysqli_stmt_get_result($previous_house_stmt);
+    $previous_house = mysqli_fetch_assoc($previous_house_result);
+    mysqli_stmt_close($previous_house_stmt);
+
+    // Get member's current house status
+    $member_status_sql = "SELECT house_id, house_status FROM members WHERE member_id = ?";
+    $member_status_stmt = mysqli_prepare($conn, $member_status_sql);
+    mysqli_stmt_bind_param($member_status_stmt, "i", $member_id);
+    mysqli_stmt_execute($member_status_stmt);
+    $member_status_result = mysqli_stmt_get_result($member_status_stmt);
+    $member_status_data = mysqli_fetch_assoc($member_status_result);
+    mysqli_stmt_close($member_status_stmt);
+
+    // Determine if this is a recent transfer (within last 30 days)
+    // Only show heading if:
+    // 1. Previous house exists in member_archive
+    // 2. Previous house is different from current house
+    // 3. Member has joined a new house (house_status = 'active')
+    if ($previous_house && !empty($previous_house['archived_at']) && !empty($house)) {
+        // Check if previous house is different from current house
+        if ($previous_house['original_house_id'] != $house_id) {
+            // Only show if member has joined a new house (active status in a different house)
+            if ($member_status_data['house_status'] == 'active') {
+                $archived_date = new DateTime($previous_house['archived_at']);
+                $now = new DateTime();
+                $days_since_leave = $now->diff($archived_date)->days;
+                
+                // Show the heading if member left within the last 30 days
+                if ($days_since_leave <= 30) {
+                    $show_transfer_heading = true;
+                    $transfer_date = $previous_house['archived_at'];
+                }
+            }
+        }
+    }
+}
+
+// Get member's house status for the sidebar
+$status_sql = "SELECT house_status, requested_house_id, leave_request_date, join_request_date 
+              FROM members WHERE member_id = ?";
+$status_stmt = mysqli_prepare($conn, $status_sql);
+mysqli_stmt_bind_param($status_stmt, "i", $member_id);
+mysqli_stmt_execute($status_stmt);
+$status_result = mysqli_stmt_get_result($status_stmt);
+$house_status = mysqli_fetch_assoc($status_result);
+mysqli_stmt_close($status_stmt);
 ?>
 <div class="row">
     <div class="col-12">
+        <!-- House Transfer Notification -->
+        <?php if ($show_transfer_heading && $previous_house && !empty($previous_house['previous_house_name'])): ?>
+        <div class="alert alert-info d-flex align-items-center mb-4" role="alert">
+            <i class="fas fa-home me-3 fs-4"></i>
+            <div>
+                <strong>Welcome to your new house!</strong>
+                <p class="mb-0">
+                    You left <strong><?php echo htmlspecialchars($previous_house['previous_house_name']); ?></strong> 
+                    and joined <strong><?php echo htmlspecialchars($house['house_name'] ?? 'this house'); ?></strong>.
+                    <small class="text-muted ms-2">
+                        (<?php echo date('M d, Y', strtotime($transfer_date)); ?>)
+                    </small>
+                </p>
+            </div>
+        </div>
+        <?php endif; ?>
+        
         <!-- Header -->
         <div class="row mb-4">
             <div class="col-12">
@@ -821,7 +938,7 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                                 </tr>
                             </table>
                         </div>
-                        <div class="alert-su alert-info mt-3 p-2">
+                        <div class="alert alert-info mt-3 p-2">
                             <small>
                                 <i class="fas fa-info-circle me-1"></i>
                                 <strong>Formula:</strong> Balance = Deposits - (My Meals × Meal Rate)<br>
@@ -1298,16 +1415,6 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                 </div>
                 
                 <!-- House Transfer Status Card -->
-                <?php
-                // Get member's house status
-                $status_sql = "SELECT house_status, requested_house_id, leave_request_date, join_request_date 
-                              FROM members WHERE member_id = ?";
-                $status_stmt = mysqli_prepare($conn, $status_sql);
-                mysqli_stmt_bind_param($status_stmt, "i", $member_id);
-                mysqli_stmt_execute($status_stmt);
-                $status_result = mysqli_stmt_get_result($status_stmt);
-                $house_status = mysqli_fetch_assoc($status_result);
-                ?>
                 <div class="card shadow mt-3">
                     <div class="card-header bg-white py-3">
                         <h5 class="mb-0"><i class="fas fa-home me-2"></i>House Status</h5>
@@ -1320,7 +1427,7 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                                     'active' => 'bg-success',
                                     'pending_leave' => 'bg-warning',
                                     'pending_join' => 'bg-info',
-                                    'house_inactive' => 'bg-danger',
+                                    'left' => 'bg-secondary',
                                     default => 'bg-secondary'
                                 };
                             ?>">
@@ -1335,7 +1442,8 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                             mysqli_stmt_bind_param($req_house_stmt, "i", $house_status['requested_house_id']);
                             mysqli_stmt_execute($req_house_stmt);
                             $req_house_result = mysqli_stmt_get_result($req_house_stmt);
-                            $req_house = mysqli_fetch_assoc($req_house_stmt->get_result());
+                            $req_house = mysqli_fetch_assoc($req_house_result);
+                            mysqli_stmt_close($req_house_stmt);
                         ?>
                         <p class="text-muted mb-2">
                             <small>Requesting to join:</small><br>
@@ -1360,7 +1468,7 @@ $available_months = mysqli_fetch_all($available_months_result, MYSQLI_ASSOC);
                             <a href="settings.php" class="btn btn-outline-primary text-start">
                                 <i class="fas fa-cog me-2"></i>Manage House
                             </a>
-                            <?php if ($house_status['house_status'] == 'active'): ?>
+                            <?php if (($house_status['house_status'] ?? '') == 'active'): ?>
                             <a href="leave_request.php" class="btn btn-outline-danger text-start">
                                 <i class="fas fa-sign-out-alt me-2"></i>Leave House
                             </a>
@@ -1430,16 +1538,7 @@ document.querySelectorAll('select[name="month"], select[name="year"]').forEach(s
 </script>
 
 <?php
-// Close statements
-if (isset($stmt)) mysqli_stmt_close($stmt);
-if (isset($house_stmt)) mysqli_stmt_close($house_stmt);
-if (isset($total_meals_stmt)) mysqli_stmt_close($total_meals_stmt);
-if (isset($expenses_stmt)) mysqli_stmt_close($expenses_stmt);
-if (isset($member_meals_stmt)) mysqli_stmt_close($member_meals_stmt);
-if (isset($member_deposits_stmt)) mysqli_stmt_close($member_deposits_stmt);
-if (isset($deposits_stmt)) mysqli_stmt_close($deposits_stmt);
-if (isset($expenses_list_stmt)) mysqli_stmt_close($expenses_list_stmt);
-if (isset($available_months_stmt)) mysqli_stmt_close($available_months_stmt);
+// Close any remaining statements (though we've already closed them all)
 // DO NOT close $conn - it's managed by getConnection() singleton
 
 require_once '../includes/footer.php';
