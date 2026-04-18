@@ -4,6 +4,7 @@ ob_start();
 
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 $functions = new Functions();
@@ -26,6 +27,10 @@ $categories = ['Rice', 'Fish', 'Meat', 'Vegetables', 'Spices', 'Oil', 'Food', 'O
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
+    } else {
     $amount = floatval($_POST['amount']);
     $category = mysqli_real_escape_string($conn, $_POST['category']);
     $description = mysqli_real_escape_string($conn, $_POST['description']);
@@ -56,7 +61,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Error adding expense: " . mysqli_error($conn);
         }
     }
+    }
 }
+
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
 
 // Now include the header after all potential redirects
 require_once '../includes/header.php';
@@ -83,6 +92,7 @@ require_once '../includes/header.php';
                 <?php endif; ?>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="amount" class="form-label">Amount (৳) *</label>

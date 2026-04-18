@@ -1,6 +1,7 @@
 <?php 
 require_once '../includes/auth.php'; 
 require_once '../includes/functions.php'; 
+require_once '../includes/csrf.php';
 require_once '../includes/header.php'; 
 
 $auth = new Auth();
@@ -26,74 +27,82 @@ $members = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $meal_date = mysqli_real_escape_string($conn, $_POST['meal_date']);
-    $entries = $_POST['entries'] ?? [];
-    
-    if (empty($meal_date)) {
-        $error = "Please select a date";
-    } elseif (empty($members)) {
-        $error = "No active members found";
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
     } else {
-        $success_count = 0;
-        $error_messages = [];
-        $user_id = $_SESSION['user_id'];
+        $meal_date = mysqli_real_escape_string($conn, $_POST['meal_date']);
+        $entries = $_POST['entries'] ?? [];
         
-        foreach ($members as $member) {
-            $member_id = $member['member_id'];
-            $meal_count = isset($entries[$member_id]) ? floatval($entries[$member_id]) : 0;
-            
-            // Skip if meal count is 0 or empty
-            if ($meal_count <= 0) {
-                continue;
-            }
-            
-            // Check if entry already exists for this date and house
-            $check_sql = "SELECT meal_id FROM meals WHERE member_id = ? AND meal_date = ? AND house_id = ?";
-            $check_stmt = mysqli_prepare($conn, $check_sql);
-            mysqli_stmt_bind_param($check_stmt, "isi", $member_id, $meal_date, $house_id);
-            mysqli_stmt_execute($check_stmt);
-            mysqli_stmt_store_result($check_stmt);
-            
-            if (mysqli_stmt_num_rows($check_stmt) > 0) {
-                // Update existing entry
-                $sql = "UPDATE meals SET meal_count = ?, updated_by = ?, updated_at = NOW() 
-                        WHERE member_id = ? AND meal_date = ? AND house_id = ?";
-                $stmt = mysqli_prepare($conn, $sql);
-                mysqli_stmt_bind_param($stmt, "diisi", $meal_count, $user_id, $member_id, $meal_date, $house_id);
-            } else {
-                // Insert new entry
-                $sql = "INSERT INTO meals (house_id, member_id, meal_date, meal_count, created_by) 
-                        VALUES (?, ?, ?, ?, ?)";
-                $stmt = mysqli_prepare($conn, $sql);
-                mysqli_stmt_bind_param($stmt, "iisdi", $house_id, $member_id, $meal_date, $meal_count, $user_id);
-            }
-            
-            if (mysqli_stmt_execute($stmt)) {
-                $success_count++;
-            } else {
-                $error_messages[] = "Error saving meal for " . $member['name'] . ": " . mysqli_error($conn);
-            }
-            
-            // Close statements
-            if (isset($stmt)) {
-                mysqli_stmt_close($stmt);
-            }
-            mysqli_stmt_close($check_stmt);
-        }
-        
-        if ($success_count > 0) {
-            $date_formatted = date('M d, Y', strtotime($meal_date));
-            $success = "Successfully saved $success_count meal entries for $date_formatted";
-            // Clear form
-            $_POST = array();
+        if (empty($meal_date)) {
+            $error = "Please select a date";
+        } elseif (empty($members)) {
+            $error = "No active members found";
         } else {
-            $error = "No meal entries were saved.";
-            if (!empty($error_messages)) {
-                $error .= " Errors: " . implode(", ", $error_messages);
+            $success_count = 0;
+            $error_messages = [];
+            $user_id = $_SESSION['user_id'];
+            
+            foreach ($members as $member) {
+                $member_id = $member['member_id'];
+                $meal_count = isset($entries[$member_id]) ? floatval($entries[$member_id]) : 0;
+                
+                // Skip if meal count is 0 or empty
+                if ($meal_count <= 0) {
+                    continue;
+                }
+                
+                // Check if entry already exists for this date and house
+                $check_sql = "SELECT meal_id FROM meals WHERE member_id = ? AND meal_date = ? AND house_id = ?";
+                $check_stmt = mysqli_prepare($conn, $check_sql);
+                mysqli_stmt_bind_param($check_stmt, "isi", $member_id, $meal_date, $house_id);
+                mysqli_stmt_execute($check_stmt);
+                mysqli_stmt_store_result($check_stmt);
+                
+                if (mysqli_stmt_num_rows($check_stmt) > 0) {
+                    // Update existing entry
+                    $sql = "UPDATE meals SET meal_count = ?, updated_by = ?, updated_at = NOW() 
+                            WHERE member_id = ? AND meal_date = ? AND house_id = ?";
+                    $stmt = mysqli_prepare($conn, $sql);
+                    mysqli_stmt_bind_param($stmt, "diisi", $meal_count, $user_id, $member_id, $meal_date, $house_id);
+                } else {
+                    // Insert new entry
+                    $sql = "INSERT INTO meals (house_id, member_id, meal_date, meal_count, created_by) 
+                            VALUES (?, ?, ?, ?, ?)";
+                    $stmt = mysqli_prepare($conn, $sql);
+                    mysqli_stmt_bind_param($stmt, "iisdi", $house_id, $member_id, $meal_date, $meal_count, $user_id);
+                }
+                
+                if (mysqli_stmt_execute($stmt)) {
+                    $success_count++;
+                } else {
+                    $error_messages[] = "Error saving meal for " . $member['name'] . ": " . mysqli_error($conn);
+                }
+                
+                // Close statements
+                if (isset($stmt)) {
+                    mysqli_stmt_close($stmt);
+                }
+                mysqli_stmt_close($check_stmt);
+            }
+            
+            if ($success_count > 0) {
+                $date_formatted = date('M d, Y', strtotime($meal_date));
+                $success = "Successfully saved $success_count meal entries for $date_formatted";
+                // Clear form
+                $_POST = array();
+            } else {
+                $error = "No meal entries were saved.";
+                if (!empty($error_messages)) {
+                    $error .= " Errors: " . implode(", ", $error_messages);
+                }
             }
         }
     }
 }
+
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
 
 // Get yesterday's date
 $yesterday = date('Y-m-d', strtotime('-1 day'));
@@ -142,6 +151,7 @@ $yesterday = date('Y-m-d', strtotime('-1 day'));
                     </div>
                 <?php else: ?>
                     <form method="POST" action="">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                         <div class="row mb-4">
                             <div class="col-md-4">
                                 <label for="meal_date" class="form-label">Meal Date *</label>

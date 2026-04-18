@@ -51,6 +51,10 @@ if (isset($_SESSION['error'])) {
     unset($_SESSION['error']);
 }
 
+// Initialize rate limiter
+require_once '../includes/rate_limiter.php';
+$rate_limiter = new RateLimiter(getConnection());
+
 // Handle login form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validate CSRF token
@@ -64,22 +68,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($username) || empty($password)) {
             $error = "Please enter both username and password";
         } else {
-            if ($auth->login($username, $password)) {
-                if ($auth->hasHouse()) {
-                    $redirect = ($_SESSION['role'] === 'manager') ? 
-                        '../manager/dashboard.php' : 
-                        '../member/dashboard.php';
-                    header("Location: " . $redirect);
-                } else {
-                    $redirect = ($_SESSION['role'] === 'manager') ? 
-                        '../manager/setup_house.php' : 
-                        '../member/waiting_approval.php';
-                    header("Location: " . $redirect);
-                }
-                exit();
+            // Check if account is locked due to too many attempts
+            if ($rate_limiter->isLockedOut($username)) {
+                $error = "Too many failed login attempts. Please try again in 15 minutes.";
+                error_log("Locked out login attempt for username: " . htmlspecialchars($username) . " from IP: " . $_SERVER['REMOTE_ADDR']);
             } else {
-                $error = "Invalid username or password";
-                error_log("Failed login attempt for username: " . htmlspecialchars($username));
+                if ($auth->login($username, $password)) {
+                    // Clear rate limiting on successful login
+                    $rate_limiter->clearAttempts($username);
+                    
+                    if ($auth->hasHouse()) {
+                        $redirect = ($_SESSION['role'] === 'manager') ? 
+                            '../manager/dashboard.php' : 
+                            '../member/dashboard.php';
+                        header("Location: " . $redirect);
+                    } else {
+                        $redirect = ($_SESSION['role'] === 'manager') ? 
+                            '../manager/setup_house.php' : 
+                            '../member/waiting_approval.php';
+                        header("Location: " . $redirect);
+                    }
+                    exit();
+                } else {
+                    // Record failed attempt
+                    $rate_limiter->recordFailedAttempt($username);
+                    
+                    // Get remaining attempts
+                    $remaining = $rate_limiter->getRemainingAttempts($username);
+                    
+                    if ($remaining > 0) {
+                        $error = "Invalid username or password. Attempts remaining: " . $remaining;
+                    } else {
+                        $error = "Account locked due to too many failed attempts. Please try again in 15 minutes.";
+                    }
+                    
+                    error_log("Failed login attempt for username: " . htmlspecialchars($username) . " from IP: " . $_SERVER['REMOTE_ADDR']);
+                }
             }
         }
     }

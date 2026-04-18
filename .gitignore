@@ -1,0 +1,29 @@
+# Environment
+.env
+
+# Logs
+*.log
+logs/
+
+# Dependencies
+vendor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test/Fix files
+test_*.php
+fix_*.php
+repair_*.php
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp files
+*.tmp
+*.temp
+

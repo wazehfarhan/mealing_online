@@ -10,7 +10,32 @@ ini_set('display_errors', 1);
 
 echo "Starting House Transfer System Migration...\n\n";
 
-$conn = mysqli_connect('localhost', 'root', '');
+// Load configuration
+if (!file_exists(__DIR__ . '/.env')) {
+    die("Error: .env file not found. Please copy .env.example to .env and configure it.\n");
+}
+
+$env_file = file_get_contents(__DIR__ . '/.env');
+$env_array = [];
+foreach (explode("\n", $env_file) as $line) {
+    $line = trim($line);
+    if (!$line || $line[0] === '#') continue;
+    if (strpos($line, '=') === false) continue;
+    list($key, $value) = explode('=', $line, 2);
+    $env_array[trim($key)] = trim($value);
+}
+
+$DB_HOST = $env_array['DB_HOST'] ?? 'localhost';
+$DB_USER = $env_array['DB_USER'] ?? 'root';
+$DB_PASS = $env_array['DB_PASS'] ?? '';
+$DB_NAME = $env_array['DB_NAME'] ?? 'meal_system';
+
+// Use TCP connection instead of socket for better compatibility
+if ($DB_HOST === 'localhost') {
+    $DB_HOST = '127.0.0.1';
+}
+
+$conn = mysqli_connect($DB_HOST, $DB_USER, $DB_PASS, '', 3306);
 if (!$conn) {
     die("Connection failed: " . mysqli_connect_error() . "\n");
 }
@@ -18,11 +43,11 @@ if (!$conn) {
 echo "Connected to MySQL server.\n\n";
 
 // Select the database
-if (!mysqli_select_db($conn, 'meal_system')) {
+if (!mysqli_select_db($conn, $DB_NAME)) {
     die("Cannot select database: " . mysqli_error($conn) . "\n");
 }
 
-echo "Using database: meal_system\n\n";
+echo "Using database: $DB_NAME\n\n";
 
 // Function to check if column exists
 function columnExists($conn, $table, $column) {
@@ -51,7 +76,7 @@ if (!columnExists($conn, 'houses', 'is_open_for_join')) {
 
 echo "\nAdding columns to members table...\n";
 $member_columns = [
-    'house_status' => "ADD COLUMN `house_status` ENUM('active', 'pending_leave', 'pending_join') DEFAULT 'active' AFTER `status`",
+    'house_status' => "ADD COLUMN `house_status` ENUM('active', 'pending_leave', 'pending_join', 'left', 'house_inactive') DEFAULT 'active' AFTER `status`",
     'requested_house_id' => "ADD COLUMN `requested_house_id` INT(11) DEFAULT NULL AFTER `house_id`",
     'leave_request_date' => "ADD COLUMN `leave_request_date` DATETIME DEFAULT NULL AFTER `token_expiry`",
     'join_request_date' => "ADD COLUMN `join_request_date` DATETIME DEFAULT NULL AFTER `leave_request_date`",
@@ -70,6 +95,16 @@ foreach ($member_columns as $column => $alter_stmt) {
     } else {
         echo "✓ $column already exists in members\n";
     }
+}
+
+// Modify ENUM column to include 'left' and 'house_inactive' if they exist
+echo "\nUpdating ENUM columns...\n";
+$sql = "ALTER TABLE `members` MODIFY COLUMN `house_status` 
+        ENUM('active', 'pending_leave', 'pending_join', 'left', 'house_inactive') DEFAULT 'active'";
+if (mysqli_query($conn, $sql)) {
+    echo "✓ Updated house_status ENUM\n";
+} else {
+    echo "ℹ house_status ENUM already correct or table doesn't exist\n";
 }
 
 echo "\nCreating new tables...\n";
@@ -189,6 +224,31 @@ if (!tableExists($conn, 'join_tokens')) {
     echo "✓ join_tokens table already exists\n";
 }
 
+// Create login_attempts table for rate limiting
+if (!tableExists($conn, 'login_attempts')) {
+    $sql = "CREATE TABLE IF NOT EXISTS `login_attempts` (
+        `attempt_id` INT(11) NOT NULL AUTO_INCREMENT,
+        `identifier` VARCHAR(255) NOT NULL,
+        `ip_address` VARCHAR(45) DEFAULT NULL,
+        `attempts` INT(11) DEFAULT 1,
+        `last_attempt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        `locked_until` TIMESTAMP NULL,
+        `is_blocked` TINYINT(1) DEFAULT 0,
+        PRIMARY KEY (`attempt_id`),
+        KEY `idx_identifier` (`identifier`),
+        KEY `idx_ip_address` (`ip_address`),
+        KEY `idx_locked` (`locked_until`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    
+    if (mysqli_query($conn, $sql)) {
+        echo "✓ Created login_attempts table\n";
+    } else {
+        echo "✗ Error: " . mysqli_error($conn) . "\n";
+    }
+} else {
+    echo "✓ login_attempts table already exists\n";
+}
+
 // Update existing data
 echo "\nUpdating existing data...\n";
 
@@ -294,6 +354,34 @@ foreach ($columns_to_check as $table => $columns) {
     }
 }
 
+// Add database indexes for performance optimization
+echo "\nAdding database indexes...\n";
+
+$indexes = [
+    "ALTER TABLE `meals` ADD INDEX IF NOT EXISTS `idx_house_date_meal` (`house_id`, `meal_date`, `meal_count`)",
+    "ALTER TABLE `meals` ADD INDEX IF NOT EXISTS `idx_member_date` (`member_id`, `meal_date`)",
+    "ALTER TABLE `expenses` ADD INDEX IF NOT EXISTS `idx_house_date_amount` (`house_id`, `expense_date`, `amount`)",
+    "ALTER TABLE `deposits` ADD INDEX IF NOT EXISTS `idx_member_date` (`member_id`, `deposit_date`)",
+    "ALTER TABLE `deposits` ADD INDEX IF NOT EXISTS `idx_house_date` (`house_id`, `deposit_date`)",
+    "ALTER TABLE `members` ADD INDEX IF NOT EXISTS `idx_house_status` (`house_id`, `status`)",
+    "ALTER TABLE `members` ADD INDEX IF NOT EXISTS `idx_user_id` (`user_id`)",
+    "ALTER TABLE `users` ADD INDEX IF NOT EXISTS `idx_username` (`username`)",
+    "ALTER TABLE `monthly_summary` ADD INDEX IF NOT EXISTS `idx_house_month` (`house_id`, `month`, `year`)",
+    "ALTER TABLE `join_tokens` ADD INDEX IF NOT EXISTS `idx_token_expires` (`token`, `expires_at`)"
+];
+
+foreach ($indexes as $index_sql) {
+    if (mysqli_query($conn, $index_sql)) {
+        // Index created successfully (or already exists)
+    } else {
+        if (strpos(mysqli_error($conn), 'Duplicate key name') === false) {
+            echo "ℹ Index creation: " . mysqli_error($conn) . "\n";
+        }
+    }
+}
+echo "✓ Database indexes optimization complete\n";
+
 echo "\n";
 mysqli_close($conn);
+
 

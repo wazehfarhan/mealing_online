@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 require_once '../includes/header.php';
 
 $auth = new Auth();
@@ -29,6 +30,10 @@ $members = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
+    } else {
     $member_id = intval($_POST['member_id']);
     $amount = floatval($_POST['amount']);
     $deposit_date = mysqli_real_escape_string($conn, $_POST['deposit_date']);
@@ -36,42 +41,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $created_by = $_SESSION['user_id'];
     
     // Validation
-    if (empty($member_id) || $member_id <= 0) {
-        $error = "Please select a member";
-    } elseif (empty($deposit_date)) {
-        $error = "Deposit date is required";
-    } elseif ($amount <= 0) {
-        $error = "Amount must be greater than 0";
-    } elseif ($amount > 1000000) {
-        $error = "Amount is too high. Please enter a reasonable amount.";
-    } else {
-        // Check if member belongs to this house
-        $member_check_sql = "SELECT house_id FROM members WHERE member_id = ? AND house_id = ?";
-        $member_check_stmt = mysqli_prepare($conn, $member_check_sql);
-        mysqli_stmt_bind_param($member_check_stmt, "ii", $member_id, $house_id);
-        mysqli_stmt_execute($member_check_stmt);
-        mysqli_stmt_store_result($member_check_stmt);
-        
-        if (mysqli_stmt_num_rows($member_check_stmt) == 0) {
-            $error = "Selected member does not belong to your house";
+        if (empty($member_id) || $member_id <= 0) {
+            $error = "Please select a member";
+        } elseif (empty($deposit_date)) {
+            $error = "Deposit date is required";
+        } elseif ($amount <= 0) {
+            $error = "Amount must be greater than 0";
+        } elseif ($amount > 1000000) {
+            $error = "Amount is too high. Please enter a reasonable amount.";
         } else {
-            // Insert deposit with house_id
-            $sql = "INSERT INTO deposits (house_id, member_id, amount, deposit_date, description, created_by) 
-                    VALUES (?, ?, ?, ?, ?, ?)";
-            $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, "iidssi", $house_id, $member_id, $amount, $deposit_date, $description, $created_by);
+            // Check if member belongs to this house
+            $member_check_sql = "SELECT house_id FROM members WHERE member_id = ? AND house_id = ?";
+            $member_check_stmt = mysqli_prepare($conn, $member_check_sql);
+            mysqli_stmt_bind_param($member_check_stmt, "ii", $member_id, $house_id);
+            mysqli_stmt_execute($member_check_stmt);
+            mysqli_stmt_store_result($member_check_stmt);
             
-            if (mysqli_stmt_execute($stmt)) {
-                $success = "Deposit added successfully!";
-                
-                // Clear form
-                $_POST = array();
+            if (mysqli_stmt_num_rows($member_check_stmt) == 0) {
+                $error = "Selected member does not belong to your house";
             } else {
-                $error = "Error adding deposit: " . mysqli_error($conn);
+                // Insert deposit with house_id
+                $sql = "INSERT INTO deposits (house_id, member_id, amount, deposit_date, description, created_by) 
+                        VALUES (?, ?, ?, ?, ?, ?)";
+                $stmt = mysqli_prepare($conn, $sql);
+                mysqli_stmt_bind_param($stmt, "iidssi", $house_id, $member_id, $amount, $deposit_date, $description, $created_by);
+                
+                if (mysqli_stmt_execute($stmt)) {
+                    $success = "Deposit added successfully!";
+                    
+                    // Clear form
+                    $_POST = array();
+                } else {
+                    $error = "Error adding deposit: " . mysqli_error($conn);
+                }
             }
         }
     }
 }
+
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
 
 // Get recent deposits for reference (for this house only)
 $recent_sql = "SELECT d.*, m.name as member_name, u.username as created_by_name

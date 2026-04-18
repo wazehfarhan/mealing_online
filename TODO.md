@@ -1,102 +1,117 @@
-# House Transfer System - Implementation Plan
+# Meal Management System - Security & Performance Overhaul TODO
 
-## Status: IN PROGRESS
+## Priority 1: Critical Security Fixes ✅ Plan Approved
 
-## Started: 2024
+### ✅ 1.1 Database Credentials to .env
 
----
+- ✅ Create `.env` and `.env.example`
+- ✅ Update `config/database.php` to use `parse_ini_file()`
+- ☐ Test connection (user copy .env)
 
-## Phase 1: Database Setup ✅ COMPLETED
+### ✅ 1.2 Disable Error Display in Production
 
-- [x] 1.1. Run `run_migration.php` to execute database changes
-- [x] 1.2. Verify all tables and columns were created successfully
+- ✅ Add `ENVIRONMENT=production` to .env
+- ✅ Update `config/database.php` conditional error_reporting
 
-## Phase 2: Helper Functions ✅ COMPLETED
+### ✅ 1.3 CSRF Protection All Forms (base)
 
-- [x] 2.1. Add `getMemberHouseHistory($email, $house_code)` function
-- [x] 2.2. Add `calculateHouseHistoryStats($member_id, $house_id)` function
-- [x] 2.3. Add `generateJoinToken()` function
-- [x] 2.4. Add `useJoinToken()` function
-- [x] 2.5. Add `getIncomingJoinRequests()` function
+- ✅ Create `includes/csrf.php`
 
-## Phase 3: Member Pages - Leave Feature ✅ COMPLETED
+### [ ] 1.4 Fix SQL Injection includes/realtime.php
 
-- [x] 3.1. Create `member/leave_request.php` - Member leave request page
-- [x] 3.2. Update `member/settings.php` - Add leave request UI
+### [ ] 1.3 CSRF Protection All Forms
 
-## Phase 4: Member Pages - Join Feature ✅ COMPLETED
+- Create `includes/csrf.php`
+- Add CSRF token to ALL POST forms (add*\*.php, edit*\*.php)
+- Add verification to all handlers
 
-- [x] 4.1. Create `member/join_request.php` - Member join request page
-- [x] 4.2. Update `member/settings.php` - Add join request UI
+### [ ] 1.4 Fix SQL Injection includes/realtime.php
 
-## Phase 5: Manager Pages - Settings ✅ COMPLETED
+- Convert mysqli_query to prepared statements (lines 15-16, 46-48)
 
-- [x] 5.1. Update `manager/settings.php` - Toggle house join openness
-- [x] 5.2. Update `manager/generate_link.php` - Generate join tokens and transfer tokens
+### [ ] 1.5 Login Rate Limiting
 
-## Phase 6: Navigation Updates
+- Create `login_attempts` table
+- Update `auth/login.php` with IP/username tracking
 
-- [ ] 6.1. Update `member/dashboard.php` - Show current house status and quick links
+### [ ] 1.6 Remove Test Files
 
-## Phase 7: Testing & Verification
+```
+DELETE:
+- member/test_leave.php
+- manager/test_setup.php
+- fix_database.php
+- fix_member_status.php
+- repair_database.php
+```
 
-- [ ] 7.1. Test member can request leave
-- [ ] 7.2. Test manager can approve/reject leave
-- [ ] 7.3. Test member can request join new house
-- [ ] 7.4. Test manager can approve cross-house transfer
-- [ ] 7.5. Test historical data viewing
-- [ ] 7.6. Verify data preservation
+### [ ] 1.7 Security Headers (.htaccess)
 
----
+- Create `.htaccess` with X-Frame-Options, CSP, etc.
 
-## Features Implemented:
+## Priority 2: Performance & Database
 
-### 1. Member Leave System ✅
+### [ ] 2.1 Database Indexes (SQL Migration)
 
-- Member clicks "Leave House" in settings
-- If no today's meals, request is submitted
-- Manager approves/rejects in `approve_requests.php`
-- On approval: member archived, user account disconnected
+```
+ALTER TABLE meals ADD INDEX idx_house_date_meal (house_id, meal_date, meal_count);
+ALTER TABLE expenses ADD INDEX idx_house_date_amount (house_id, expense_date, amount);
+...
+```
 
-### Join System (via 2. Member Token) ✅
+### [ ] 2.2 Fix ENUM house_status
 
-- Manager generates unique join token for member
-- Member uses token to request joining new house
-- Both current and new house managers must approve
-- Previous house data preserved in archive
-- Member transferred to new house
+```
+ALTER TABLE members MODIFY house_status ENUM('active','pending_leave','pending_join','left','house_inactive') DEFAULT 'active';
+```
 
-### 3. View Previous House Data ✅
+### [ ] 2.3 Dashboard Cache
 
-- Member enters old house code in settings
-- System verifies member was part of that house
-- Member can view deposits, meals, expenses, balance
-- Toggle between current and historical views
+- Create `dashboard_cache` table
+- Add `refreshDashboardCache()` to functions.php
+- Update dashboard.php to use cache
 
----
+### [ ] 2.4 Pagination (meals.php, expenses.php, deposits.php)
 
-## File Changes Summary:
+- Add LIMIT/OFFSET + page controls
 
-### New Files Created:
+## Priority 3: New Features
 
-- `member/leave_request.php`
-- `member/join_request.php`
-- `member/view_house.php`
+### [ ] 3.1 Email System
 
-### Files Modified:
+- `includes/email.php` + PHPMailer
+- `email_queue` table
 
-- `includes/functions.php` - Added helper functions
-- `member/settings.php` - Added leave/join UI
-- `member/dashboard.php` - Added status display
-- `manager/settings.php` - Added toggle for house openness
-- `manager/generate_link.php` - Added token generation
-- `manager/members.php` - Added transfer status
-- `includes/header.php` - Added navigation
+### [ ] 3.2 Activity Log
 
-### Database Changes:
+- `activity_log` table + logging functions
 
-- New tables: `member_archive`, `house_transfers_log`, `previous_houses`, `join_tokens`
-- New columns in `houses`: `is_open_for_join`
-- New columns in `members`: `house_status`, `requested_house_id`, `leave_request_date`, `join_request_date`, `is_viewing_history`, `history_house_id`
-- New views: `v_member_house_history`, `v_pending_requests`
-- New triggers: Auto-update request dates
+### [ ] 3.3 Bulk Meal Entry
+
+- Create `manager/bulk_meals.php`
+
+### [ ] 3.4 XLSX Export
+
+- PhpSpreadsheet integration
+
+## Priority 4: Bug Fixes & Quality
+
+### [ ] 4.1-4.3 Bug fixes (category colors, api security, leave_house.php)
+
+### [ ] 5.1-5.3 Refactor + .gitignore + session security
+
+## Testing & Validation
+
+### [ ] Test all forms (CSRF working)
+
+### [ ] Verify SQLi fixed (static analysis)
+
+### [ ] Performance: dashboard <200ms
+
+### [ ] Security headers present
+
+### [ ] No test files remain
+
+**Progress: 0/28 items complete**
+
+_Updated automatically as steps completed_
