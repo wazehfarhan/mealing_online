@@ -25,16 +25,18 @@ function verifyCSRFToken($token = null) {
     if ($token === null) {
         $token = $_POST['csrf_token'] ?? '';
     }
-    
+
     if (empty($token) || empty($_SESSION['csrf_token'])) {
         return false;
     }
-    
+
     $valid = hash_equals($_SESSION['csrf_token'], $token);
-    
-    // Optional: Regenerate token after use (double-submit cookie pattern alternative)
-    // generateCSRFToken();
-    
+
+    // Regenerate token after use for enhanced security
+    if ($valid) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+
     return $valid;
 }
 

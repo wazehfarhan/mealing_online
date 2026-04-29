@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 require_once '../includes/header.php';
 
 $auth = new Auth();
@@ -52,12 +53,19 @@ if (!$meal) {
 $error = '';
 $success = '';
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $meal_date = mysqli_real_escape_string($conn, $_POST['meal_date']);
-    $meal_count = floatval($_POST['meal_count']);
-    $member_id = intval($_POST['member_id']);
-    $user_id = $_SESSION['user_id'];
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
+    } else {
+        $meal_date = $_POST['meal_date'] ?? '';
+        $meal_count = floatval($_POST['meal_count']);
+        $member_id = intval($_POST['member_id']);
+        $user_id = $_SESSION['user_id'];
     
     // Validation
     if (empty($meal_date)) {
@@ -151,6 +159,7 @@ $all_members = mysqli_fetch_all($members_result, MYSQLI_ASSOC);
                 <?php endif; ?>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <div class="mb-3">
                         <label for="member_id" class="form-label">Member *</label>
                         <select class="form-select" id="member_id" name="member_id" required>

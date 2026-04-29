@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 require_once '../includes/header.php';
 
 $auth = new Auth();
@@ -57,13 +58,20 @@ mysqli_stmt_execute($members_stmt);
 $members_result = mysqli_stmt_get_result($members_stmt);
 $all_members = $members_result ? mysqli_fetch_all($members_result, MYSQLI_ASSOC) : [];
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $member_id = intval($_POST['member_id']);
-    $amount = floatval($_POST['amount']);
-    $deposit_date = mysqli_real_escape_string($conn, $_POST['deposit_date']);
-    $description = mysqli_real_escape_string($conn, $_POST['description']);
-    $updated_by = $_SESSION['user_id'];
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
+    } else {
+        $member_id = intval($_POST['member_id']);
+        $amount = floatval($_POST['amount']);
+        $deposit_date = $_POST['deposit_date'] ?? '';
+        $description = $_POST['description'] ?? '';
+        $updated_by = $_SESSION['user_id'];
     
     // Validation
     if (empty($member_id) || $member_id <= 0) {
@@ -162,6 +170,7 @@ $member_month_total = mysqli_fetch_assoc($member_month_result);
                 <?php endif; ?>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="member_id" class="form-label">Member *</label>

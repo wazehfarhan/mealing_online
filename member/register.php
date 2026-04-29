@@ -1,6 +1,7 @@
 <?php
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/csrf.php';
 
 // Check if already logged in
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
@@ -18,6 +19,9 @@ $success = '';
 $token = $_GET['token'] ?? '';
 $tokenData = null;
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 // If token is provided in URL, validate it
 if (!empty($token)) {
     $tokenData = $auth->validateJoinToken($token);
@@ -28,58 +32,63 @@ if (!empty($token)) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Check if it's a token validation form (first step)
-    if (isset($_POST['validate_token'])) {
-        $inputToken = $_POST['join_token'] ?? '';
-        
-        if (empty($inputToken)) {
-            $error = "Please enter the join token";
-        } else {
-            $tokenData = $auth->validateJoinToken($inputToken);
-            if ($tokenData) {
-                $token = $inputToken;
-                $success = "Valid token! You're joining: <strong>" . htmlspecialchars($tokenData['house_name']) . "</strong>";
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
+    } else {
+        // Check if it's a token validation form (first step)
+        if (isset($_POST['validate_token'])) {
+            $inputToken = $_POST['join_token'] ?? '';
+
+            if (empty($inputToken)) {
+                $error = "Please enter the join token";
             } else {
-                $error = "Invalid or expired join token. Please check with your house manager.";
+                $tokenData = $auth->validateJoinToken($inputToken);
+                if ($tokenData) {
+                    $token = $inputToken;
+                    $success = "Valid token! You're joining: <strong>" . htmlspecialchars($tokenData['house_name']) . "</strong>";
+                } else {
+                    $error = "Invalid or expired join token. Please check with your house manager.";
+                }
             }
         }
-    }
-    // Check if it's the registration form (second step)
-    elseif (isset($_POST['register'])) {
-        $username = $_POST['username'] ?? '';
-        $email = $_POST['email'] ?? '';
-        $password = $_POST['password'] ?? '';
-        $confirm_password = $_POST['confirm_password'] ?? '';
-        $phone = $_POST['phone'] ?? '';
-        $token = $_POST['token'] ?? '';
-        
-        // Validation
-        if (empty($username) || empty($email) || empty($password)) {
-            $error = "All required fields are marked with *";
-        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $error = "Invalid email format";
-        } elseif ($password !== $confirm_password) {
-            $error = "Passwords do not match";
-        } elseif (strlen($password) < 6) {
-            $error = "Password must be at least 6 characters";
-        } elseif (!empty($phone) && !preg_match('/^[0-9+\-\s]{10,15}$/', $phone)) {
-            $error = "Invalid phone number format";
-        } elseif (empty($token)) {
-            $error = "Join token is required";
-        } else {
-            // Register user with token
-            $result = $auth->registerWithToken($username, $email, $password, $token, $phone);
-            
-            if ($result['success']) {
-                $success = "Registration successful! Redirecting to dashboard...";
-                // Redirect to member dashboard after 2 seconds
-                echo '<script>
-                    setTimeout(function() {
-                        window.location.href = "dashboard.php";
-                    }, 2000);
-                </script>';
+        // Check if it's the registration form (second step)
+        elseif (isset($_POST['register'])) {
+            $username = $_POST['username'] ?? '';
+            $email = $_POST['email'] ?? '';
+            $password = $_POST['password'] ?? '';
+            $confirm_password = $_POST['confirm_password'] ?? '';
+            $phone = $_POST['phone'] ?? '';
+            $token = $_POST['token'] ?? '';
+
+            // Validation
+            if (empty($username) || empty($email) || empty($password)) {
+                $error = "All required fields are marked with *";
+            } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $error = "Invalid email format";
+            } elseif ($password !== $confirm_password) {
+                $error = "Passwords do not match";
+            } elseif (strlen($password) < 6) {
+                $error = "Password must be at least 6 characters";
+            } elseif (!empty($phone) && !preg_match('/^[0-9+\-\s]{10,15}$/', $phone)) {
+                $error = "Invalid phone number format";
+            } elseif (empty($token)) {
+                $error = "Join token is required";
             } else {
-                $error = "Registration failed: " . $result['error'];
+                // Register user with token
+                $result = $auth->registerWithToken($username, $email, $password, $token, $phone);
+
+                if ($result['success']) {
+                    $success = "Registration successful! Redirecting to dashboard...";
+                    // Redirect to member dashboard after 2 seconds
+                    echo '<script>
+                        setTimeout(function() {
+                            window.location.href = "dashboard.php";
+                        }, 2000);
+                    </script>';
+                } else {
+                    $error = "Registration failed: " . $result['error'];
+                }
             }
         }
     }
@@ -259,6 +268,7 @@ if (!empty($token) && !$tokenData) {
                 <?php if (empty($token)): ?>
                 <!-- Step 1: Token Entry Form -->
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <div class="mb-4">
                         <label for="join_token" class="form-label">Join Token/Link *</label>
                         <div class="input-group">
@@ -308,8 +318,9 @@ if (!empty($token) && !$tokenData) {
                 <?php endif; ?>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
-                    
+
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="username" class="form-label">Username *</label>

@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 $functions = new Functions();
@@ -61,8 +62,11 @@ if (!empty($token)) {
         $member_check = mysqli_fetch_assoc($check_result);
         
         // Check if token is expired
-        if (empty($member_check['token_expiry']) || strtotime($member_check['token_expiry']) < time()) {
-            $error = "This join link has expired. The token was valid until " . date('M d, Y h:i A', strtotime($member_check['token_expiry'])) . ". Please request a new join link from your house manager.";
+        if (empty($member_check['token_expiry']) || strtotime($member_check['token_expiry']) === false || strtotime($member_check['token_expiry']) < time()) {
+            $expiry_date = (!empty($member_check['token_expiry']) && strtotime($member_check['token_expiry']) !== false)
+                ? date('M d, Y h:i A', strtotime($member_check['token_expiry']))
+                : 'unknown date';
+            $error = "This join link has expired. The token was valid until " . $expiry_date . ". Please request a new join link from your house manager.";
             $token = '';
         }
         // Check if member status is active
@@ -99,9 +103,15 @@ if (!empty($token)) {
     }
 }
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['validate_token'])) {
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
+    } elseif (isset($_POST['validate_token'])) {
         $input_token = trim($_POST['join_token'] ?? '');
         
         if (empty($input_token)) {
@@ -132,8 +142,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $token_check = mysqli_fetch_assoc($result);
                 
                 // Check token expiry
-                if (empty($token_check['token_expiry']) || strtotime($token_check['token_expiry']) < time()) {
-                    $error = "This join link has expired on " . date('M d, Y h:i A', strtotime($token_check['token_expiry'])) . ". Please request a new one.";
+                if (empty($token_check['token_expiry']) || strtotime($token_check['token_expiry']) === false || strtotime($token_check['token_expiry']) < time()) {
+                    $expiry_date = (!empty($token_check['token_expiry']) && strtotime($token_check['token_expiry']) !== false)
+                        ? date('M d, Y h:i A', strtotime($token_check['token_expiry']))
+                        : 'unknown date';
+                    $error = "This join link has expired on " . $expiry_date . ". Please request a new one.";
                 }
                 // Check member status
                 elseif ($token_check['status'] != 'active') {
@@ -210,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 // Check token expiry
-                if (empty($member_info['token_expiry']) || strtotime($member_info['token_expiry']) < time()) {
+                if (empty($member_info['token_expiry']) || strtotime($member_info['token_expiry']) === false || strtotime($member_info['token_expiry']) < time()) {
                     throw new Exception("This join link has expired. Please request a new join link from your house manager.");
                 }
                 
@@ -314,7 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_execute($house_stmt);
                 $house_result = mysqli_stmt_get_result($house_stmt);
                 $house_data = mysqli_fetch_assoc($house_result);
-                
+
                 // Get member name for session
                 $member_sql = "SELECT name FROM members WHERE member_id = ?";
                 $member_stmt = mysqli_prepare($conn, $member_sql);
@@ -322,10 +335,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_execute($member_stmt);
                 $member_result = mysqli_stmt_get_result($member_stmt);
                 $member_data = mysqli_fetch_assoc($member_result);
-                
+
                 // Commit transaction
-                mysqli_commit($conn);
-                
+                if (!mysqli_commit($conn)) {
+                    // Rollback on commit failure
+                    mysqli_rollback($conn);
+                    throw new Exception("Failed to complete user registration. Please try again.");
+                }
+
                 // Set session variables
                 $_SESSION['user_id'] = $user_id;
                 $_SESSION['username'] = $username;
@@ -569,6 +586,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php if (empty($token) || !$member_info): ?>
                 <!-- Step 1: Token Entry Form -->
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <div class="mb-4">
                         <label for="join_token" class="form-label">Join Token/Link *</label>
                         <div class="input-group">
@@ -624,6 +642,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
                     
                     <div class="row">

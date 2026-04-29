@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 $functions = new Functions();
@@ -40,12 +41,19 @@ $error = '';
 $success = '';
 $join_url = '';
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = trim($_POST['name']);
-    $phone = trim($_POST['phone']);
-    $email = trim($_POST['email']);
-    $join_date = trim($_POST['join_date']);
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
+    } else {
+        $name = trim($_POST['name']);
+        $phone = trim($_POST['phone']);
+        $email = trim($_POST['email']);
+        $join_date = trim($_POST['join_date']);
     
     // Validation
     if (empty($name)) {
@@ -193,6 +201,7 @@ require_once '../includes/header.php';
                 <?php endif; ?>
                 
                 <form method="POST" action="" id="addMemberForm" class="needs-validation" novalidate>
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="name" class="form-label">Full Name *</label>

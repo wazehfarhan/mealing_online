@@ -58,10 +58,6 @@ if ($filter_year !== '' && $filter_year !== 0) {
     $filter_year = max(2000, min(2100, $filter_year)); // Ensure reasonable year
 }
 
-// Sanitize category if provided
-if ($filter_category) {
-    $filter_category = mysqli_real_escape_string($conn, $filter_category);
-}
 
 // =========================
 // HANDLE DELETION (BEFORE ANY OUTPUT)

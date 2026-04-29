@@ -20,10 +20,18 @@ foreach (explode("\n", $env_file) as $line) {
     $env_array[trim($key)] = trim($value);
 }
 
-define('DB_HOST', $env_array['DB_HOST'] ?? 'localhost');
-define('DB_USER', $env_array['DB_USER'] ?? 'root');
+// Validate required configuration variables
+$required_config = ['DB_HOST', 'DB_USER', 'DB_NAME'];
+foreach ($required_config as $config_var) {
+    if (empty($env_array[$config_var])) {
+        die("Error: Required configuration variable '$config_var' is not set in .env file. Please check your .env file and ensure all required variables are defined.");
+    }
+}
+
+define('DB_HOST', $env_array['DB_HOST']);
+define('DB_USER', $env_array['DB_USER']);
 define('DB_PASS', $env_array['DB_PASS'] ?? '');
-define('DB_NAME', $env_array['DB_NAME'] ?? 'mealing_online');
+define('DB_NAME', $env_array['DB_NAME']);
 define('ENVIRONMENT', $env_array['ENVIRONMENT'] ?? 'development');
 
 // Site configuration
@@ -82,14 +90,30 @@ function checkDatabaseTables() {
     $conn = getConnection();
     $required_tables = ['users', 'members', 'meals', 'expenses', 'deposits'];
     $missing_tables = [];
-    
+
     foreach ($required_tables as $table) {
-        $result = mysqli_query($conn, "SHOW TABLES LIKE '$table'");
-        if (!$result || mysqli_num_rows($result) == 0) {
-            $missing_tables[] = $table;
+        // Use information_schema with prepared statement instead of SHOW TABLES
+        $sql = "SELECT 1 FROM information_schema.tables
+                WHERE table_schema = ? AND table_name = ? LIMIT 1";
+        $stmt = mysqli_prepare($conn, $sql);
+        if ($stmt) {
+            $db_name = defined('DB_NAME') ? DB_NAME : 'meal_management';
+            mysqli_stmt_bind_param($stmt, "ss", $db_name, $table);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            if (!$result || mysqli_num_rows($result) == 0) {
+                $missing_tables[] = $table;
+            }
+            mysqli_stmt_close($stmt);
+        } else {
+            // Fallback to SHOW TABLES if prepared statement fails
+            $result = mysqli_query($conn, "SHOW TABLES LIKE '" . mysqli_real_escape_string($conn, $table) . "'");
+            if (!$result || mysqli_num_rows($result) == 0) {
+                $missing_tables[] = $table;
+            }
         }
     }
-    
+
     return $missing_tables;
 }
 

@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 $functions = new Functions();
@@ -58,11 +59,15 @@ $join_url = '';
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = trim($_POST['name']);
-    $phone = trim($_POST['phone']);
-    $email = trim($_POST['email']);
-    $join_date = trim($_POST['join_date']);
-    $status = trim($_POST['status']);
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security validation failed. Please try again.";
+    } else {
+        $name = trim($_POST['name']);
+        $phone = trim($_POST['phone']);
+        $email = trim($_POST['email']);
+        $join_date = trim($_POST['join_date']);
+        $status = trim($_POST['status']);
     
     // Check if regenerate token requested
     if (isset($_POST['regenerate_token'])) {

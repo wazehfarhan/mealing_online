@@ -2,6 +2,7 @@
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/transfer_functions.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 $auth->requireRole('member');
@@ -63,8 +64,14 @@ $stats_result = mysqli_stmt_get_result($stats_stmt);
 $stats = mysqli_fetch_assoc($stats_result);
 mysqli_stmt_close($stats_stmt);
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['action']) && $_POST['action'] == 'submit_leave') {
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $errors[] = "Security token invalid. Please try again.";
+    } elseif (isset($_POST['action']) && $_POST['action'] == 'submit_leave') {
         // Allow inactive members to submit leave request too
         if ($member['house_status'] == 'left') {
             $errors[] = "You have already left this house.";
@@ -381,6 +388,7 @@ require_once '../includes/header.php';
                 </div>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <input type="hidden" name="action" value="cancel_leave">
                     <button type="submit" name="cancel_request" class="btn btn-secondary" 
                             onclick="return confirm('Are you sure you want to cancel your leave request?');">
@@ -419,6 +427,7 @@ require_once '../includes/header.php';
                 <hr>
                 
                 <form method="POST" action="" id="leaveForm">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <input type="hidden" name="action" value="submit_leave">
                     
                     <div class="form-check mb-3">

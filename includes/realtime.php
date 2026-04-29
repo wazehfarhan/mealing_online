@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/csrf.php';
 
 header('Content-Type: application/json');
 
@@ -15,8 +16,14 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit;
 }
 
-// Validate CSRF token if needed for state-changing operations
+// Validate CSRF token for state-changing operations
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Invalid CSRF token']);
+        exit;
+    }
+    
     if (!isset($_SESSION['house_id'])) {
         http_response_code(403);
         echo json_encode(['error' => 'No house assigned']);

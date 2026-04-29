@@ -40,11 +40,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (strlen($house_name) > 100) {
             $error = "House name must be less than 100 characters";
         } else {
-            // Generate unique house code
+            // Generate unique house code (cryptographically secure)
             $house_code = '';
             $attempts = 0;
             do {
-                $house_code = strtoupper(substr(md5(uniqid() . rand()), 0, 6));
+                // Use secure random generation
+                $house_code = strtoupper(bin2hex(random_bytes(3)));  // 6-character hex code
                 $check_sql = "SELECT house_id FROM houses WHERE house_code = ?";
                 $check_stmt = mysqli_prepare($conn, $check_sql);
                 mysqli_stmt_bind_param($check_stmt, "s", $house_code);

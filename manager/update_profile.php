@@ -9,6 +9,7 @@ if (empty($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 
 require_once '../config/database.php';
+require_once '../includes/csrf.php';
 $conn = getConnection();
 
 if (!$conn) {
@@ -38,12 +39,18 @@ if (!empty($user['member_id'])) {
     $member = mysqli_fetch_assoc($result2);
 }
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 $error = '';
 $success = '';
 
 // Process form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['form_type'])) {
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
+    } elseif (isset($_POST['form_type'])) {
         $form_type = $_POST['form_type'];
         
         if ($form_type === 'change_username') {
@@ -197,6 +204,7 @@ require_once '../includes/header.php';
                 </div>
                 <div class="card-body">
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                         <input type="hidden" name="form_type" value="change_username">
                         <div class="mb-3">
                             <label class="form-label">Current Username</label>
@@ -225,6 +233,7 @@ require_once '../includes/header.php';
                 </div>
                 <div class="card-body">
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                         <input type="hidden" name="form_type" value="update_profile">
                         <div class="mb-3">
                             <label class="form-label">Email Address</label>
@@ -269,6 +278,7 @@ require_once '../includes/header.php';
                 </div>
                 <div class="card-body">
                     <form method="POST" id="passwordForm">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                         <input type="hidden" name="form_type" value="change_password">
                         <div class="row">
                             <div class="col-md-4 mb-3">

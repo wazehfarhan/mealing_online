@@ -2,6 +2,7 @@
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/transfer_functions.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 $auth->requireRole('member');
@@ -15,6 +16,7 @@ $current_house_code = $_SESSION['house_code'] ?? '';
 
 $errors = [];
 $success = '';
+$csrf_token = generateCSRFToken();
 
 // Function to fetch fresh member data
 function getMemberData($conn, $member_id) {
@@ -40,70 +42,25 @@ if (!$member) {
 
 // Handle join token submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'use_token') {
-    $token = trim($_POST['join_token'] ?? '');
-    
-    if (empty($token)) {
-        $errors[] = "Please enter a join token.";
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $errors[] = "Security token invalid. Please try again.";
     } else {
-        // Refresh member data to check current status
-        $member = getMemberData($conn, $member_id);
+        $token = trim($_POST['join_token'] ?? '');
         
-        // Check if member can join using the helper function
-        $can_join = canMemberJoinNewHouse($member_id);
-        
-        if (!$can_join['success']) {
-            $errors[] = $can_join['error'];
+        if (empty($token)) {
+            $errors[] = "Please enter a join token.";
         } else {
-            // Submit join request using token
-            $result = requestJoinHouseByToken($member_id, $token);
+            // Refresh member data to check current status
+            $member = getMemberData($conn, $member_id);
             
-            if ($result['success']) {
-                $_SESSION['success'] = $result['message'];
-                header("Location: join_request.php");
-                exit();
-            } else {
-                $errors[] = $result['error'];
-            }
-        }
-    }
-}
-
-// Handle house code search and request
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'search_house') {
-    $search_code = trim($_POST['house_code'] ?? '');
-    
-    if (empty($search_code)) {
-        $errors[] = "Please enter a house code.";
-    } else {
-        // Refresh member data to check current status
-        $member = getMemberData($conn, $member_id);
-        
-        // Check if member can join using the helper function
-        $can_join = canMemberJoinNewHouse($member_id);
-        
-        if (!$can_join['success']) {
-            $errors[] = $can_join['error'];
-        } else {
-            // Search for house
-            $house_sql = "SELECT house_id, house_name, house_code, is_open_for_join, created_at 
-                          FROM houses 
-                          WHERE house_code = ? AND is_active = 1";
-            $house_stmt = mysqli_prepare($conn, $house_sql);
-            mysqli_stmt_bind_param($house_stmt, "s", $search_code);
-            mysqli_stmt_execute($house_stmt);
-            $house_result = mysqli_stmt_get_result($house_stmt);
-            $found_house = mysqli_fetch_assoc($house_result);
-            mysqli_stmt_close($house_stmt);
+            // Check if member can join using the helper function
+            $can_join = canMemberJoinNewHouse($member_id);
             
-            if (!$found_house) {
-                $errors[] = "House with code '$search_code' not found or is inactive.";
-            } elseif ($found_house['house_id'] == $current_house_id && $member['house_status'] == 'active') {
-                $errors[] = "You are already a member of this house.";
-            } elseif ($found_house['is_open_for_join'] == 0) {
-                $errors[] = "This house is not open for new members. Please use a join token instead.";
+            if (!$can_join['success']) {
+                $errors[] = $can_join['error'];
             } else {
-                // Submit join request
-                $result = requestJoinHouseByCode($member_id, $search_code);
+                // Submit join request using token
+                $result = requestJoinHouseByToken($member_id, $token);
                 
                 if ($result['success']) {
                     $_SESSION['success'] = $result['message'];
@@ -117,8 +74,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
+// Handle house code search and request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'search_house') {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $errors[] = "Security token invalid. Please try again.";
+    } else {
+        $search_code = trim($_POST['house_code'] ?? '');
+        
+        if (empty($search_code)) {
+            $errors[] = "Please enter a house code.";
+        } else {
+            // Refresh member data to check current status
+            $member = getMemberData($conn, $member_id);
+            
+            // Check if member can join using the helper function
+            $can_join = canMemberJoinNewHouse($member_id);
+            
+            if (!$can_join['success']) {
+                $errors[] = $can_join['error'];
+            } else {
+                // Search for house
+                $house_sql = "SELECT house_id, house_name, house_code, is_open_for_join, created_at 
+                              FROM houses 
+                              WHERE house_code = ? AND is_active = 1";
+                $house_stmt = mysqli_prepare($conn, $house_sql);
+                mysqli_stmt_bind_param($house_stmt, "s", $search_code);
+                mysqli_stmt_execute($house_stmt);
+                $house_result = mysqli_stmt_get_result($house_stmt);
+                $found_house = mysqli_fetch_assoc($house_result);
+                mysqli_stmt_close($house_stmt);
+                
+                if (!$found_house) {
+                    $errors[] = "House with code '$search_code' not found or is inactive.";
+                } elseif ($found_house['house_id'] == $current_house_id && $member['house_status'] == 'active') {
+                    $errors[] = "You are already a member of this house.";
+                } elseif ($found_house['is_open_for_join'] == 0) {
+                    $errors[] = "This house is not open for new members. Please use a join token instead.";
+                } else {
+                    // Submit join request
+                    $result = requestJoinHouseByCode($member_id, $search_code);
+                    
+                    if ($result['success']) {
+                        $_SESSION['success'] = $result['message'];
+                        header("Location: join_request.php");
+                        exit();
+                    } else {
+                        $errors[] = $result['error'];
+                    }
+                }
+            }
+        }
+    }
+}
+
 // Handle cancel join request
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'cancel_join_request') {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = "Security token invalid. Please try again.";
+        header("Location: join_request.php");
+        exit();
+    }
     if (cancelJoinRequest($member_id)) {
         $_SESSION['success'] = "Your join request has been cancelled.";
     } else {
@@ -131,6 +146,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // Handle cancel leave request
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'cancel_leave_request') {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = "Security token invalid. Please try again.";
+        header("Location: join_request.php");
+        exit();
+    }
     if (cancelLeaveRequest($member_id)) {
         $_SESSION['success'] = "Your leave request has been cancelled.";
     } else {
@@ -333,6 +353,7 @@ require_once '../includes/header.php';
                 </div>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <input type="hidden" name="action" value="cancel_join_request">
                     <button type="submit" class="btn btn-warning" 
                             onclick="return confirm('Are you sure you want to cancel your join request?');">
@@ -355,6 +376,7 @@ require_once '../includes/header.php';
                 </div>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <input type="hidden" name="action" value="cancel_leave_request">
                     <button type="submit" class="btn btn-secondary" 
                             onclick="return confirm('Are you sure you want to cancel your leave request?');">
@@ -379,6 +401,7 @@ require_once '../includes/header.php';
                         <p class="text-muted">Use a join token provided by a house manager.</p>
                         
                         <form method="POST" action="">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                             <input type="hidden" name="action" value="use_token">
                             <div class="mb-3">
                                 <label for="join_token" class="form-label">Join Token</label>
@@ -407,6 +430,7 @@ require_once '../includes/header.php';
                         <p class="text-muted">Search for a house by its code (if open for joining).</p>
                         
                         <form method="POST" action="">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                             <input type="hidden" name="action" value="search_house">
                             <div class="mb-3">
                                 <label for="house_code" class="form-label">House Code</label>
@@ -457,6 +481,7 @@ require_once '../includes/header.php';
                                 <td><?php echo date('M d, Y', strtotime($house['created_at'])); ?></td>
                                 <td>
                                     <form method="POST" action="" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                         <input type="hidden" name="action" value="search_house">
                                         <input type="hidden" name="house_code" value="<?php echo htmlspecialchars($house['house_code']); ?>">
                                         <button type="submit" class="btn btn-sm btn-success">

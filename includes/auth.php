@@ -232,10 +232,27 @@ class Auth {
         if (!$user_id) {
             return ['success' => false, 'error' => 'User ID is required'];
         }
-        
-        // Generate unique house code
-        $house_code = strtoupper(substr(md5(uniqid()), 0, 6));
-        
+
+        // Generate unique house code (cryptographically secure)
+        $house_code = strtoupper(bin2hex(random_bytes(3)));  // 6-character hex code
+
+        // Ensure unique
+        $sql_check = "SELECT house_id FROM houses WHERE house_code = ?";
+        $stmt_check = mysqli_prepare($this->conn, $sql_check);
+        mysqli_stmt_bind_param($stmt_check, "s", $house_code);
+        mysqli_stmt_execute($stmt_check);
+        mysqli_stmt_store_result($stmt_check);
+
+        $attempts = 0;
+        while (mysqli_stmt_num_rows($stmt_check) > 0 && $attempts < 10) {
+            $house_code = strtoupper(bin2hex(random_bytes(3)));
+            mysqli_stmt_free_result($stmt_check);
+            mysqli_stmt_execute($stmt_check);
+            mysqli_stmt_store_result($stmt_check);
+            $attempts++;
+        }
+        mysqli_stmt_close($stmt_check);
+
         // Start transaction
         mysqli_begin_transaction($this->conn);
         

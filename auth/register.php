@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/csrf.php';
 
 // Check if already logged in
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
@@ -22,41 +23,49 @@ $error = '';
 $success = '';
 $security_questions = $auth->getSecurityQuestions();
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = $_POST['username'] ?? '';
-    $email = $_POST['email'] ?? '';
-    $password = $_POST['password'] ?? '';
-    $confirm_password = $_POST['confirm_password'] ?? '';
-    $role = 'manager'; // Fixed role as manager
-    $security_question = $_POST['security_question'] ?? '';
-    $security_answer = $_POST['security_answer'] ?? '';
-    
-    // Validation
-    if (empty($username) || empty($email) || empty($password)) {
-        $error = "All required fields are missing";
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = "Invalid email format";
-    } elseif ($password !== $confirm_password) {
-        $error = "Passwords do not match";
-    } elseif (strlen($password) < 6) {
-        $error = "Password must be at least 6 characters";
-    } elseif (empty($security_question) || empty($security_answer)) {
-        $error = "Security question and answer are required for account recovery";
-    } elseif (strlen($security_answer) < 3) {
-        $error = "Security answer must be at least 3 characters";
-    } elseif (!in_array($security_question, $security_questions)) {
-        $error = "Please select a valid security question";
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
     } else {
-        // Register user with security question
-        if ($auth->register($username, $email, $password, $role, $security_question, $security_answer)) {
-            // Set success message in session
-            $_SESSION['registration_success'] = "Registration successful! You can now login.";
-            
-            // Redirect to login page
-            header("Location: login.php");
-            exit();
+        $username = $_POST['username'] ?? '';
+        $email = $_POST['email'] ?? '';
+        $password = $_POST['password'] ?? '';
+        $confirm_password = $_POST['confirm_password'] ?? '';
+        $role = 'manager'; // Fixed role as manager
+        $security_question = $_POST['security_question'] ?? '';
+        $security_answer = $_POST['security_answer'] ?? '';
+        
+        // Validation
+        if (empty($username) || empty($email) || empty($password)) {
+            $error = "All required fields are missing";
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $error = "Invalid email format";
+        } elseif ($password !== $confirm_password) {
+            $error = "Passwords do not match";
+        } elseif (strlen($password) < 6) {
+            $error = "Password must be at least 6 characters";
+        } elseif (empty($security_question) || empty($security_answer)) {
+            $error = "Security question and answer are required for account recovery";
+        } elseif (strlen($security_answer) < 3) {
+            $error = "Security answer must be at least 3 characters";
+        } elseif (!in_array($security_question, $security_questions)) {
+            $error = "Please select a valid security question";
         } else {
-            $error = "Registration failed. Username or email already exists.";
+            // Register user with security question
+            if ($auth->register($username, $email, $password, $role, $security_question, $security_answer)) {
+                // Set success message in session
+                $_SESSION['registration_success'] = "Registration successful! You can now login.";
+                
+                // Redirect to login page
+                header("Location: login.php");
+                exit();
+            } else {
+                $error = "Registration failed. Username or email already exists.";
+            }
         }
     }
 }
@@ -165,6 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <input type="hidden" name="role" value="manager">
                     
                     <div class="mb-3">

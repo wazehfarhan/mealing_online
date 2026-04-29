@@ -32,9 +32,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Security token invalid. Please try again.";
     } else {
     $amount = floatval($_POST['amount']);
-    $category = mysqli_real_escape_string($conn, $_POST['category']);
-    $description = mysqli_real_escape_string($conn, $_POST['description']);
-    $expense_date = mysqli_real_escape_string($conn, $_POST['expense_date']);
+    $category = $_POST['category'] ?? '';
+    $description = $_POST['description'] ?? '';
+    $expense_date = $_POST['expense_date'] ?? '';
     $created_by = $_SESSION['user_id'];
     
     // Validation

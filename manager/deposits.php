@@ -84,71 +84,95 @@ $filter_month = isset($_GET['month']) ? intval($_GET['month']) : $current_month;
 $filter_year = isset($_GET['year']) ? intval($_GET['year']) : $current_year;
 $filter_member = isset($_GET['member']) ? intval($_GET['member']) : 0;
 
-// Function to build WHERE clause for simple queries
-function buildSimpleWhereClause($month, $year, $member, $house_id) {
-    $where_parts = ["house_id = $house_id"];
-    
+// Function to build safe WHERE clause with parameters
+function buildWhereClause($month, $year, $member, $house_id, &$params, &$types) {
+    $where_parts = ["house_id = ?"];
+    $types .= "i";
+    $params[] = $house_id;
+
     // Date filtering
     if ($month > 0 && $year > 0) {
-        // Both month and year are selected
         $month_start = "$year-" . str_pad($month, 2, '0', STR_PAD_LEFT) . "-01";
         $month_end = date('Y-m-t', strtotime($month_start));
-        $where_parts[] = "deposit_date BETWEEN '$month_start' AND '$month_end'";
+        $where_parts[] = "deposit_date BETWEEN ? AND ?";
+        $types .= "ss";
+        $params[] = $month_start;
+        $params[] = $month_end;
     } else if ($year > 0 && $month == 0) {
-        // Only year is selected (show all months of that year)
         $year_start = "$year-01-01";
         $year_end = "$year-12-31";
-        $where_parts[] = "deposit_date BETWEEN '$year_start' AND '$year_end'";
+        $where_parts[] = "deposit_date BETWEEN ? AND ?";
+        $types .= "ss";
+        $params[] = $year_start;
+        $params[] = $year_end;
     } else if ($month > 0 && $year == 0) {
-        // Only month is selected - use current year
         $current_year = date('Y');
         $month_start = "$current_year-" . str_pad($month, 2, '0', STR_PAD_LEFT) . "-01";
         $month_end = date('Y-m-t', strtotime($month_start));
-        $where_parts[] = "deposit_date BETWEEN '$month_start' AND '$month_end'";
+        $where_parts[] = "deposit_date BETWEEN ? AND ?";
+        $types .= "ss";
+        $params[] = $month_start;
+        $params[] = $month_end;
     }
-    
+
     // Member filtering
     if ($member > 0) {
-        $where_parts[] = "member_id = $member";
+        $where_parts[] = "member_id = ?";
+        $types .= "i";
+        $params[] = $member;
     }
-    
+
     return implode(" AND ", $where_parts);
 }
 
-// Function to build WHERE clause for queries with table alias 'd'
-function buildAliasedWhereClause($month, $year, $member, $house_id) {
-    $where_parts = ["d.house_id = $house_id"];
-    
+// Function to build aliased WHERE clause with parameters
+function buildAliasedWhereClause($month, $year, $member, $house_id, &$params, &$types) {
+    $where_parts = ["d.house_id = ?"];
+    $types .= "i";
+    $params[] = $house_id;
+
     // Date filtering
     if ($month > 0 && $year > 0) {
-        // Both month and year are selected
         $month_start = "$year-" . str_pad($month, 2, '0', STR_PAD_LEFT) . "-01";
         $month_end = date('Y-m-t', strtotime($month_start));
-        $where_parts[] = "d.deposit_date BETWEEN '$month_start' AND '$month_end'";
+        $where_parts[] = "d.deposit_date BETWEEN ? AND ?";
+        $types .= "ss";
+        $params[] = $month_start;
+        $params[] = $month_end;
     } else if ($year > 0 && $month == 0) {
-        // Only year is selected (show all months of that year)
         $year_start = "$year-01-01";
         $year_end = "$year-12-31";
-        $where_parts[] = "d.deposit_date BETWEEN '$year_start' AND '$year_end'";
+        $where_parts[] = "d.deposit_date BETWEEN ? AND ?";
+        $types .= "ss";
+        $params[] = $year_start;
+        $params[] = $year_end;
     } else if ($month > 0 && $year == 0) {
-        // Only month is selected - use current year
         $current_year = date('Y');
         $month_start = "$current_year-" . str_pad($month, 2, '0', STR_PAD_LEFT) . "-01";
         $month_end = date('Y-m-t', strtotime($month_start));
-        $where_parts[] = "d.deposit_date BETWEEN '$month_start' AND '$month_end'";
+        $where_parts[] = "d.deposit_date BETWEEN ? AND ?";
+        $types .= "ss";
+        $params[] = $month_start;
+        $params[] = $month_end;
     }
-    
+
     // Member filtering
     if ($member > 0) {
-        $where_parts[] = "d.member_id = $member";
+        $where_parts[] = "d.member_id = ?";
+        $types .= "i";
+        $params[] = $member;
     }
-    
+
     return implode(" AND ", $where_parts);
 }
 
-// Build WHERE clauses
-$simple_where = buildSimpleWhereClause($filter_month, $filter_year, $filter_member, $house_id);
-$aliased_where = buildAliasedWhereClause($filter_month, $filter_year, $filter_member, $house_id);
+// Build WHERE clauses with parameters
+$params = [];
+$types = "";
+$simple_where = buildWhereClause($filter_month, $filter_year, $filter_member, $house_id, $params, $types);
+$aliased_params = [];
+$aliased_types = "";
+$aliased_where = buildAliasedWhereClause($filter_month, $filter_year, $filter_member, $house_id, $aliased_params, $aliased_types);
 
 // Get active members for filter dropdown (only from this house)
 $members_query = "SELECT * FROM members WHERE status = 'active' AND house_id = ? ORDER BY name";
@@ -163,9 +187,14 @@ if ($members_result) {
     }
 }
 
-// Count total deposits - using simple WHERE clause
+// Count total deposits using prepared statement
 $count_query = "SELECT COUNT(*) as total FROM deposits WHERE $simple_where";
-$count_result = mysqli_query($conn, $count_query);
+$count_stmt = mysqli_prepare($conn, $count_query);
+if (!empty($params)) {
+    mysqli_stmt_bind_param($count_stmt, $types, ...$params);
+}
+mysqli_stmt_execute($count_stmt);
+$count_result = mysqli_stmt_get_result($count_stmt);
 $total_row = mysqli_fetch_assoc($count_result);
 $total_records = $total_row ? $total_row['total'] : 0;
 
@@ -175,21 +204,26 @@ $per_page = 20;
 $offset = ($page - 1) * $per_page;
 $total_pages = ceil($total_records / $per_page);
 
-// Get deposits - using aliased WHERE clause
+// Get deposits using prepared statement
 $deposits = [];
 if ($total_records > 0) {
-    $query = "SELECT d.*, m.name as member_name, 
-                     u1.username as created_by_name, 
+    $query = "SELECT d.*, m.name as member_name,
+                     u1.username as created_by_name,
                      u2.username as updated_by_name
-              FROM deposits d 
+              FROM deposits d
               JOIN members m ON d.member_id = m.member_id AND d.house_id = m.house_id
-              LEFT JOIN users u1 ON d.created_by = u1.user_id 
+              LEFT JOIN users u1 ON d.created_by = u1.user_id
               LEFT JOIN users u2 ON d.updated_by = u2.user_id
-              WHERE $aliased_where 
+              WHERE $aliased_where
               ORDER BY d.deposit_date DESC, d.deposit_id DESC
-              LIMIT $per_page OFFSET $offset";
-    
-    $result = mysqli_query($conn, $query);
+              LIMIT ? OFFSET ?";
+
+    $stmt = mysqli_prepare($conn, $query);
+    $new_params = array_merge($aliased_params, [$per_page, $offset]);
+    $new_types = $aliased_types . "ii";
+    mysqli_stmt_bind_param($stmt, $new_types, ...$new_params);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
     if ($result) {
         while ($row = mysqli_fetch_assoc($result)) {
             $deposits[] = $row;

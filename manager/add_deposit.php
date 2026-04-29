@@ -36,8 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
     $member_id = intval($_POST['member_id']);
     $amount = floatval($_POST['amount']);
-    $deposit_date = mysqli_real_escape_string($conn, $_POST['deposit_date']);
-    $description = mysqli_real_escape_string($conn, $_POST['description']);
+    $deposit_date = $_POST['deposit_date'] ?? '';
+    $description = $_POST['description'] ?? '';
     $created_by = $_SESSION['user_id'];
     
     // Validation

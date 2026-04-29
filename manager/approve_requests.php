@@ -2,6 +2,7 @@
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/transfer_functions.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 $auth->requireRole('manager');
@@ -17,9 +18,13 @@ $success = '';
 
 // Handle approval actions FIRST before fetching data
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $member_id = $_POST['member_id'] ?? 0;
-    $action = $_POST['action'] ?? '';
-    $reject_reason = $_POST['reject_reason'] ?? '';
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $errors[] = "Security validation failed. Please try again.";
+    } else {
+        $member_id = $_POST['member_id'] ?? 0;
+        $action = $_POST['action'] ?? '';
+        $reject_reason = $_POST['reject_reason'] ?? '';
     
     if (empty($member_id) || empty($action)) {
         $errors[] = "Invalid request parameters.";

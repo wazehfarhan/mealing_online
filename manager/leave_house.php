@@ -3,6 +3,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) {
@@ -12,6 +13,13 @@ if (!$auth->isLoggedIn()) {
 
 $user_id = $_SESSION['user_id'];
 $house_id = $_POST['house_id'] ?? $_GET['house_id'] ?? null;
+
+// Verify CSRF token for POST requests
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+    $_SESSION['error'] = "Security token invalid. Please try again.";
+    header("Location: settings.php");
+    exit();
+}
 
 if (!$house_id) {
     $_SESSION['error'] = "No house specified";

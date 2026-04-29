@@ -29,27 +29,32 @@ class Functions {
         return preg_match('/^[0-9]{10,15}$/', $phone);
     }
     
-    // Generate random string
+    // Generate random string (cryptographically secure)
     public function generateRandomString($length = 10) {
+        // Use random_int() instead of rand() for cryptographic security
         $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
         $randomString = '';
+        $max = strlen($characters) - 1;
+
         for ($i = 0; $i < $length; $i++) {
-            $randomString .= $characters[rand(0, strlen($characters) - 1)];
+            $randomString .= $characters[random_int(0, $max)];
         }
         return $randomString;
     }
-    
-    // Generate unique house code
+
+    // Generate unique house code (uses secure random generation)
     public function generateHouseCode() {
         do {
-            $code = 'HM' . strtoupper($this->generateRandomString(6));
+            // Use secure random generation with bin2hex(random_bytes())
+            $code = strtoupper(bin2hex(random_bytes(3)));  // 6-character hex code
+
             $sql = "SELECT house_id FROM houses WHERE house_code = ?";
             $stmt = mysqli_prepare($this->conn, $sql);
             mysqli_stmt_bind_param($stmt, "s", $code);
             mysqli_stmt_execute($stmt);
             mysqli_stmt_store_result($stmt);
         } while (mysqli_stmt_num_rows($stmt) > 0);
-        
+
         return $code;
     }
     

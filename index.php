@@ -2,6 +2,10 @@
 session_start();
 require_once 'config/database.php';
 require_once 'includes/functions.php';
+require_once 'includes/security_headers.php';
+
+// Set security headers for this page
+setSecurityHeaders();
 
 $functions = new Functions();
 $page_title = "MealSa"; // Changed from "mealsa"

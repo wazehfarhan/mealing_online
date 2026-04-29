@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 $error = '';
@@ -15,8 +16,15 @@ $email = '';
 $question = '';
 $show_success = false;
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['email']) && !isset($_POST['answer']) && !isset($_POST['new_password'])) {
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
+        $step = 1;
+    } elseif (isset($_POST['email']) && !isset($_POST['answer']) && !isset($_POST['new_password'])) {
         // Step 1: Request reset
         $email = trim($_POST['email']);
         
@@ -637,6 +645,7 @@ if (isset($_SESSION['reset_email']) && $step == 2) {
                 <?php if ($step == 1): ?>
                 <!-- Step 1: Email Form -->
                 <form method="POST" action="" id="emailForm">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <div class="mb-3">
                         <label for="email" class="form-label">
                             <i class="fas fa-envelope"></i>Enter your email address
@@ -669,6 +678,7 @@ if (isset($_SESSION['reset_email']) && $step == 2) {
                 <?php elseif ($step == 2): ?>
                 <!-- Step 2: Security Question -->
                 <form method="POST" action="" id="answerForm">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <input type="hidden" name="email" value="<?php echo htmlspecialchars($email); ?>">
                     
                     <div class="security-question-box">
@@ -710,6 +720,7 @@ if (isset($_SESSION['reset_email']) && $step == 2) {
                 <?php elseif ($step == 3): ?>
                 <!-- Step 3: Reset Password -->
                 <form method="POST" action="" id="passwordForm">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <div class="mb-3">
                         <label for="new_password" class="form-label">
                             <i class="fas fa-lock"></i>New Password

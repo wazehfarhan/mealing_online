@@ -1,5 +1,6 @@
 <?php
 require_once 'config/database.php';
+require_once 'includes/security.php';
 
 // First connect without selecting database
 $conn = mysqli_connect(DB_HOST, DB_USER, DB_PASS);
@@ -227,11 +228,12 @@ $tables_exist = mysqli_num_rows($check_tables) > 0;
             // Check if super admin user exists
             $check_superadmin = mysqli_query($conn, "SELECT user_id FROM users WHERE username = 'superadmin'");
             if (mysqli_num_rows($check_superadmin) == 0) {
-                // Create superadmin user with password: password
-                $password = password_hash('password', PASSWORD_DEFAULT);
-                $superadmin_sql = "INSERT INTO users (username, email, password, role, is_active) 
+                // Create superadmin user with random secure password
+                $superadmin_password = generateSecureRandomString(12);
+                $password = password_hash($superadmin_password, PASSWORD_DEFAULT);
+                $superadmin_sql = "INSERT INTO users (username, email, password, role, is_active)
                                    VALUES ('superadmin', 'superadmin@mealsystem.com', '$password', 'super_admin', 1)";
-                
+
                 if (mysqli_query($conn, $superadmin_sql)) {
                     echo "<div class='success'>✓ Created super admin user</div>";
                     $success_count++;
@@ -243,15 +245,16 @@ $tables_exist = mysqli_num_rows($check_tables) > 0;
                 echo "<div class='info'>✓ Super admin user already exists</div>";
                 $skipped_count++;
             }
-            
+
             // Check if admin user exists
             $check_admin = mysqli_query($conn, "SELECT user_id FROM users WHERE username = 'admin'");
             if (mysqli_num_rows($check_admin) == 0) {
-                // Create admin user with password: admin123
-                $password = password_hash('admin123', PASSWORD_DEFAULT);
-                $admin_sql = "INSERT INTO users (username, email, password, role, is_active) 
+                // Create admin user with random secure password
+                $admin_password = generateSecureRandomString(12);
+                $password = password_hash($admin_password, PASSWORD_DEFAULT);
+                $admin_sql = "INSERT INTO users (username, email, password, role, is_active)
                               VALUES ('admin', 'admin@mealsystem.com', '$password', 'manager', 1)";
-                
+
                 if (mysqli_query($conn, $admin_sql)) {
                     echo "<div class='success'>✓ Created admin user</div>";
                     $success_count++;
@@ -295,13 +298,13 @@ $tables_exist = mysqli_num_rows($check_tables) > 0;
             <?php if ($error_count == 0): ?>
             <div class="alert alert-success mt-3">
                 <h4><i class="fas fa-check-circle me-2"></i>Setup Completed Successfully!</h4>
-                <p class="mb-2"><strong>Default Login Credentials:</strong></p>
-                <p class="mb-1"><strong>Super Admin:</strong> username: <strong>superadmin</strong>, password: <strong>password</strong></p>
-                <p class="mb-3"><strong>Admin:</strong> username: <strong>admin</strong>, password: <strong>admin123</strong></p>
-                
-                <div class="alert alert-warning">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    <strong>Important:</strong> Change the default passwords after first login!
+                <p class="mb-2"><strong>Default Login Usernames:</strong></p>
+                <p class="mb-1"><strong>Super Admin:</strong> username: <strong>superadmin</strong></p>
+                <p class="mb-3"><strong>Admin:</strong> username: <strong>admin</strong></p>
+
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Security Note:</strong> Random secure passwords have been generated for all default accounts. Use the "Forgot Password" feature on the login page to reset the passwords and gain access.
                 </div>
             </div>
             <?php else: ?>

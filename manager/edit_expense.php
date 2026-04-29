@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 require_once '../includes/header.php';
 
 $auth = new Auth();
@@ -49,13 +50,20 @@ $success = '';
 // Expense categories - SAME AS EXPENSES.PHP
 $categories = ['Rice', 'Fish', 'Meat', 'Vegetables', 'Spices', 'Oil', 'Food', 'Others'];
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $amount = floatval($_POST['amount']);
-    $category = mysqli_real_escape_string($conn, $_POST['category']);
-    $description = mysqli_real_escape_string($conn, $_POST['description']);
-    $expense_date = mysqli_real_escape_string($conn, $_POST['expense_date']);
-    $updated_by = $_SESSION['user_id'];
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
+    } else {
+        $amount = floatval($_POST['amount']);
+        $category = $_POST['category'] ?? '';
+        $description = $_POST['description'] ?? '';
+        $expense_date = $_POST['expense_date'] ?? '';
+        $updated_by = $_SESSION['user_id'];
     
     // Validation
     if (empty($expense_date)) {
@@ -151,6 +159,7 @@ function getBadgeTextColor($badge_color) {
                 <?php endif; ?>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="amount" class="form-label">Amount (৳) *</label>

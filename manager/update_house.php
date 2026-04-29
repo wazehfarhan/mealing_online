@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) {
@@ -26,6 +27,12 @@ if (!$user_data || !$user_data['house_id']) {
 }
 
 $house_id = $user_data['house_id'];
+
+// Verify CSRF token
+if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+    echo "Error: Security token invalid";
+    exit();
+}
 
 // Get POST data
 $house_name = isset($_POST['house_name']) ? trim($_POST['house_name']) : '';

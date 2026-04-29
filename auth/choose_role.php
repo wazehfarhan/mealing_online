@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/csrf.php';
 
 // Check if already logged in
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
@@ -12,14 +13,23 @@ if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
     exit();
 }
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['role']) && $_POST['role'] === 'manager') {
-        header("Location: register.php");
-        exit();
-    } elseif (isset($_POST['action']) && $_POST['action'] === 'join') {
-        header("Location: ../member/join.php");
-        exit();
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        // CSRF token invalid, prevent processing and stay on page
+        $error = "Security token invalid. Please try again.";
+    } else {
+        if (isset($_POST['role']) && $_POST['role'] === 'manager') {
+            header("Location: register.php");
+            exit();
+        } elseif (isset($_POST['action']) && $_POST['action'] === 'join') {
+            header("Location: ../member/join.php");
+            exit();
+        }
     }
 }
 ?>
@@ -197,6 +207,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             
             <div class="role-body">
+                <?php if (isset($error)): ?>
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="fas fa-exclamation-circle me-2"></i><?php echo htmlspecialchars($error); ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                <?php endif; ?>
+
                 <div class="row g-4">
                     <div class="col-lg-6">
                         <div class="role-option manager-option">
@@ -216,6 +233,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </ul>
                             
                             <form method="POST" action="">
+                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                 <input type="hidden" name="role" value="manager">
                                 <button type="submit" class="btn btn-primary btn-role">
                                     <i class="fas fa-plus-circle me-2"></i>Create New House
@@ -249,6 +267,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </ul>
                             
                             <form method="POST" action="">
+                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                 <input type="hidden" name="action" value="join">
                                 <button type="submit" class="btn btn-success btn-role">
                                     <i class="fas fa-sign-in-alt me-2"></i>Join with Invitation Link

@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 require_once '../includes/header.php';
 
 $auth = new Auth();
@@ -66,7 +67,10 @@ $members_active_tokens = mysqli_fetch_all($result, MYSQLI_ASSOC);
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['member_id'])) {
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security validation failed. Please try again.";
+    } elseif (isset($_POST['member_id'])) {
         $member_id = intval($_POST['member_id']);
         
         // Verify member belongs to this house

@@ -9,6 +9,7 @@ ob_start();
 
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 
@@ -33,44 +34,52 @@ if ($user_role === 'manager' || $user_role === 'admin') {
     $redirect_url = '../member/dashboard.php';
 }
 
+// Generate CSRF token
+$csrf_token = generateCSRFToken();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $current_password = trim($_POST['current_password'] ?? '');
-    $new_password = trim($_POST['new_password'] ?? '');
-    $confirm_password = trim($_POST['confirm_password'] ?? '');
-    
-    // Validation
-    if (empty($current_password) || empty($new_password) || empty($confirm_password)) {
-        $error = "All password fields are required";
-    } elseif (strlen($new_password) < 6) {
-        $error = "New password must be at least 6 characters";
-    } elseif ($new_password !== $confirm_password) {
-        $error = "New passwords do not match";
-    } elseif ($new_password === $current_password) {
-        $error = "New password must be different from current password";
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = "Security token invalid. Please try again.";
     } else {
-        // Verify current password and change password
-        $change_result = $auth->changePassword($user_id, $current_password, $new_password);
+        $current_password = trim($_POST['current_password'] ?? '');
+        $new_password = trim($_POST['new_password'] ?? '');
+        $confirm_password = trim($_POST['confirm_password'] ?? '');
         
-        if ($change_result) {
-            $success = "Password changed successfully!";
-            
-            // Clear password fields
-            $_POST['current_password'] = $_POST['new_password'] = $_POST['confirm_password'] = '';
-            
-            // Use PHP redirect instead of JavaScript for more reliable redirect
-            // Store success message in session for the redirect target page
-            $_SESSION['password_changed'] = true;
-            $_SESSION['success'] = "Password changed successfully!";
-            
-            // Redirect based on user role
-            $redirect_url = ($user_role === 'manager' || $user_role === 'admin') 
-                ? '../manager/dashboard.php' 
-                : '../member/dashboard.php';
-            
-            header("Location: $redirect_url");
-            exit();
+        // Validation
+        if (empty($current_password) || empty($new_password) || empty($confirm_password)) {
+            $error = "All password fields are required";
+        } elseif (strlen($new_password) < 6) {
+            $error = "New password must be at least 6 characters";
+        } elseif ($new_password !== $confirm_password) {
+            $error = "New passwords do not match";
+        } elseif ($new_password === $current_password) {
+            $error = "New password must be different from current password";
         } else {
-            $error = "Current password is incorrect or failed to change password";
+            // Verify current password and change password
+            $change_result = $auth->changePassword($user_id, $current_password, $new_password);
+            
+            if ($change_result) {
+                $success = "Password changed successfully!";
+                
+                // Clear password fields
+                $_POST['current_password'] = $_POST['new_password'] = $_POST['confirm_password'] = '';
+                
+                // Use PHP redirect instead of JavaScript for more reliable redirect
+                // Store success message in session for the redirect target page
+                $_SESSION['password_changed'] = true;
+                $_SESSION['success'] = "Password changed successfully!";
+                
+                // Redirect based on user role
+                $redirect_url = ($user_role === 'manager' || $user_role === 'admin') 
+                    ? '../manager/dashboard.php' 
+                    : '../member/dashboard.php';
+                
+                header("Location: $redirect_url");
+                exit();
+            } else {
+                $error = "Current password is incorrect or failed to change password";
+            }
         }
     }
 }
@@ -544,6 +553,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
                 
                 <form method="POST" action="" id="changePasswordForm">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <!-- Current Password -->
                     <div class="mb-3">
                         <label for="current_password" class="form-label">

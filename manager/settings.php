@@ -6,6 +6,7 @@ ini_set('display_errors', 1);
 require_once '../config/database.php';
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 if (!$auth->isLoggedIn()) {
@@ -41,23 +42,28 @@ $error = '';
 
 // Handle house join status toggle
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_join_status'])) {
-    $new_status = isset($_POST['is_open_for_join']) ? 1 : 0;
-    
-    $sql = "UPDATE houses SET is_open_for_join = ? WHERE house_id = ?";
-    $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, "ii", $new_status, $house_id);
-    
-    if (mysqli_stmt_execute($stmt)) {
-        $_SESSION['success'] = "House join status updated successfully!";
-        // Redirect to refresh the page
-        header("Location: settings.php");
-        exit();
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $_SESSION['error'] = "Security validation failed. Please try again.";
     } else {
-        $_SESSION['error'] = "Failed to update join status: " . mysqli_error($conn);
-        header("Location: settings.php");
-        exit();
+        $new_status = isset($_POST['is_open_for_join']) ? 1 : 0;
+
+        $sql = "UPDATE houses SET is_open_for_join = ? WHERE house_id = ?";
+        $stmt = mysqli_prepare($conn, $sql);
+        mysqli_stmt_bind_param($stmt, "ii", $new_status, $house_id);
+
+        if (mysqli_stmt_execute($stmt)) {
+            $_SESSION['success'] = "House join status updated successfully!";
+            // Redirect to refresh the page
+            header("Location: settings.php");
+            exit();
+        } else {
+            $_SESSION['error'] = "Failed to update join status: " . mysqli_error($conn);
+            header("Location: settings.php");
+            exit();
+        }
+        mysqli_stmt_close($stmt);
     }
-    mysqli_stmt_close($stmt);
 }
 
 // Fetch house details FIRST
@@ -81,15 +87,28 @@ $current_user = $auth->getCurrentUser();
 
 // Handle AJAX house update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_house'])) {
-    
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        // For AJAX
+        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Security validation failed']);
+            exit();
+        } else {
+            $_SESSION['error'] = "Security validation failed. Please try again.";
+            header("Location: settings.php");
+            exit();
+        }
+    }
+
     // Check if it's an AJAX request
     $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
-    
+
     // Set header for JSON response if AJAX
     if ($isAjax) {
         header('Content-Type: application/json');
     }
-    
+
     $house_name = trim($_POST['house_name']);
     $description = isset($_POST['description']) ? trim($_POST['description']) : '';
     // Handle checkbox properly
