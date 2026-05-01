@@ -309,10 +309,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($errors)) {
             $_SESSION['approval_errors'] = $errors;
         }
-        
+
         // Redirect to avoid form resubmission
         header("Location: approve_requests.php");
         exit();
+    }
     }
 }
 

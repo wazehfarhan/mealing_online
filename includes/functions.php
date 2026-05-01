@@ -61,10 +61,36 @@ class Functions {
     /**
      * Get dashboard statistics for a specific house
      */
-    public function getDashboardStats($month = null, $year = null, $house_id = null) {
+public function getDashboardStats($month = null, $year = null, $house_id = null) {
         if (!$month) $month = date('m');
         if (!$year) $year = date('Y');
+        if (!$house_id) {
+            $stats = array(
+                'total_members' => 0,
+                'total_meals' => 0,
+                'total_expenses' => 0,
+                'meal_rate' => 0,
+                'today_meals' => 0,
+                'total_deposits' => 0,
+                'monthly_deposits' => 0,
+                'average_meal_per_member' => 0
+            );
+            return $stats;
+        }
+
+        // Try cache first
+        $cache_key = md5("dashboard_$house_id$month$year");
+        $cache_sql = "SELECT cache_data FROM dashboard_cache WHERE house_id = ? AND month = ? AND year = ? AND expires_at > NOW()";
+        $cache_stmt = mysqli_prepare($this->conn, $cache_sql);
+        mysqli_stmt_bind_param($cache_stmt, "iii", $house_id, $month, $year);
+        mysqli_stmt_execute($cache_stmt);
+        $cache_result = mysqli_stmt_get_result($cache_stmt);
         
+        if ($cache_row = mysqli_fetch_assoc($cache_result)) {
+            return json_decode($cache_row['cache_data'], true);
+        }
+
+        // Cache miss - compute fresh stats
         $month_start = "$year-$month-01";
         $month_end = date('Y-m-t', strtotime($month_start));
         
@@ -79,11 +105,7 @@ class Functions {
             'average_meal_per_member' => 0
         );
         
-        if (!$house_id) {
-            return $stats;
-        }
-        
-        // Total active members for this house
+        // Total active members
         $sql = "SELECT COUNT(*) as total FROM members WHERE house_id = ? AND status = 'active'";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "i", $house_id);
@@ -93,7 +115,7 @@ class Functions {
             $stats['total_members'] = $row['total'];
         }
         
-        // Total meals for current month for this house
+        // Total meals this month
         $sql = "SELECT SUM(meal_count) as total FROM meals WHERE house_id = ? AND meal_date BETWEEN ? AND ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "iss", $house_id, $month_start, $month_end);
@@ -103,7 +125,7 @@ class Functions {
             $stats['total_meals'] = $row['total'] ?: 0;
         }
         
-        // Total expenses for current month for this house
+        // Total expenses this month
         $sql = "SELECT SUM(amount) as total FROM expenses WHERE house_id = ? AND expense_date BETWEEN ? AND ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "iss", $house_id, $month_start, $month_end);
@@ -113,12 +135,12 @@ class Functions {
             $stats['total_expenses'] = $row['total'] ?: 0;
         }
         
-        // Calculate meal rate
+        // Meal rate
         if ($stats['total_meals'] > 0) {
             $stats['meal_rate'] = $stats['total_expenses'] / $stats['total_meals'];
         }
         
-        // Today's meals for this house
+        // Today's meals
         $today = date('Y-m-d');
         $sql = "SELECT COUNT(*) as total FROM meals WHERE house_id = ? AND meal_date = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
@@ -129,7 +151,7 @@ class Functions {
             $stats['today_meals'] = $row['total'];
         }
         
-        // Total deposits for this house
+        // Total deposits all time
         $sql = "SELECT SUM(amount) as total FROM deposits WHERE house_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "i", $house_id);
@@ -139,7 +161,7 @@ class Functions {
             $stats['total_deposits'] = $row['total'] ?: 0;
         }
         
-        // Monthly deposits for this house
+        // Monthly deposits
         $sql = "SELECT SUM(amount) as total FROM deposits WHERE house_id = ? AND deposit_date BETWEEN ? AND ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "iss", $house_id, $month_start, $month_end);
@@ -149,12 +171,38 @@ class Functions {
             $stats['monthly_deposits'] = $row['total'] ?: 0;
         }
         
-        // Average meals per member
+        // Average per member
         if ($stats['total_members'] > 0 && $stats['total_meals'] > 0) {
             $stats['average_meal_per_member'] = $stats['total_meals'] / $stats['total_members'];
         }
         
+        // Cache for 5 minutes
+        $expires_at = date('Y-m-d H:i:s', strtotime('+5 minutes'));
+        $cache_data = json_encode($stats);
+        
+        $cache_insert_sql = "REPLACE INTO dashboard_cache (house_id, month, year, cache_data, expires_at) VALUES (?, ?, ?, ?, ?)";
+        $cache_insert_stmt = mysqli_prepare($this->conn, $cache_insert_sql);
+        mysqli_stmt_bind_param($cache_insert_stmt, "iiiss", $house_id, $month, $year, $cache_data, $expires_at);
+        mysqli_stmt_execute($cache_insert_stmt);
+        
         return $stats;
+    }
+    
+    /**
+     * Refresh dashboard cache manually
+     */
+    public function refreshDashboardCache($house_id, $month = null, $year = null) {
+        if (!$month) $month = date('m');
+        if (!$year) $year = date('Y');
+        
+        // Delete existing cache for this house/month/year
+        $delete_sql = "DELETE FROM dashboard_cache WHERE house_id = ? AND month = ? AND year = ?";
+        $delete_stmt = mysqli_prepare($this->conn, $delete_sql);
+        mysqli_stmt_bind_param($delete_stmt, "iii", $house_id, $month, $year);
+        mysqli_stmt_execute($delete_stmt);
+        
+        // Force refresh
+        return $this->getDashboardStats($month, $year, $house_id);
     }
     
     /**
@@ -1846,12 +1894,13 @@ class Functions {
         
         // Set expiry to 7 days from now
         $expires_at = date('Y-m-d H:i:s', strtotime('+7 days'));
-        
+        $user_id = $_SESSION['user_id'] ?? null;
+
         // Insert the token
-        $sql = "INSERT INTO join_tokens (token, house_id, member_id, token_type, expires_at, created_by) 
+        $sql = "INSERT INTO join_tokens (token, house_id, member_id, token_type, expires_at, created_by)
                 VALUES (?, ?, ?, ?, ?, ?)";
         $stmt = mysqli_prepare($this->conn, $sql);
-        mysqli_stmt_bind_param($stmt, "siisss", $token, $house_id, $member_id, $token_type, $expires_at, $_SESSION['user_id'] ?? null);
+        mysqli_stmt_bind_param($stmt, "siissi", $token, $house_id, $member_id, $token_type, $expires_at, $user_id);
         
         if (mysqli_stmt_execute($stmt)) {
             return [

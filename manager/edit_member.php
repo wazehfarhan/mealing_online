@@ -183,14 +183,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     // Refresh member data
-    $sql = "SELECT m.*, h.house_name FROM members m 
-            LEFT JOIN houses h ON m.house_id = h.house_id 
+    $sql = "SELECT m.*, h.house_name FROM members m
+            LEFT JOIN houses h ON m.house_id = h.house_id
             WHERE m.member_id = ? AND m.house_id = ?";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "ii", $member_id, $house_id);
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     $member = mysqli_fetch_assoc($result);
+    }
 }
 
 // Handle member deletion (separate from edit form)
