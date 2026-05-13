@@ -70,44 +70,49 @@ function sanitizeInput($input) {
 
 /**
  * Generate secure CSRF token
- * @return string - 32-character random token
+ * NOTE: Primary CSRF implementation is in csrf.php
+ * These are guarded wrappers for backward compatibility
  */
-function generateCSRFToken() {
-    if (!isset($_SESSION['csrf_token']) || empty($_SESSION['csrf_token'])) {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+if (!function_exists('generateCSRFToken')) {
+    function generateCSRFToken() {
+        if (!isset($_SESSION['csrf_token']) || empty($_SESSION['csrf_token'])) {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        }
+        return $_SESSION['csrf_token'];
     }
-    return $_SESSION['csrf_token'];
 }
 
-/**
- * Verify CSRF token
- * @param string $token - Token to verify
- * @return bool - True if token is valid
- */
-function verifyCSRFToken($token) {
-    if (!isset($_SESSION['csrf_token'])) {
-        return false;
+if (!function_exists('verifyCSRFToken')) {
+    function verifyCSRFToken($token = null) {
+        if ($token === null) {
+            $token = $_POST['csrf_token'] ?? '';
+        }
+        if (!isset($_SESSION['csrf_token'])) {
+            return false;
+        }
+        return hash_equals($_SESSION['csrf_token'], $token ?? '');
     }
-
-    // Use hash_equals for constant-time comparison to prevent timing attacks
-    return hash_equals($_SESSION['csrf_token'], $token ?? '');
 }
 
 /**
  * Regenerate CSRF token (call after processing form)
  * @return string - New CSRF token
  */
-function regenerateCSRFToken() {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    return $_SESSION['csrf_token'];
+if (!function_exists('regenerateCSRFToken')) {
+    function regenerateCSRFToken() {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        return $_SESSION['csrf_token'];
+    }
 }
 
 /**
  * Get CSRF token for use in forms
  * @return string - Current CSRF token
  */
-function getCSRFToken() {
-    return generateCSRFToken();
+if (!function_exists('getCSRFToken')) {
+    function getCSRFToken() {
+        return generateCSRFToken();
+    }
 }
 
 /**

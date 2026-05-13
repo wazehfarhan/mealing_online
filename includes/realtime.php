@@ -38,8 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     switch ($action) {
         case 'calculate_meal_rate':
-            $month = (int)$_POST['month'] ?? date('m');
-            $year = (int)$_POST['year'] ?? date('Y');
+            $month = (int)($_POST['month'] ?? date('m'));
+            $year = (int)($_POST['year'] ?? date('Y'));
             
             // Ensure month is 1-12 and year is reasonable
             $month = max(1, min(12, $month));

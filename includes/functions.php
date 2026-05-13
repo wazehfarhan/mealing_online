@@ -2,35 +2,35 @@
 require_once __DIR__ . '/../config/database.php';
 
 class Functions {
-    private $conn;
-    
+    private ?mysqli $conn;
+
     public function __construct() {
         $this->conn = getConnection();
     }
-    
+
     // Sanitize input data
-    public function sanitize($input) {
+    public function sanitize(mixed $input): mixed {
         if (is_array($input)) {
             foreach ($input as $key => $value) {
                 $input[$key] = $this->sanitize($value);
             }
             return $input;
         }
-        return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
+        return htmlspecialchars(trim((string)$input), ENT_QUOTES, 'UTF-8');
     }
-    
+
     // Validate email
-    public function validateEmail($email) {
+    public function validateEmail(string $email): bool|string {
         return filter_var($email, FILTER_VALIDATE_EMAIL);
     }
-    
+
     // Validate phone number (basic validation)
-    public function validatePhone($phone) {
+    public function validatePhone(string $phone): int {
         return preg_match('/^[0-9]{10,15}$/', $phone);
     }
-    
+
     // Generate random string (cryptographically secure)
-    public function generateRandomString($length = 10) {
+    public function generateRandomString(int $length = 10): string {
         // Use random_int() instead of rand() for cryptographic security
         $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
         $randomString = '';
@@ -43,7 +43,7 @@ class Functions {
     }
 
     // Generate unique house code (uses secure random generation)
-    public function generateHouseCode() {
+    public function generateHouseCode(): string {
         do {
             // Use secure random generation with bin2hex(random_bytes())
             $code = strtoupper(bin2hex(random_bytes(3)));  // 6-character hex code
@@ -61,7 +61,7 @@ class Functions {
     /**
      * Get dashboard statistics for a specific house
      */
-public function getDashboardStats($month = null, $year = null, $house_id = null) {
+    public function getDashboardStats(?int $month = null, ?int $year = null, ?int $house_id = null): array {
         if (!$month) $month = date('m');
         if (!$year) $year = date('Y');
         if (!$house_id) {
@@ -191,7 +191,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     /**
      * Refresh dashboard cache manually
      */
-    public function refreshDashboardCache($house_id, $month = null, $year = null) {
+    public function refreshDashboardCache(int $house_id, ?int $month = null, ?int $year = null): array {
         if (!$month) $month = date('m');
         if (!$year) $year = date('Y');
         
@@ -207,8 +207,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get system-wide statistics for homepage - REAL TIME
+     *
+     * @return (float|int|null|string)[]
+     *
+     * @psalm-return array{total_houses: float|int|null|string, total_members: float|int|null|string, today_meals: float|int|null|string, total_money_managed: float|int|null|string, new_houses_30_days: float|int|null|string, active_houses_today: float|int|null|string}
      */
-    public function getSystemStats() {
+    public function getSystemStats(): array {
         $stats = array(
             'total_houses' => 0,
             'total_members' => 0,
@@ -234,8 +238,11 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
         
         // Today's meals across all houses
         $today = date('Y-m-d');
-        $sql = "SELECT COALESCE(SUM(meal_count), 0) as total FROM meals WHERE meal_date = '$today'";
-        $result = mysqli_query($this->conn, $sql);
+        $sql = "SELECT COALESCE(SUM(meal_count), 0) as total FROM meals WHERE meal_date = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "s", $today);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
         if ($row = mysqli_fetch_assoc($result)) {
             $stats['today_meals'] = $row['total'];
         }
@@ -249,15 +256,21 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
         
         // Get system growth (new houses in last 30 days)
         $thirty_days_ago = date('Y-m-d', strtotime('-30 days'));
-        $sql = "SELECT COUNT(*) as new_houses FROM houses WHERE created_at >= '$thirty_days_ago' AND is_active = 1";
-        $result = mysqli_query($this->conn, $sql);
+        $sql = "SELECT COUNT(*) as new_houses FROM houses WHERE created_at >= ? AND is_active = 1";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "s", $thirty_days_ago);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
         if ($row = mysqli_fetch_assoc($result)) {
             $stats['new_houses_30_days'] = $row['new_houses'];
         }
         
         // Get active today (houses with activity today)
-        $sql = "SELECT COUNT(DISTINCT house_id) as active_houses FROM meals WHERE meal_date = '$today'";
-        $result = mysqli_query($this->conn, $sql);
+        $sql = "SELECT COUNT(DISTINCT house_id) as active_houses FROM meals WHERE meal_date = ?";
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, "s", $today);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
         if ($row = mysqli_fetch_assoc($result)) {
             $stats['active_houses_today'] = $row['active_houses'];
         }
@@ -267,8 +280,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
 
     /**
      * Get developer information for the homepage
+     *
+     * @return (string|string[])[]
+     *
+     * @psalm-return array{name: 'Kazi Md. Wazeh Ullah Farhan', title: 'Software Engineering Student | Full-Stack & Cloud Enthusiast', bio: 'I am a Computer Science and Engineering (CSE) student at American International University-Bangladesh (AIUB), currently in my 10th semester. I have a strong passion for software engineering, full-stack web development, and cloud computing.', education: array{degree: 'BSc in Computer Science & Engineering (CSE)', university: 'American International University-Bangladesh (AIUB)', semester: '10th Semester', student_id: '23-50577-1'}, skills: array{Programming: 'C, C++, Java, C#, JavaScript, SQL', 'Web Technologies': 'HTML, CSS, JavaScript, PHP', Frameworks: '.NET (Windows Forms), MySQL', Concepts: 'OOP, Data Structures & Algorithms, Database Management, CRUD Operations', Learning: 'Full-Stack Web Development, AWS Cloud Engineering, AI & Machine Learning'}, projects: array{'AgriCore Operation Platform': 'A C# Windows Application for smart agriculture and farm resource management', 'SmartField Resource Platform': 'A desktop-based system for crop, field, irrigation, and market tracking using C# and SQL Server', 'Car Rental Management System': 'A database-driven system for managing vehicles, customers, drivers, and rentals', 'Meal Management System': 'A web-based application for meal entry, cost calculation, and member management', 'Digital School Management System': 'A complete academic management system for students, teachers, attendance, and results', 'Crop Management Module': 'A CRUD-based C# module for farmer-wise crop tracking with secure authentication', 'Field Management Module': 'A resource allocation and monitoring system for agricultural fields', 'Irrigation & Fertilizer Scheduler': 'An automated scheduling module for efficient water and fertilizer usage', 'Pest and Disease Control System': 'A monitoring and record-keeping module for crop health management', 'Market & Sales Tracking System': 'A sales analytics and profit tracking module for agricultural products', 'User Management System': 'A role-based authentication and authorization system using C# and encrypted credentials', 'Full Stack Web Projects': 'PHP, MySQL, HTML, CSS, JavaScript based academic and management systems'}, contact: array{email: 'wzullah.farhan@gmail.com', phone: '+880 1828-658811', location: 'Bangladesh'}, profiles: array{github: 'https://github.com/wazehfarhan', linkedin: 'https://www.linkedin.com/in/w2zfrhn'}, quote: 'Driven by curiosity, powered by code, and focused on building meaningful software.'}
      */
-    public function getDeveloperInfo() {
+    public function getDeveloperInfo(): array {
         return array(
             'name' => 'Kazi Md. Wazeh Ullah Farhan',
             'title' => 'Software Engineering Student | Full-Stack & Cloud Enthusiast',
@@ -315,8 +332,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get all active members for a specific house
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getActiveMembers($house_id = null) {
+    public function getActiveMembers(?int $house_id = null): array {
         if (!$house_id) {
             return array();
         }
@@ -337,8 +358,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get all members (including inactive) for a specific house
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getAllMembers($house_id = null) {
+    public function getAllMembers(?int $house_id = null): array {
         if (!$house_id) {
             return array();
         }
@@ -358,7 +383,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     }
     
     // Get member by ID (for any house - used by super admin)
-    public function getMember($member_id) {
+    /**
+     * @return (float|int|null|string)[]|false|null
+     *
+     * @psalm-return array<string, float|int|null|string>|false|null
+     */
+    public function getMember(int $member_id): array|false|null {
         $sql = "SELECT m.*, h.house_name FROM members m 
                 LEFT JOIN houses h ON m.house_id = h.house_id 
                 WHERE m.member_id = ?";
@@ -372,8 +402,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get member by ID for a specific house (for security)
+     *
+     * @return (float|int|null|string)[]|false|null
+     *
+     * @psalm-return array<string, float|int|null|string>|false|null
      */
-    public function getHouseMember($member_id, $house_id) {
+    public function getHouseMember(int $member_id, int $house_id): array|false|null {
         $sql = "SELECT * FROM members WHERE member_id = ? AND house_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "ii", $member_id, $house_id);
@@ -384,7 +418,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     }
     
     // Add new member to a house
-    public function addMember($house_id, $name, $phone, $email, $join_date, $created_by) {
+    /**
+     * @return (bool|int|mixed|string)[]
+     *
+     * @psalm-return array{success: bool, error?: string, member_id?: int|string, join_token?: mixed}
+     */
+    public function addMember(int $house_id, string $name, string $phone, string $email, string $join_date, int $created_by): array {
         // Generate unique join token
         $join_token = bin2hex(random_bytes(32));
         $token_expiry = date('Y-m-d H:i:s', strtotime('+7 days'));
@@ -407,7 +446,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     }
     
     // Update member (with house check)
-    public function updateMember($member_id, $house_id, $name, $phone, $email, $status) {
+    public function updateMember(int $member_id, int $house_id, string $name, string $phone, string $email, string $status): bool {
         $sql = "UPDATE members SET name = ?, phone = ?, email = ?, status = ? 
                 WHERE member_id = ? AND house_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
@@ -417,7 +456,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     }
     
     // Delete member (soft delete by changing status)
-    public function deleteMember($member_id, $house_id) {
+    public function deleteMember(int $member_id, int $house_id): bool {
         $sql = "UPDATE members SET status = 'inactive' WHERE member_id = ? AND house_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "ii", $member_id, $house_id);
@@ -426,7 +465,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     }
     
     // Add meal entry for a house
-    public function addMeal($house_id, $member_id, $meal_date, $meal_count, $created_by) {
+    public function addMeal(int $house_id, int $member_id, string $meal_date, float $meal_count, int $created_by): bool {
         // Check if entry already exists for this house
         $check_sql = "SELECT meal_id FROM meals WHERE house_id = ? AND member_id = ? AND meal_date = ?";
         $check_stmt = mysqli_prepare($this->conn, $check_sql);
@@ -452,7 +491,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     }
     
     // Add multiple meals at once (for batch entry)
-    public function addMultipleMeals($house_id, $meal_date, $meal_data, $created_by) {
+    /**
+     * @return (int|string[]|true)[]
+     *
+     * @psalm-return array{success: true, success_count: int<0, max>, error_count: int<0, max>, errors: list<non-empty-string>}
+     */
+    public function addMultipleMeals(int $house_id, string $meal_date, array $meal_data, int $created_by): array {
         $success_count = 0;
         $error_count = 0;
         $errors = array();
@@ -476,7 +520,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     }
     
     // Add expense for a house
-    public function addExpense($house_id, $amount, $category, $description, $expense_date, $created_by) {
+    public function addExpense(int $house_id, float $amount, string $category, string $description, string $expense_date, int $created_by): bool {
         $sql = "INSERT INTO expenses (house_id, amount, category, description, expense_date, created_by) 
                 VALUES (?, ?, ?, ?, ?, ?)";
         $stmt = mysqli_prepare($this->conn, $sql);
@@ -486,7 +530,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     }
     
     // Add deposit for a house member
-    public function addDeposit($house_id, $member_id, $amount, $deposit_date, $description, $created_by) {
+    public function addDeposit(int $house_id, int $member_id, float $amount, string $deposit_date, string $description, int $created_by): bool {
         $sql = "INSERT INTO deposits (house_id, member_id, amount, deposit_date, description, created_by) 
                 VALUES (?, ?, ?, ?, ?, ?)";
         $stmt = mysqli_prepare($this->conn, $sql);
@@ -496,7 +540,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     }
     
     // Add multiple deposits at once
-    public function addMultipleDeposits($house_id, $deposit_date, $deposit_data, $created_by) {
+    /**
+     * @return (int|string[]|true)[]
+     *
+     * @psalm-return array{success: true, success_count: int<0, max>, error_count: int<0, max>, errors: list<non-empty-string>}
+     */
+    public function addMultipleDeposits(int $house_id, string $deposit_date, array $deposit_data, int $created_by): array {
         $success_count = 0;
         $error_count = 0;
         $errors = array();
@@ -523,8 +572,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get monthly report for a specific house
+     *
+     * @return (float|int|mixed|null|string)[][]
+     *
+     * @psalm-return list<array{adjusted_balance: mixed, all_meals: float|int<min, max>|non-falsy-string, balance: float|int, email: float|int|null|string, meal_rate: float|int, member_cost: float|int, member_id: float|int|null|string, name: float|int|null|string, phone: float|int|null|string, previous_balance: mixed, share_percentage: float|int, total_deposits: float|int|non-falsy-string, total_expenses: float|int|non-falsy-string, total_meals: float|int|non-falsy-string}>
      */
-    public function calculateMonthlyReport($month, $year, $house_id = null) {
+    public function calculateMonthlyReport(int $month, int $year, ?int $house_id = null): array {
         if (!$house_id) {
             return array();
         }
@@ -636,8 +689,10 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get previous month's balance for a member
+     *
+     * @return float|int|string
      */
-    private function getPreviousMonthBalance($house_id, $member_id, $current_month, $current_year) {
+    private function getPreviousMonthBalance(int $house_id, int $member_id, int $current_month, int $current_year): int|float|string {
         // Calculate previous month
         $prev_month = date('Y-m', strtotime("$current_year-$current_month-01 -1 month"));
         list($prev_year, $prev_month_num) = explode('-', $prev_month);
@@ -665,8 +720,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get member's meals for a specific month and house
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getMemberMeals($member_id, $month = null, $year = null, $house_id = null) {
+    public function getMemberMeals(int $member_id, ?int $month = null, ?int $year = null, ?int $house_id = null): array {
         if (!$month) $month = date('m');
         if (!$year) $year = date('Y');
         if (!$house_id) return array();
@@ -692,8 +751,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get member's deposits for a specific month and house
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getMemberDeposits($member_id, $month = null, $year = null, $house_id = null) {
+    public function getMemberDeposits(int $member_id, ?int $month = null, ?int $year = null, ?int $house_id = null): array {
         if (!$month) $month = date('m');
         if (!$year) $year = date('Y');
         if (!$house_id) return array();
@@ -720,7 +783,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     /**
      * Close month for a specific house
      */
-    public function closeMonth($month, $year, $closed_by, $house_id = null) {
+    public function closeMonth(int $month, int $year, int $closed_by, ?int $house_id = null): bool {
         if (!$house_id) {
             return false;
         }
@@ -778,7 +841,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     /**
      * Check if month is closed for a specific house
      */
-    public function isMonthClosed($month, $year, $house_id = null) {
+    public function isMonthClosed(int $month, int $year, ?int $house_id = null): bool {
         if (!$house_id) {
             return false;
         }
@@ -797,8 +860,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get expense breakdown for a specific house
+     *
+     * @return ((float|int|null|string)[][]|float|int)[]
+     *
+     * @psalm-return array{breakdown: list<non-empty-array<string, float|int|null|string>>, total: float|int}
      */
-    public function getExpenseBreakdown($month, $year, $house_id = null) {
+    public function getExpenseBreakdown(int $month, int $year, ?int $house_id = null): array {
         if (!$house_id) {
             return array('breakdown' => array(), 'total' => 0);
         }
@@ -829,24 +896,28 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     }
     
     // Format currency
-    public function formatCurrency($amount) {
+    public function formatCurrency(float $amount): string {
         return '৳' . number_format($amount, 2);
     }
     
     // Format date
-    public function formatDate($date_string) {
+    public function formatDate(string $date_string): string {
         return date('M d, Y', strtotime($date_string));
     }
     
     // Format date with time
-    public function formatDateTime($date_string) {
+    public function formatDateTime(string $date_string): string {
         return date('M d, Y h:i A', strtotime($date_string));
     }
     
     /**
      * Get all meals for a house (for export)
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getHouseMeals($house_id = null, $start_date = null, $end_date = null) {
+    public function getHouseMeals(?int $house_id = null, ?string $start_date = null, ?string $end_date = null): array {
         if (!$house_id) {
             return array();
         }
@@ -883,8 +954,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get all expenses for a house (for export)
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getHouseExpenses($house_id = null, $start_date = null, $end_date = null) {
+    public function getHouseExpenses(?int $house_id = null, ?string $start_date = null, ?string $end_date = null): array {
         if (!$house_id) {
             return array();
         }
@@ -921,8 +996,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get all deposits for a house (for export)
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getHouseDeposits($house_id = null, $start_date = null, $end_date = null) {
+    public function getHouseDeposits(?int $house_id = null, ?string $start_date = null, ?string $end_date = null): array {
         if (!$house_id) {
             return array();
         }
@@ -960,8 +1039,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get all members for a house (for export)
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getHouseMembers($house_id = null) {
+    public function getHouseMembers(?int $house_id = null): array {
         if (!$house_id) {
             return array();
         }
@@ -990,8 +1073,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get member's monthly summary
+     *
+     * @return (float|int|mixed|string)[]
+     *
+     * @psalm-return array{total_meals: float|int|string, total_deposits: float|int|string, average_meal_per_day: float|int, highest_meal_day: float|int<0, max>|string, meal_days: int<0, max>, total_cost: mixed}
      */
-    public function getMemberMonthlySummary($member_id, $month, $year, $house_id) {
+    public function getMemberMonthlySummary(int $member_id, int $month, int $year, int $house_id): array {
         $summary = array(
             'total_meals' => 0,
             'total_deposits' => 0,
@@ -1065,8 +1152,10 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Export data to CSV
+     *
+     * @return false
      */
-    public function exportToCSV($data, $filename = 'export.csv') {
+    public function exportToCSV(array $data, string $filename = 'export.csv'): bool {
         if (empty($data)) {
             return false;
         }
@@ -1091,8 +1180,10 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Backup database
+     *
+     * @return false|string
      */
-    public function backupDatabase($house_id = null) {
+    public function backupDatabase(?int $house_id = null): string|false {
         $backup_data = array();
         
         if ($house_id) {
@@ -1113,8 +1204,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get house information
+     *
+     * @return (float|int|null|string)[]|false|null
+     *
+     * @psalm-return array<string, float|int|null|string>|false|null
      */
-    public function getHouseInfo($house_id) {
+    public function getHouseInfo(int $house_id): array|false|null {
         $sql = "SELECT * FROM houses WHERE house_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "i", $house_id);
@@ -1127,8 +1222,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get all houses
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getAllHouses() {
+    public function getAllHouses(): array {
         $sql = "SELECT * FROM houses ORDER BY house_name ASC";
         $result = mysqli_query($this->conn, $sql);
         
@@ -1143,9 +1242,9 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     /**
      * Check if user has access to house
      */
-    public function checkHouseAccess($user_id, $house_id) {
-        // For manager: check if user is the manager of this house
-        $sql = "SELECT house_id FROM houses WHERE house_id = ? AND manager_id = ?";
+    public function checkHouseAccess(int $user_id, int $house_id): bool {
+        // For manager: check if user is the creator/manager of this house
+        $sql = "SELECT house_id FROM houses WHERE house_id = ? AND created_by = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "ii", $house_id, $user_id);
         mysqli_stmt_execute($stmt);
@@ -1156,7 +1255,10 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
         }
         
         // For member: check if user is a member of this house
-        $sql = "SELECT member_id FROM members WHERE house_id = ? AND user_id = ? AND status = 'active'";
+        // The members table links to users via users.member_id, not members.user_id
+        $sql = "SELECT m.member_id FROM members m 
+                INNER JOIN users u ON u.member_id = m.member_id 
+                WHERE m.house_id = ? AND u.user_id = ? AND m.status = 'active'";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "ii", $house_id, $user_id);
         mysqli_stmt_execute($stmt);
@@ -1167,8 +1269,10 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Send notification (placeholder for future implementation)
+     *
+     * @return true
      */
-    public function sendNotification($user_id, $title, $message, $type = 'info') {
+    public function sendNotification(int $user_id, string $title, string $message, string $type = 'info'): bool {
         // This is a placeholder for future notification system
         // Could be implemented with email, SMS, or in-app notifications
         return true;
@@ -1176,8 +1280,10 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Log activity
+     *
+     * @return true
      */
-    public function logActivity($user_id, $action, $details = '') {
+    public function logActivity(int $user_id, string $action, string $details = ''): bool {
         $sql = "INSERT INTO activity_logs (user_id, action, details, ip_address, user_agent) 
                 VALUES (?, ?, ?, ?, ?)";
         $stmt = mysqli_prepare($this->conn, $sql);
@@ -1197,7 +1303,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
      * @param int|null $house_id House ID to count requests for
      * @return int Number of pending requests
      */
-    public function countPendingRequests($conn = null, $house_id = null) {
+    public function countPendingRequests(?mysqli $conn = null, ?int $house_id = null): int {
         // Use provided connection or default to $this->conn
         $db = $conn ?: $this->conn;
         
@@ -1221,13 +1327,17 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
         $result = mysqli_stmt_get_result($stmt);
         $data = mysqli_fetch_assoc($result);
         
-        return $data['count'] ?? 0;
+        return (int)($data['count'] ?? 0);
     }
     
     /**
      * Get member's house status and request info
+     *
+     * @return (float|int|null|string)[]|false|null
+     *
+     * @psalm-return array<string, float|int|null|string>|false|null
      */
-    public function getMemberHouseStatus($member_id) {
+    public function getMemberHouseStatus(int $member_id): array|false|null {
         $sql = "SELECT house_status, requested_house_id, leave_request_date, join_request_date 
                 FROM members WHERE member_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
@@ -1240,8 +1350,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get all pending leave requests
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getPendingLeaveRequests($house_id = null) {
+    public function getPendingLeaveRequests(?int $house_id = null): array {
         $sql = "SELECT m.*, h.house_name as current_house_name 
                 FROM members m 
                 JOIN houses h ON m.house_id = h.house_id 
@@ -1268,8 +1382,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get all pending join requests
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getPendingJoinRequests($house_id = null) {
+    public function getPendingJoinRequests(?int $house_id = null): array {
         $sql = "SELECT m.*, 
                        h_current.house_name as current_house_name,
                        h_requested.house_name as requested_house_name,
@@ -1300,8 +1418,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Request to leave house
+     *
+     * @return (bool|string)[]
+     *
+     * @psalm-return array{success: bool, error?: 'Cannot leave house today. You have meal entries for today.'|'Failed to submit leave request.', message?: 'Leave request submitted successfully.'}
      */
-    public function requestLeaveHouse($member_id, $house_id) {
+    public function requestLeaveHouse(int $member_id, int $house_id): array {
         // Check if member has any meal entries for today
         $today = date('Y-m-d');
         $check_sql = "SELECT COUNT(*) as count FROM meals 
@@ -1333,8 +1455,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Request to join house
+     *
+     * @return (null|scalar)[]
+     *
+     * @psalm-return array{success: bool, error?: 'Failed to submit join request.'|'Member not found.'|'Requested house is not available for joining.', message?: 'Join request submitted successfully.', house_name?: float|int|null|string}
      */
-    public function requestJoinHouse($member_id, $requested_house_id) {
+    public function requestJoinHouse(int $member_id, int $requested_house_id): array {
         // Get current house_id
         $current_sql = "SELECT house_id FROM members WHERE member_id = ?";
         $current_stmt = mysqli_prepare($this->conn, $current_sql);
@@ -1385,7 +1511,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     /**
      * Cancel leave request
      */
-    public function cancelLeaveRequest($member_id) {
+    public function cancelLeaveRequest(int $member_id): bool {
         $sql = "UPDATE members 
                 SET house_status = 'active', 
                     leave_request_date = NULL 
@@ -1399,7 +1525,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     /**
      * Cancel join request
      */
-    public function cancelJoinRequest($member_id) {
+    public function cancelJoinRequest(int $member_id): bool {
         $sql = "UPDATE members 
                 SET house_status = 'active', 
                     requested_house_id = NULL, 
@@ -1413,8 +1539,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Approve leave request
+     *
+     * @return (bool|string)[]
+     *
+     * @psalm-return array{success: bool, error?: string, message?: 'Leave request approved successfully.'}
      */
-    public function approveLeaveRequest($member_id, $performed_by) {
+    public function approveLeaveRequest(int $member_id, int $performed_by): array {
         // Get member details
         $member_sql = "SELECT * FROM members WHERE member_id = ?";
         $member_stmt = mysqli_prepare($this->conn, $member_sql);
@@ -1495,8 +1625,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Approve join request
+     *
+     * @return (null|scalar)[]
+     *
+     * @psalm-return array{success: bool, error?: string, message?: 'Join request approved successfully.', new_house_name?: float|int|null|string}
      */
-    public function approveJoinRequest($member_id, $performed_by) {
+    public function approveJoinRequest(int $member_id, int $performed_by): array {
         // Get member details including requested house
         $member_sql = "SELECT m.*, h_requested.house_id as requested_house_id, 
                               h_requested.house_name as requested_house_name
@@ -1569,8 +1703,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Reject leave request
+     *
+     * @return (bool|string)[]
+     *
+     * @psalm-return array{success: bool, error?: 'Failed to reject leave request.', message?: 'Leave request rejected successfully.'}
      */
-    public function rejectLeaveRequest($member_id, $performed_by, $reason = '') {
+    public function rejectLeaveRequest(int $member_id, int $performed_by, string $reason = ''): array {
         $sql = "UPDATE members 
                 SET house_status = 'active', 
                     leave_request_date = NULL 
@@ -1604,8 +1742,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Reject join request
+     *
+     * @return (bool|string)[]
+     *
+     * @psalm-return array{success: bool, error?: 'Failed to reject join request.', message?: 'Join request rejected successfully.'}
      */
-    public function rejectJoinRequest($member_id, $performed_by, $reason = '') {
+    public function rejectJoinRequest(int $member_id, int $performed_by, string $reason = ''): array {
         $sql = "UPDATE members 
                 SET house_status = 'active', 
                     requested_house_id = NULL,
@@ -1640,8 +1782,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get houses open for joining (excluding current house)
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getHousesOpenForJoining($current_house_id = null) {
+    public function getHousesOpenForJoining(?int $current_house_id = null): array {
         $sql = "SELECT house_id, house_name, house_code, created_at 
                 FROM houses 
                 WHERE is_open_for_join = 1 
@@ -1649,13 +1795,15 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
         
         if ($current_house_id) {
             $sql .= " AND house_id != ?";
-            $stmt = mysqli_prepare($this->conn, $sql);
-            mysqli_stmt_bind_param($stmt, "i", $current_house_id);
-        } else {
-            $stmt = mysqli_prepare($this->conn, $sql);
         }
         
         $sql .= " ORDER BY house_name ASC";
+        
+        $stmt = mysqli_prepare($this->conn, $sql);
+        if ($current_house_id) {
+            mysqli_stmt_bind_param($stmt, "i", $current_house_id);
+        }
+        
         mysqli_stmt_execute($stmt);
         $result = mysqli_stmt_get_result($stmt);
         
@@ -1669,8 +1817,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get transfer history for a member or house
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getTransferHistory($member_id = null, $house_id = null, $limit = 50) {
+    public function getTransferHistory(?int $member_id = null, ?int $house_id = null, int $limit = 50): array {
         $sql = "SELECT 
                     l.*,
                     m.name as member_name,
@@ -1721,30 +1873,31 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get archived members
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getArchivedMembers($original_house_id = null, $limit = 100) {
+    public function getArchivedMembers(?int $original_house_id = null, int $limit = 100): array {
         $sql = "SELECT a.*, u.username as archived_by_name 
                 FROM member_archive a
                 LEFT JOIN users u ON a.archived_by = u.user_id";
         
+        $params = [];
+        $types = "";
+        
         if ($original_house_id) {
             $sql .= " WHERE a.original_house_id = ?";
-            $stmt = mysqli_prepare($this->conn, $sql);
-            mysqli_stmt_bind_param($stmt, "i", $original_house_id);
-        } else {
-            $stmt = mysqli_prepare($this->conn, $sql);
+            $params[] = $original_house_id;
+            $types .= "i";
         }
         
         $sql .= " ORDER BY a.archived_at DESC LIMIT ?";
+        $params[] = $limit;
+        $types .= "i";
         
-        if ($original_house_id) {
-            $stmt = mysqli_prepare($this->conn, $sql);
-            mysqli_stmt_bind_param($stmt, "ii", $original_house_id, $limit);
-        } else {
-            $stmt = mysqli_prepare($this->conn, $sql);
-            mysqli_stmt_bind_param($stmt, "i", $limit);
-        }
-        
+        $stmt = mysqli_prepare($this->conn, $sql);
+        mysqli_stmt_bind_param($stmt, $types, ...$params);
         mysqli_stmt_execute($stmt);
         $result = mysqli_stmt_get_result($stmt);
         
@@ -1759,7 +1912,7 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     /**
      * Toggle house join status (open/closed for joining)
      */
-    public function toggleHouseJoinStatus($house_id, $status) {
+    public function toggleHouseJoinStatus(int $house_id, int $status): bool {
         $sql = "UPDATE houses SET is_open_for_join = ? WHERE house_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "ii", $status, $house_id);
@@ -1770,8 +1923,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     /**
      * Get member's house history based on email and house code
      * Used for viewing past house data
+     *
+     * @return (float|int|null|string)[]|false
+     *
+     * @psalm-return array{house_id: float|int|null|string, house_name: float|int|null|string, house_code: float|int|null|string, member_id: float|int|null|string, name: float|int|null|string, email: float|int|null|string}|false
      */
-    public function getMemberHouseHistory($email, $house_code) {
+    public function getMemberHouseHistory(string $email, string $house_code): array|false {
         // First, find the house by code
         $house_sql = "SELECT house_id, house_name, house_code FROM houses WHERE house_code = ? AND is_active = 1";
         $house_stmt = mysqli_prepare($this->conn, $house_sql);
@@ -1821,8 +1978,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Calculate statistics for member's house history
+     *
+     * @return (float|int|null|string)[]
+     *
+     * @psalm-return array{total_deposits: float|int|null|string, total_meals: float|int|null|string, member_expenses: float|int, balance: float|int, meal_rate: float|int}
      */
-    public function calculateHouseHistoryStats($member_id, $house_id) {
+    public function calculateHouseHistoryStats(int $member_id, int $house_id): array {
         // Get deposits for this member and house
         $deposit_sql = "SELECT COALESCE(SUM(amount), 0) as total FROM deposits 
                          WHERE member_id = ? AND house_id = ?";
@@ -1880,8 +2041,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Generate a unique join token for house transfer
+     *
+     * @return (bool|mixed|string)[]
+     *
+     * @psalm-return array{success: bool, error?: string, token?: mixed, expires_at?: mixed}
      */
-    public function generateJoinToken($house_id, $member_id = null, $token_type = 'house_transfer') {
+    public function generateJoinToken(int $house_id, ?int $member_id = null, string $token_type = 'house_transfer'): array {
         // Generate unique token
         do {
             $token = strtoupper(bin2hex(random_bytes(8)));
@@ -1915,8 +2080,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Validate and use a join token
+     *
+     * @return (null|scalar)[]
+     *
+     * @psalm-return array{success: bool, house_id?: float|int|null|string, token_type?: float|int|null|string, error?: 'Invalid or expired token.'}
      */
-    public function useJoinToken($token, $member_id) {
+    public function useJoinToken(string $token, int $member_id): array {
         // Check if token exists and is valid
         $sql = "SELECT * FROM join_tokens 
                 WHERE token = ? AND is_used = 0 AND expires_at > NOW()";
@@ -1947,8 +2116,12 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Get pending join requests for a member (incoming requests to join member's current house)
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<non-empty-array<string, float|int|null|string>>
      */
-    public function getIncomingJoinRequests($house_id) {
+    public function getIncomingJoinRequests(int $house_id): array {
         $sql = "SELECT m.*, h_requested.house_name as requested_house_name
                 FROM members m
                 LEFT JOIN houses h_requested ON m.requested_house_id = h_requested.house_id
@@ -1968,11 +2141,13 @@ public function getDashboardStats($month = null, $year = null, $house_id = null)
     
     /**
      * Close database connection
+     * NOTE: Since getConnection() uses a static singleton, calling this will
+     * invalidate the shared connection. Only call at absolute end of script.
      */
-    public function close() {
-        if ($this->conn) {
-            mysqli_close($this->conn);
-        }
+    public function close(): void {
+        // Intentionally left as no-op to prevent accidentally closing
+        // the shared singleton connection from getConnection().
+        // PHP automatically closes connections at script shutdown.
     }
 }
 ?>

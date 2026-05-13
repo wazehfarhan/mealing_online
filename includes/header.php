@@ -39,7 +39,7 @@ if (!in_array($current_page, $excluded_pages)) {
         require_once __DIR__ . '/../config/database.php';
         $conn = getConnection();
         
-        $sql = "SELECT house_id FROM users WHERE user_id = ?";
+        $sql = "SELECT house_id, member_id FROM users WHERE user_id = ?";
         $stmt = mysqli_prepare($conn, $sql);
         mysqli_stmt_bind_param($stmt, "i", $_SESSION['user_id']);
         mysqli_stmt_execute($stmt);
@@ -49,16 +49,9 @@ if (!in_array($current_page, $excluded_pages)) {
             if ($row['house_id']) {
                 $_SESSION['house_id'] = $row['house_id'];
                 
-                // Also check if member_id is set
-                if (!isset($_SESSION['member_id']) && isset($_SESSION['user_id'])) {
-                    $member_sql = "SELECT member_id FROM users WHERE user_id = ?";
-                    $member_stmt = mysqli_prepare($conn, $member_sql);
-                    mysqli_stmt_bind_param($member_stmt, "i", $_SESSION['user_id']);
-                    mysqli_stmt_execute($member_stmt);
-                    $member_result = mysqli_stmt_get_result($member_stmt);
-                    if ($member_row = mysqli_fetch_assoc($member_result)) {
-                        $_SESSION['member_id'] = $member_row['member_id'];
-                    }
+                // Also set member_id if not already set
+                if (!isset($_SESSION['member_id']) && !empty($row['member_id'])) {
+                    $_SESSION['member_id'] = $row['member_id'];
                 }
             } else {
                 // No house, redirect to setup
@@ -71,16 +64,16 @@ if (!in_array($current_page, $excluded_pages)) {
             header("Location: ../auth/login.php");
             exit();
         }
-        
-        mysqli_close($conn);
+        // Note: Do NOT close the connection here — it's a shared singleton from getConnection()
     }
 }
 
+// Load shared dependencies once
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/functions.php';
+
 // Check for pending house requests (for members)
 if (isset($_SESSION['role']) && $_SESSION['role'] === 'member' && isset($_SESSION['member_id'])) {
-    require_once __DIR__ . '/../config/database.php';
-    require_once 'functions.php';
-    
     $functions = new Functions();
     $member_id = $_SESSION['member_id'];
     
@@ -96,8 +89,6 @@ if (isset($_SESSION['role']) && $_SESSION['role'] === 'member' && isset($_SESSIO
     // IMPORTANT: Do NOT logout the member if their house is inactive
     // Just show them a warning - they should still be able to access their account
     if (isset($_SESSION['house_id'])) {
-        // Include database connection
-        require_once __DIR__ . '/../config/database.php';
         $conn = getConnection();
         
         $house_check_sql = "SELECT is_active FROM houses WHERE house_id = ?";
@@ -113,7 +104,7 @@ if (isset($_SESSION['role']) && $_SESSION['role'] === 'member' && isset($_SESSIO
         
         // If house is inactive and member's status is active, set to house_inactive
         // BUT DO NOT LOG THEM OUT - just update the status for display purposes
-        if ($house_check['is_active'] == 0 && $_SESSION['house_status'] == 'active') {
+        if ($house_check['is_active'] == 0 && ($_SESSION['house_status'] ?? 'active') == 'active') {
             $_SESSION['house_status'] = 'house_inactive';
         }
     }
@@ -121,10 +112,9 @@ if (isset($_SESSION['role']) && $_SESSION['role'] === 'member' && isset($_SESSIO
 
 // Check for pending approval count (for managers)
 if (isset($_SESSION['role']) && $_SESSION['role'] === 'manager') {
-    require_once __DIR__ . '/../config/database.php';
-    require_once 'functions.php';
-    
-    $functions = new Functions();
+    if (!isset($functions)) {
+        $functions = new Functions();
+    }
     $pending_count = $functions->countPendingRequests();
     $_SESSION['pending_requests'] = $pending_count;
 }
@@ -502,14 +492,14 @@ $page_title = isset($page_title) ? $page_title : 'Dashboard';
             <!-- Flash Messages -->
             <?php if (isset($_SESSION['success'])): ?>
             <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <i class="fas fa-check-circle me-2"></i><?php echo $_SESSION['success']; ?>
+                <i class="fas fa-check-circle me-2"></i><?php echo htmlspecialchars($_SESSION['success'], ENT_QUOTES, 'UTF-8'); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
             <?php unset($_SESSION['success']); endif; ?>
             
             <?php if (isset($_SESSION['error'])): ?>
             <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <i class="fas fa-exclamation-circle me-2"></i><?php echo $_SESSION['error']; ?>
+                <i class="fas fa-exclamation-circle me-2"></i><?php echo htmlspecialchars($_SESSION['error'], ENT_QUOTES, 'UTF-8'); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
             <?php unset($_SESSION['error']); endif; ?>

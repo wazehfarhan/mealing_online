@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<psalm
+    errorLevel="5"
+    resolveFromConfigFile="true"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://getpsalm.org/schema/psalm"
+    xsi:schemaLocation="https://getpsalm.org/schema/psalm vendor/vimeo/psalm/config.xsd"
+>
+    <projectFiles>
+        <directory name="." />
+        <ignoreFiles>
+            <directory name="vendor" />
+            <directory name="node_modules" />
+        </ignoreFiles>
+    </projectFiles>
+
+    <!-- Suppress type hint warnings for legacy code -->
+    <issueHandlers>
+        <MissingParamType>
+            <errorLevel type="suppress" />
+        </MissingParamType>
+        <MissingReturnType>
+            <errorLevel type="suppress" />
+        </MissingReturnType>
+        <MissingPropertyType>
+            <errorLevel type="suppress" />
+        </MissingPropertyType>
+        <MissingDocblockType>
+            <errorLevel type="suppress" />
+        </MissingDocblockType>
+    </issueHandlers>
+</psalm>

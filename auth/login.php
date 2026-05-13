@@ -53,16 +53,17 @@ if (isset($_SESSION['error'])) {
 
 // Initialize rate limiter
 require_once '../includes/rate_limiter.php';
+require_once '../includes/csrf.php';
 $rate_limiter = new RateLimiter(getConnection());
 
 // Handle login form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Validate CSRF token
-    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+    // Validate CSRF token using constant-time comparison
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = "Security token invalid. Please try again.";
     } else {
-        // FIXED: Replace FILTER_SANITIZE_STRING with FILTER_SANITIZE_FULL_SPECIAL_CHARS
-        $username = filter_input(INPUT_POST, 'username', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+        // Use trim() only — do NOT html-encode before auth lookup
+        $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
         
         if (empty($username) || empty($password)) {

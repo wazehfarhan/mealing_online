@@ -32,7 +32,7 @@ $stats = $functions->getSystemStats();
 $developerInfo = $functions->getDeveloperInfo();
 
 // Helper function to assign color classes to skills
-function getSkillColorClass($skill) {
+function getSkillColorClass(string $skill): string {
     $colors = [
         'C' => 'bg-c', 'C++' => 'bg-cpp', 'Java' => 'bg-java', 
         'C#' => 'bg-csharp', 'JavaScript' => 'bg-js', 'SQL' => 'bg-sql',

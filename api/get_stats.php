@@ -62,8 +62,4 @@ try {
     ]);
 }
 
-// Close connection
-if (isset($functions)) {
-    $functions->close();
-}
 ?>

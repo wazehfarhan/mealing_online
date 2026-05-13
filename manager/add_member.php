@@ -156,7 +156,7 @@ require_once '../includes/header.php';
             <div class="card-body">
                 <?php if ($error): ?>
                 <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-circle me-2"></i><?php echo $error; ?>
+                <i class="fas fa-exclamation-circle me-2"></i><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
                 </div>
                 <?php endif; ?>
                 

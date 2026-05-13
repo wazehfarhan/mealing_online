@@ -1,0 +1,16 @@
+{
+  "intelephense.diagnostics.undefinedTypes": false,
+  "intelephense.diagnostics.undefinedVariables": false,
+  "intelephense.diagnostics.undefinedConstant": false,
+  "intelephense.diagnostics.emptyDocBlockDescription": false,
+  "intelephense.diagnostics.docBlockMissing": false,
+  "intelephense.diagnostics.docBlockMissingParamType": false,
+  "intelephense.diagnostics.docBlockMissingReturnType": false,
+  "intelephense.diagnostics.docBlockParamTypeMismatch": false,
+  "intelephense.diagnostics.docBlockPropertyTypeMismatch": false,
+  "intelephense.diagnostics.docBlockReturnTypeMismatch": false,
+  "intelephense.diagnostics.paramTypeMismatch": false,
+  "intelephense.diagnostics.propertyInitializationMissing": false,
+  "intelephense.diagnostics.returnTypeMismatch": false,
+  "intelephense.diagnostics.typeErrorCallable": false
+}

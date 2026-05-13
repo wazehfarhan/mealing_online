@@ -5,12 +5,13 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // Load config from .env (Task 1.1)
-if (!file_exists(__DIR__ . '/../.env')) {
+$env_path = __DIR__ . '/../.env';
+$env_file = @file_get_contents($env_path);
+if ($env_file === false) {
     die("Error: .env file not found. Please copy .env.example to .env and edit your database credentials.");
 }
 
 // Parse .env file properly
-$env_file = file_get_contents(__DIR__ . '/../.env');
 $env_array = [];
 foreach (explode("\n", $env_file) as $line) {
     $line = trim($line);
@@ -52,6 +53,14 @@ if (ENVIRONMENT === 'development') {
 // Create connection with error handling
 function getConnection() {
     static $conn = null;
+    
+    // Check if existing connection is still alive
+    if ($conn !== null) {
+        if (!@mysqli_ping($conn)) {
+            @mysqli_close($conn);
+            $conn = null; // Force reconnection
+        }
+    }
     
     if ($conn === null) {
         // Use TCP connection instead of socket for better compatibility

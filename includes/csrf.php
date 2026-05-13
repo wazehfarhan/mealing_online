@@ -3,7 +3,9 @@
  * CSRF Protection Functions (Task 1.3)
  */
 
-session_start(); // Ensure session active
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 /**
  * Generate CSRF token and store in session

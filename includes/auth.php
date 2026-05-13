@@ -2,10 +2,10 @@
 require_once __DIR__ . '/../config/database.php';
 
 class Auth {
-    private $conn;
+    private mysqli $conn;
     
     // Security questions list
-    private $security_questions = [
+    private array $security_questions = [
         "What was your childhood nickname?",
         "In what city did you meet your spouse/significant other?",
         "What is the name of your favorite childhood friend?",
@@ -27,7 +27,7 @@ class Auth {
         $this->conn = getConnection();
     }
     
-    public function getSecurityQuestions() {
+    public function getSecurityQuestions(): array {
         return $this->security_questions;
     }
     
@@ -35,7 +35,7 @@ class Auth {
      * Refresh house code in session
      * This ensures the session always has the latest house code
      */
-    public function refreshHouseCode() {
+    public function refreshHouseCode(): void {
         if (isset($_SESSION['house_id']) && !empty($_SESSION['house_id'])) {
             $sql = "SELECT house_code FROM houses WHERE house_id = ?";
             $stmt = mysqli_prepare($this->conn, $sql);
@@ -52,10 +52,9 @@ class Auth {
     }
     
     // Updated login method
-    public function login($username, $password) {
-        // Sanitize input
-        $username = mysqli_real_escape_string($this->conn, $username);
-        
+    public function login(string $username, string $password): bool {
+        // Note: No need to escape — using prepared statements with parameter binding
+        $username = trim($username);
         // Prepare SQL statement - Join with houses table to get house info
         $sql = "SELECT u.*, h.house_id as user_house_id, h.house_name, h.house_code 
                 FROM users u 
@@ -116,11 +115,14 @@ class Auth {
         return false;
     }
     
-    public function isLoggedIn() {
+    public function isLoggedIn(): bool {
         return isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true;
     }
     
-    public function requireLogin() {
+    /**
+     * @return void
+     */
+    public function requireLogin(): void {
         if (!$this->isLoggedIn()) {
             $_SESSION['redirect_url'] = $_SERVER['REQUEST_URI'];
             header("Location: ../auth/login.php");
@@ -128,7 +130,10 @@ class Auth {
         }
     }
     
-    public function requireRole($role) {
+    /**
+     * @return void
+     */
+    public function requireRole(string $role): void {
         $this->requireLogin();
         
         if ($_SESSION['role'] !== $role) {
@@ -153,7 +158,10 @@ class Auth {
         }
     }
     
-    public function requireHouse() {
+    /**
+     * @return void
+     */
+    public function requireHouse(): void {
         $this->requireLogin();
         
         // Check if house_id is set in session
@@ -174,14 +182,14 @@ class Auth {
                 if ($_SESSION['role'] === 'manager') {
                     header("Location: ../manager/setup_house.php");
                 } else {
-                    header("Location: ../manager/setup_house.php");
+                    header("Location: ../member/dashboard.php");
                 }
                 exit();
             }
         }
     }
     
-    public function hasHouse($user_id = null) {
+    public function hasHouse(?int $user_id = null): bool {
         if (!$user_id && isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
         }
@@ -203,7 +211,12 @@ class Auth {
         return false;
     }
     
-    public function getUserHouseInfo($user_id = null) {
+    /**
+     * @return (float|int|null|string)[]|false|null
+     *
+     * @psalm-return array<string, float|int|null|string>|false|null
+     */
+    public function getUserHouseInfo(?int $user_id = null): array|false|null {
         if (!$user_id && isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
         }
@@ -224,7 +237,12 @@ class Auth {
         return mysqli_fetch_assoc($result);
     }
     
-    public function createHouse($house_name, $description = '', $user_id = null) {
+    /**
+     * @return (bool|mixed|string)[]
+     *
+     * @psalm-return array{success: bool, error?: string, house_id?: mixed, house_code?: mixed, member_id?: mixed}
+     */
+    public function createHouse(string $house_name, string $description = '', ?int $user_id = null): array {
         if (!$user_id && isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
         }
@@ -343,7 +361,12 @@ class Auth {
         }
     }
     
-    public function joinHouse($house_code, $user_id = null) {
+    /**
+     * @return (mixed|null|scalar)[]
+     *
+     * @psalm-return array{success: bool, error?: string, house_id?: float|int|null|string, house_name?: float|int|null|string, member_id?: mixed}
+     */
+    public function joinHouse(string $house_code, ?int $user_id = null): array {
         if (!$user_id && isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
         }
@@ -448,7 +471,12 @@ class Auth {
         }
     }
     
-    public function leaveHouse($user_id = null) {
+    /**
+     * @return (bool|string)[]
+     *
+     * @psalm-return array{success: bool, error?: string}
+     */
+    public function leaveHouse(?int $user_id = null): array {
         if (!$user_id && isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
         }
@@ -536,7 +564,10 @@ class Auth {
         }
     }
     
-    public function logout() {
+    /**
+     * @return never
+     */
+    public function logout(): never {
         // Unset all session variables
         $_SESSION = array();
         
@@ -558,7 +589,7 @@ class Auth {
     }
     
     // Updated register method with security questions
-    public function register($username, $email, $password, $role = 'member', $security_question = null, $security_answer = null, $member_id = null) {
+    public function register(string $username, string $email, string $password, string $role = 'member', ?string $security_question = null, ?string $security_answer = null, ?int $member_id = null): bool {
         // Check if user already exists
         $check_sql = "SELECT user_id FROM users WHERE username = ? OR email = ?";
         $check_stmt = mysqli_prepare($this->conn, $check_sql);
@@ -596,7 +627,12 @@ class Auth {
         return mysqli_stmt_execute($stmt);
     }
     
-    public function getCurrentUser() {
+    /**
+     * @return (float|int|null|string)[]|false|null
+     *
+     * @psalm-return array<string, float|int|null|string>|false|null
+     */
+    public function getCurrentUser(): array|false|null {
         if ($this->isLoggedIn()) {
             $sql = "SELECT u.*, m.name as member_name, h.house_name, h.house_code 
                     FROM users u 
@@ -613,7 +649,7 @@ class Auth {
         return null;
     }
     
-    public function updateProfile($user_id, $username, $email) {
+    public function updateProfile(int $user_id, string $username, string $email): bool {
         $sql = "UPDATE users SET username = ?, email = ? WHERE user_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "ssi", $username, $email, $user_id);
@@ -626,7 +662,7 @@ class Auth {
         return false;
     }
     
-    public function changePassword($user_id, $current_password, $new_password) {
+    public function changePassword(int $user_id, string $current_password, string $new_password): bool {
         // Get current password
         $sql = "SELECT password FROM users WHERE user_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
@@ -650,13 +686,16 @@ class Auth {
     }
     
     // Helper function to check if current page is house setup
-    public function isHouseSetupPage() {
+    public function isHouseSetupPage(): bool {
         $current_page = basename($_SERVER['PHP_SELF']);
         return $current_page === 'setup_house.php';
     }
     
     // Helper function to redirect to house setup if no house
-    public function redirectIfNoHouse() {
+    /**
+     * @return void
+     */
+    public function redirectIfNoHouse(): void {
         if (!$this->isHouseSetupPage() && !$this->hasHouse()) {
             header("Location: setup_house.php");
             exit();
@@ -664,7 +703,12 @@ class Auth {
     }
     
     // Get all houses (for admin or manager selection)
-    public function getAllHouses() {
+    /**
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<array<string, float|int|null|string>>
+     */
+    public function getAllHouses(): array {
         $sql = "SELECT h.*, u.username as manager_name, 
                        (SELECT COUNT(*) FROM users WHERE house_id = h.house_id) as total_members,
                        (SELECT COUNT(*) FROM members WHERE house_id = h.house_id AND status = 'active') as active_members
@@ -678,7 +722,7 @@ class Auth {
         return mysqli_fetch_all($result, MYSQLI_ASSOC);
     }
     
-    public function getUserHouseId($user_id) {
+    public function getUserHouseId(int $user_id): int|float|string|null {
         $conn = getConnection();
         $sql = "SELECT house_id FROM users WHERE user_id = ?";
         $stmt = mysqli_prepare($conn, $sql);
@@ -690,7 +734,12 @@ class Auth {
     }
     
     // Get house members
-    public function getHouseMembers($house_id = null) {
+    /**
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<array<string, float|int|null|string>>
+     */
+    public function getHouseMembers(?int $house_id = null): array {
         if (!$house_id && isset($_SESSION['house_id'])) {
             $house_id = $_SESSION['house_id'];
         }
@@ -714,8 +763,10 @@ class Auth {
     
     /**
      * Generate join token for a member
+     *
+     * @return false|string
      */
-    public function generateJoinToken($member_id, $house_id) {
+    public function generateJoinToken(int $member_id, int $house_id): string|false {
         // Generate unique token
         $token = bin2hex(random_bytes(32));
         $expiry = date('Y-m-d H:i:s', strtotime('+7 days'));
@@ -735,8 +786,12 @@ class Auth {
     
     /**
      * Validate join token
+     *
+     * @return (float|int|null|string)[]|false|null
+     *
+     * @psalm-return array<string, float|int|null|string>|false|null
      */
-    public function validateJoinToken($token) {
+    public function validateJoinToken(string $token): array|false|null {
         $sql = "SELECT m.*, h.house_name, h.house_code 
                 FROM members m 
                 JOIN houses h ON m.house_id = h.house_id 
@@ -756,8 +811,12 @@ class Auth {
     
     /**
      * Complete member registration with token (updated with security questions)
+     *
+     * @return (bool|int|mixed|string)[]
+     *
+     * @psalm-return array{success: bool, error?: string, user_id?: int|string, member_id?: mixed, house_id?: mixed}
      */
-    public function registerWithToken($username, $email, $password, $token, $security_question = null, $security_answer = null, $phone = '') {
+    public function registerWithToken(string $username, string $email, string $password, string $token, ?string $security_question = null, ?string $security_answer = null, string $phone = ''): array {
         // Validate token first
         $tokenData = $this->validateJoinToken($token);
         if (!$tokenData) {
@@ -839,7 +898,7 @@ class Auth {
     /**
      * Check if username exists
      */
-    private function usernameExists($username) {
+    private function usernameExists(string $username): bool {
         $sql = "SELECT user_id FROM users WHERE username = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "s", $username);
@@ -852,7 +911,7 @@ class Auth {
     /**
      * Check if email exists
      */
-    private function emailExists($email) {
+    private function emailExists(string $email): bool {
         $sql = "SELECT user_id FROM users WHERE email = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "s", $email);
@@ -865,7 +924,7 @@ class Auth {
     /**
      * Set user session with proper data
      */
-    private function setUserSession($userData) {
+    private function setUserSession(array $userData): void {
         $_SESSION['user_id'] = $userData['user_id'];
         $_SESSION['username'] = $userData['username'];
         $_SESSION['email'] = $userData['email'];
@@ -891,8 +950,12 @@ class Auth {
     
     /**
      * Get members without user accounts
+     *
+     * @return (float|int|null|string)[][]
+     *
+     * @psalm-return list<array<string, float|int|null|string>>
      */
-    public function getMembersWithoutUsers($house_id = null) {
+    public function getMembersWithoutUsers(?int $house_id = null): array {
         if (!$house_id && isset($_SESSION['house_id'])) {
             $house_id = $_SESSION['house_id'];
         }
@@ -922,8 +985,10 @@ class Auth {
     
     /**
      * Get security question for a user by email
+     *
+     * @return float|int|null|string
      */
-    public function getSecurityQuestion($email) {
+    public function getSecurityQuestion(string $email): int|float|string|null {
         $sql = "SELECT security_question FROM users WHERE email = ? AND is_active = 1";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "s", $email);
@@ -941,7 +1006,7 @@ class Auth {
     /**
      * Verify security answer
      */
-    public function verifySecurityAnswer($email, $answer) {
+    public function verifySecurityAnswer(string $email, string $answer): bool {
         $sql = "SELECT security_answer FROM users WHERE email = ? AND is_active = 1";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "s", $email);
@@ -964,8 +1029,12 @@ class Auth {
     
     /**
      * Generate password reset token
+     *
+     * @return (mixed|scalar)[]
+     *
+     * @psalm-return array{success: bool, error?: 'Email not found'|'Failed to generate reset token'|'No security question set for this account', token?: mixed, question?: float|int|string}
      */
-    public function generateResetToken($email) {
+    public function generateResetToken(string $email): array {
         // Check if email exists and has security question
         $sql = "SELECT user_id, security_question FROM users WHERE email = ? AND is_active = 1";
         $stmt = mysqli_prepare($this->conn, $sql);
@@ -1005,8 +1074,12 @@ class Auth {
     
     /**
      * Verify reset token and answer
+     *
+     * @return (bool|string)[]
+     *
+     * @psalm-return array{success: bool, error?: string}
      */
-    public function verifyResetToken($email, $token, $answer) {
+    public function verifyResetToken(string $email, string $token, string $answer): array {
         $sql = "SELECT reset_token, reset_token_expiry, security_answer 
                 FROM users 
                 WHERE email = ? AND is_active = 1";
@@ -1040,8 +1113,12 @@ class Auth {
     
     /**
      * Reset password with token
+     *
+     * @return (bool|string)[]
+     *
+     * @psalm-return array{success: bool, error?: 'Failed to reset password'|'Invalid token'|'Token has expired'}
      */
-    public function resetPassword($email, $token, $new_password) {
+    public function resetPassword(string $email, string $token, string $new_password): array {
         // Verify token first
         $sql = "SELECT reset_token, reset_token_expiry 
                 FROM users 
@@ -1079,8 +1156,12 @@ class Auth {
     
     /**
      * Update security question and answer
+     *
+     * @return (bool|string)[]
+     *
+     * @psalm-return array{success: bool, error?: 'Current password is incorrect'|'Failed to update security question'|'User not found'}
      */
-    public function updateSecurityQuestion($user_id, $question, $answer, $current_password = null) {
+    public function updateSecurityQuestion(int $user_id, string $question, string $answer, ?string $current_password = null): array {
         // Verify current password if provided
         if ($current_password !== null) {
             $sql = "SELECT password FROM users WHERE user_id = ?";
@@ -1116,7 +1197,7 @@ class Auth {
     /**
      * Check if user has security question set
      */
-    public function hasSecurityQuestion($user_id = null) {
+    public function hasSecurityQuestion(?int $user_id = null): bool {
         if (!$user_id && isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
         }
@@ -1140,8 +1221,12 @@ class Auth {
     
     /**
      * Get user by email
+     *
+     * @return (float|int|null|string)[]|false|null
+     *
+     * @psalm-return array<string, float|int|null|string>|false|null
      */
-    public function getUserByEmail($email) {
+    public function getUserByEmail(string $email): array|false|null {
         $sql = "SELECT * FROM users WHERE email = ? AND is_active = 1";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "s", $email);
@@ -1157,8 +1242,12 @@ class Auth {
     
     /**
      * Validate reset token only (without answer check)
+     *
+     * @return (bool|string)[]
+     *
+     * @psalm-return array{success: bool, error?: 'Invalid token'|'Token has expired'}
      */
-    public function validateResetTokenOnly($email, $token) {
+    public function validateResetTokenOnly(string $email, string $token): array {
         $sql = "SELECT reset_token, reset_token_expiry 
                 FROM users 
                 WHERE email = ? AND reset_token = ? AND is_active = 1";
@@ -1184,7 +1273,7 @@ class Auth {
     /**
      * Clear reset token (for cleanup or after successful reset)
      */
-    public function clearResetToken($email) {
+    public function clearResetToken(string $email): bool {
         $sql = "UPDATE users SET reset_token = NULL, reset_token_expiry = NULL WHERE email = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "s", $email);
@@ -1194,8 +1283,12 @@ class Auth {
     
     /**
      * Get member's current house status
+     *
+     * @return (float|int|null|string)[]|false|null
+     *
+     * @psalm-return array<string, float|int|null|string>|false|null
      */
-    public function getMemberStatus($member_id) {
+    public function getMemberStatus(int $member_id): array|false|null {
         $sql = "SELECT house_status, requested_house_id, leave_request_date, join_request_date 
                 FROM members WHERE member_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
@@ -1208,7 +1301,7 @@ class Auth {
     /**
      * Update member's house after transfer approval
      */
-    public function updateMemberHouse($member_id, $new_house_id) {
+    public function updateMemberHouse(int $member_id, int $new_house_id): bool {
         $sql = "UPDATE members SET house_id = ?, house_status = 'active', 
                 requested_house_id = NULL, join_request_date = NULL 
                 WHERE member_id = ?";
@@ -1220,7 +1313,7 @@ class Auth {
     /**
      * Update user's house after transfer approval
      */
-    public function updateUserHouse($member_id, $new_house_id) {
+    public function updateUserHouse(int $member_id, int $new_house_id): bool {
         $sql = "UPDATE users SET house_id = ? WHERE member_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "ii", $new_house_id, $member_id);
@@ -1230,7 +1323,7 @@ class Auth {
     /**
      * Archive member when leaving house
      */
-    public function archiveMember($member_id, $archived_by) {
+    public function archiveMember(int $member_id, int $archived_by): bool {
         $sql = "INSERT INTO member_archive (member_id, name, email, phone, original_house_id, 
                 total_deposits, total_meals, archived_at, archived_by)
                 SELECT m.member_id, m.name, m.email, m.phone, m.house_id,
@@ -1247,7 +1340,7 @@ class Auth {
     /**
      * Log house transfer action
      */
-    public function logHouseTransfer($member_id, $from_house_id, $to_house_id, $action, $performed_by, $notes = '') {
+    public function logHouseTransfer(int $member_id, int $from_house_id, int $to_house_id, string $action, int $performed_by, string $notes = ''): bool {
         $sql = "INSERT INTO house_transfers_log 
                 (member_id, from_house_id, to_house_id, action, performed_by, performed_at, notes)
                 VALUES (?, ?, ?, ?, ?, NOW(), ?)";
@@ -1258,8 +1351,12 @@ class Auth {
     
     /**
      * Check if user is viewing history
+     *
+     * @return (float|int|null|string)[]|false|null
+     *
+     * @psalm-return array<string, float|int|null|string>|false|null
      */
-    public function isViewingHistory($member_id) {
+    public function isViewingHistory(int $member_id): array|false|null {
         $sql = "SELECT is_viewing_history, history_house_id FROM members WHERE member_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "i", $member_id);
@@ -1271,7 +1368,7 @@ class Auth {
     /**
      * Set history view mode
      */
-    public function setHistoryView($member_id, $house_id) {
+    public function setHistoryView(int $member_id, int $house_id): bool {
         $sql = "UPDATE members SET is_viewing_history = 1, history_house_id = ? WHERE member_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "ii", $house_id, $member_id);
@@ -1281,7 +1378,7 @@ class Auth {
     /**
      * Clear history view mode
      */
-    public function clearHistoryView($member_id) {
+    public function clearHistoryView(int $member_id): bool {
         $sql = "UPDATE members SET is_viewing_history = 0, history_house_id = NULL WHERE member_id = ?";
         $stmt = mysqli_prepare($this->conn, $sql);
         mysqli_stmt_bind_param($stmt, "i", $member_id);

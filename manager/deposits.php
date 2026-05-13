@@ -85,7 +85,7 @@ $filter_year = isset($_GET['year']) ? intval($_GET['year']) : $current_year;
 $filter_member = isset($_GET['member']) ? intval($_GET['member']) : 0;
 
 // Function to build safe WHERE clause with parameters
-function buildWhereClause($month, $year, $member, $house_id, &$params, &$types) {
+function buildWhereClause(int $month, int $year, int $member, int $house_id, array &$params, string &$types): string {
     $where_parts = ["house_id = ?"];
     $types .= "i";
     $params[] = $house_id;
@@ -126,7 +126,7 @@ function buildWhereClause($month, $year, $member, $house_id, &$params, &$types) 
 }
 
 // Function to build aliased WHERE clause with parameters
-function buildAliasedWhereClause($month, $year, $member, $house_id, &$params, &$types) {
+function buildAliasedWhereClause(int $month, int $year, int $member, int $house_id, array &$params, string &$types): string {
     $where_parts = ["d.house_id = ?"];
     $types .= "i";
     $params[] = $house_id;
