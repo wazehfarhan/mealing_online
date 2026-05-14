@@ -44,24 +44,28 @@ function setSecurityHeaders() {
     }
 
     // Set secure cookie flags
-    if (PHP_VERSION_ID >= 70300) {
-        session_set_cookie_params([
-            'lifetime' => 0,
-            'path' => '/',
-            'domain' => $_SERVER['HTTP_HOST'] ?? '',
-            'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
-            'httponly' => true,
-            'samesite' => 'Strict'
-        ]);
-    } else {
-        // Fallback for PHP < 7.3
-        session_set_cookie_params(
-            0,                                              // lifetime
-            '/',                                            // path
-            $_SERVER['HTTP_HOST'] ?? '',                   // domain
-            !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',  // secure
-            true                                            // httponly
-        );
+    // Important: session_set_cookie_params() must be called only before session_start()
+    // to avoid warnings when a session is already active.
+    if (session_status() === PHP_SESSION_NONE) {
+        if (PHP_VERSION_ID >= 70300) {
+            session_set_cookie_params([
+                'lifetime' => 0,
+                'path' => '/',
+                'domain' => $_SERVER['HTTP_HOST'] ?? '',
+                'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+                'httponly' => true,
+                'samesite' => 'Strict'
+            ]);
+        } else {
+            // Fallback for PHP < 7.3
+            session_set_cookie_params(
+                0,                                              // lifetime
+                '/',                                            // path
+                $_SERVER['HTTP_HOST'] ?? '',                   // domain
+                !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',  // secure
+                true                                            // httponly
+            );
+        }
     }
 }
 

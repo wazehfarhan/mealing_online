@@ -34,10 +34,11 @@ function verifyCSRFToken($token = null) {
 
     $valid = hash_equals($_SESSION['csrf_token'], $token);
 
-    // Regenerate token after use for enhanced security
-    if ($valid) {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    }
+    // Do not rotate the CSRF token during the same request.
+    // Token rotation after successful validation can break forms that are retried
+    // (double-submit / browser retry / slow networks) because the second request
+    // would still carry the previous token.
+
 
     return $valid;
 }

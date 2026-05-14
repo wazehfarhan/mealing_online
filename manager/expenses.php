@@ -155,13 +155,12 @@ $offset = ($page - 1) * $per_page;
 $total_pages = ceil($total_records / $per_page);
 
 // =========================
-// FETCH EXPENSES - UPDATED: now includes updated_by
+// FETCH EXPENSES - updated_by may not exist in schema (handled below)
 // =========================
-$sql = "SELECT e.*, u.username as created_by_name, u2.username as updated_by_name
+$sql = "SELECT e.*, u.username as created_by_name
         FROM expenses e 
         LEFT JOIN users u ON e.created_by = u.user_id 
-        LEFT JOIN users u2 ON e.updated_by = u2.user_id
-        WHERE $where_clause 
+        WHERE $where_clause
         ORDER BY e.expense_date DESC, e.created_at DESC 
         LIMIT ? OFFSET ?";
 
@@ -434,7 +433,7 @@ $category_breakdown = $breakdown_result ? mysqli_fetch_all($breakdown_result, MY
                                 </td>
                                 <td>
                                     <?php if ($expense['updated_at'] && $expense['updated_at'] != $expense['created_at']): ?>
-                                        <?php echo $expense['updated_by_name'] ?: 'System'; ?>
+                                        <span class="text-muted">Last updated</span>
                                         <br>
                                         <small class="text-muted"><?php echo date('M d, Y h:i A', strtotime($expense['updated_at'])); ?></small>
                                     <?php else: ?>
@@ -566,6 +565,7 @@ function getCategoryColor($category) {
 // Helper function to get hex colors for chart
 function getCategoryHexColor($category) {
     $hex_colors = [
+
         'Rice' => '#007bff',        // Blue
         'Fish' => '#17a2b8',        // Cyan
         'Meat' => '#dc3545',        // Red

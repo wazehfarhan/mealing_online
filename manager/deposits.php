@@ -85,7 +85,7 @@ $filter_year = isset($_GET['year']) ? intval($_GET['year']) : $current_year;
 $filter_member = isset($_GET['member']) ? intval($_GET['member']) : 0;
 
 // Function to build safe WHERE clause with parameters
-function buildWhereClause(int $month, int $year, int $member, int $house_id, array &$params, string &$types): string {
+function buildDepositsWhereClause(int $month, int $year, int $member, int $house_id, array &$params, string &$types): string {
     $where_parts = ["house_id = ?"];
     $types .= "i";
     $params[] = $house_id;
@@ -169,10 +169,13 @@ function buildAliasedWhereClause(int $month, int $year, int $member, int $house_
 // Build WHERE clauses with parameters
 $params = [];
 $types = "";
-$simple_where = buildWhereClause($filter_month, $filter_year, $filter_member, $house_id, $params, $types);
+$params = [];
+$types = "";
+$simple_where = buildDepositsWhereClause($filter_month, $filter_year, $filter_member, $house_id, $params, $types);
 $aliased_params = [];
 $aliased_types = "";
 $aliased_where = buildAliasedWhereClause($filter_month, $filter_year, $filter_member, $house_id, $aliased_params, $aliased_types);
+
 
 // Get active members for filter dropdown (only from this house)
 $members_query = "SELECT * FROM members WHERE status = 'active' AND house_id = ? ORDER BY name";
@@ -238,9 +241,18 @@ $summary_query = "SELECT
                   COUNT(*) as total_deposits,
                   AVG(amount) as avg_deposit,
                   COUNT(DISTINCT member_id) as unique_members
-                  FROM deposits WHERE $simple_where";
-                  
-$summary_result = mysqli_query($conn, $summary_query);
+FROM deposits d
+                  WHERE $simple_where";
+
+$summary_stmt = mysqli_prepare($conn, $summary_query);
+
+if (!empty($params)) {
+    mysqli_stmt_bind_param($summary_stmt, $types, ...$params);
+}
+mysqli_stmt_execute($summary_stmt);
+$summary_result = mysqli_stmt_get_result($summary_stmt);
+
+
 if ($summary_result) {
     $summary = mysqli_fetch_assoc($summary_result);
     if (!$summary) {
