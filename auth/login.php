@@ -425,6 +425,16 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
             }
         }
         
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        
+        .login-card.shake {
+            animation: shake 0.6s ease-in-out;
+        }
+        
         @media screen and (max-height: 600px) and (orientation: landscape) {
             .login-container {
                 margin: 10px auto;
@@ -442,7 +452,7 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 </head>
 <body>
     <div class="login-container">
-        <div class="login-card">
+        <div class="login-card <?php echo $error ? 'shake' : ''; ?>">
             <div class="login-header">
                 <h2><i class="fas fa-utensils me-2"></i>Meal Management System</h2>
                 <p class="mb-0">Sign in to your account</p>
@@ -593,14 +603,23 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                 this.classList.remove('is-invalid');
             });
             
-            // Auto-hide alerts after 5 seconds
+            // Auto-hide success alerts after 10 seconds, keep error alerts visible longer
             setTimeout(() => {
-                const alerts = document.querySelectorAll('.alert');
+                const alerts = document.querySelectorAll('.alert-success');
                 alerts.forEach(alert => {
                     const bsAlert = new bootstrap.Alert(alert);
                     bsAlert.close();
                 });
-            }, 5000);
+            }, 10000);
+            
+            // Auto-hide error alerts after 20 seconds
+            setTimeout(() => {
+                const alerts = document.querySelectorAll('.alert-danger');
+                alerts.forEach(alert => {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                });
+            }, 20000);
             
             // Auto-focus username on desktop
             if (window.innerWidth > 768) {
