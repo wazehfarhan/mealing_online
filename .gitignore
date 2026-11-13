@@ -3,7 +3,8 @@
 
 # Logs
 *.log
-logs/
+/logs/*
+!/logs/.htaccess
 
 # Dependencies
 vendor/
