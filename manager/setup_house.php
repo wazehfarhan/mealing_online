@@ -322,6 +322,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="tab-content" id="houseTabContent">
                     <!-- Create House Tab -->
                     <div class="tab-pane fade show active" id="create" role="tabpanel">
+<form method="POST" action="">
+    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCSRFToken()); ?>">
+    <div class="mb-3">
                         <form method="POST" class="needs-validation" novalidate>
                             <div class="mb-3">
                                 <label for="house_name" class="form-label">House Name *</label>
@@ -348,6 +351,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </button>
                         </form>
                     </div>
+<form method="POST" action="">
+    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCSRFToken()); ?>">
+    <div class="mb-4">
                     
                     <!-- Join House Tab -->
                     <div class="tab-pane fade" id="join" role="tabpanel">

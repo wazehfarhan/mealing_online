@@ -330,84 +330,11 @@ function getBadgeTextColor($badge_color) {
 }
 </style>
 
-<script>
-$(document).ready(function() {
-    // Format amount on blur
-    $('#amount').on('blur', function() {
-        let value = parseFloat($(this).val());
-        if (!isNaN(value)) {
-            $(this).val(value.toFixed(2));
-        }
-    });
-    
-    // Auto-focus amount field
-    $('#amount').focus();
-    
-    // Show warning if amount is being increased significantly
-    let originalAmount = <?php echo $expense['amount']; ?>;
-    $('#amount').on('change', function() {
-        let newAmount = parseFloat($(this).val());
-        if (!isNaN(newAmount) && newAmount > originalAmount * 1.5) {
-            if (confirm('You are increasing the amount significantly (more than 50%). Are you sure this is correct?')) {
-                return true;
-            } else {
-                $(this).val(originalAmount.toFixed(2));
-            }
-        }
-    });
-    
-    // Enhance category dropdown with badges
-    $('#category').select2({
-        theme: 'bootstrap-5',
-        templateResult: function(state) {
-            if (!state.id) {
-                return state.text;
-            }
-            var $state = $(
-                '<span><span class="badge ' + getCategoryBadgeClass(state.text.trim()) + ' me-2">' + state.text.trim() + '</span></span>'
-            );
-            return $state;
-        },
-        templateSelection: function(state) {
-            if (!state.id) {
-                return state.text;
-            }
-            var $state = $(
-                '<span><span class="badge ' + getCategoryBadgeClass(state.text.trim()) + ' me-2">' + state.text.trim() + '</span></span>'
-            );
-            return $state;
-        }
-    });
-    
-    // Function to get badge class for category
-    function getCategoryBadgeClass(category) {
-        var colors = {
-            'Rice': 'bg-primary text-white',
-            'Fish': 'bg-info text-white',
-            'Meat': 'bg-danger text-white',
-            'Vegetables': 'bg-success text-white',
-            'Spices': 'bg-warning text-dark',
-            'Oil': 'bg-purple text-white',
-            'Food': 'bg-orange text-white',
-            'Others': 'bg-secondary text-white'
-        };
-        
-        // Default class
-        var defaultClass = 'bg-secondary text-white';
-        
-        // Find the category (case-insensitive)
-        for (var key in colors) {
-            if (category.toLowerCase() === key.toLowerCase()) {
-                return colors[key];
-            }
-        }
-        
-        return defaultClass;
-    }
-});
-</script>
+<span id="original-amount" style="display:none"><?php echo $expense['amount']; ?></span>
+
 
 <?php 
 mysqli_close($conn);
 require_once '../includes/footer.php'; 
+}
 ?>

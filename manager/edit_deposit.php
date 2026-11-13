@@ -303,35 +303,11 @@ $member_month_total = mysqli_fetch_assoc($member_month_result);
     </div>
 </div>
 
-<script>
-$(document).ready(function() {
-    // Format amount on blur
-    $('#amount').on('blur', function() {
-        let value = parseFloat($(this).val());
-        if (!isNaN(value)) {
-            $(this).val(value.toFixed(2));
-        }
-    });
-    
-    // Auto-focus amount field
-    $('#amount').focus();
-    
-    // Show warning if amount is being increased significantly
-    let originalAmount = <?php echo $deposit['amount']; ?>;
-    $('#amount').on('change', function() {
-        let newAmount = parseFloat($(this).val());
-        if (!isNaN(newAmount) && newAmount > originalAmount * 1.5) {
-            if (confirm('You are increasing the amount significantly (more than 50%). Are you sure this is correct?')) {
-                return true;
-            } else {
-                $(this).val(originalAmount.toFixed(2));
-            }
-        }
-    });
-});
-</script>
+<span id="original-amount" style="display:none"><?php echo $deposit['amount']; ?></span>
+
 
 <?php 
 mysqli_close($conn);
 require_once '../includes/footer.php'; 
+}
 ?>
