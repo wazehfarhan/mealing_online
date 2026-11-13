@@ -44,7 +44,7 @@ A comprehensive web-based application for managing meals in hostels, messes, and
 
 ### Prerequisites
 
-- PHP 7.4 or higher
+- PHP 8.1 or higher
 - MySQL 5.7 or higher
 - Apache/Nginx web server
 - Bootstrap 5 (included via CDN)
@@ -180,7 +180,7 @@ members (1) ───> (N) deposits
 ## 💻 Technology Stack
 
 - **Frontend**: HTML5, CSS3, Bootstrap 5, JavaScript
-- **Backend**: PHP 7.4+
+- **Backend**: PHP 8.1+
 - **Database**: MySQL 5.7+
 - **Authentication**: bcrypt, sessions, CSRF tokens
 - **Reporting**: TCPDF (for PDF generation)
@@ -310,6 +310,22 @@ define('BASE_URL', 'http://localhost/mealing_online/');
 4. **Access Control**
    - Role-based permissions
    - House-based data isolation
+
+## Audit Logs
+
+Application requests append plain-text audit entries with a request ID, user and house context, method/path, IP address, user agent, response status, and fatal errors. Authentication outcomes and successful or failed member, meal, expense, deposit, house, transfer, invite, and profile changes are recorded as separate events. Event summaries contain relevant record IDs, dates, amounts, statuses, and changed-field names, but never passwords, CSRF values, invite tokens, or raw request bodies. Query-string values are not recorded. Events are grouped by house, with one readable `YYYY-MM-DD.log` file per date; sanitized house names include the house ID to prevent collisions.
+
+The preferred location is `logs/<house name> (House <id>)/YYYY-MM-DD.log`; requests without a house are stored in `logs/system/`. The `logs/.htaccess` file blocks HTTP access. Keep the directory private (directories `0750`, files `0640`) and grant the PHP worker write access and the intended local user read access. On macOS XAMPP, the worker commonly runs as `daemon`; if `logs/` is not writable, the logger falls back to `xamppfiles/logs/`.
+
+For macOS XAMPP, run from the project directory and replace `YOUR_MACOS_USERNAME` with the account that should read logs:
+
+```sh
+chmod 0750 logs
+chmod +a 'daemon allow list,search,add_file,add_subdirectory,file_inherit,directory_inherit' logs
+chmod +a 'daemon allow write,append,file_inherit,directory_inherit,only_inherit' logs
+chmod +a 'YOUR_MACOS_USERNAME allow list,search,file_inherit,directory_inherit' logs
+chmod +a 'YOUR_MACOS_USERNAME allow read,file_inherit,directory_inherit,only_inherit' logs
+```
 
 ## 🚀 API Endpoints
 
