@@ -5,19 +5,13 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 require_once '../includes/auth.php';
-require_once '../includes/functions.php';
 require_once '../includes/csrf.php';
 
 $auth = new Auth();
-$functions = new Functions();
-
 $auth->requireRole('manager');
 
-// Get current user's house_id
-$user_id = $_SESSION['user_id'];
+$user_id = (int) $_SESSION['user_id'];
 $house_id = $_SESSION['house_id'] ?? null;
-
-// Check if user has a house
 if (!$house_id) {
     $_SESSION['error'] = "You need to set up a house first";
     header("Location: setup_house.php");
@@ -43,6 +37,9 @@ $join_url = '';
 
 // Generate CSRF token
 $csrf_token = generateCSRFToken();
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    audit_log_event('manager.member.create.view');
+}
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -50,10 +47,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = "Security token invalid. Please try again.";
     } else {
-        $name = trim($_POST['name']);
-        $phone = trim($_POST['phone']);
-        $email = trim($_POST['email']);
-        $join_date = trim($_POST['join_date']);
+        $name = is_string($_POST['name'] ?? null) ? trim($_POST['name']) : '';
+        $phone = is_string($_POST['phone'] ?? null) ? trim($_POST['phone']) : '';
+        $email = is_string($_POST['email'] ?? null) ? trim($_POST['email']) : '';
+        $join_date = is_string($_POST['join_date'] ?? null) ? trim($_POST['join_date']) : '';
 
         // Validation
         if (empty($name)) {
@@ -124,6 +121,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // Commit transaction
                     mysqli_commit($conn);
+                    audit_log_event('manager.member.create.success', [
+                        'member_id' => $member_id,
+                    ]);
 
                     // Create join URL
                     $base_url = str_replace($_SERVER['DOCUMENT_ROOT'], '', str_replace('\\', '/', dirname(__DIR__)));
@@ -138,22 +138,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit();
                 } catch (Exception $e) {
                     mysqli_rollback($conn);
-                    $error = $e->getMessage();
+                    audit_log_event('manager.member.create.error', [
+                        'error' => $e->getMessage(),
+                    ]);
+                    $error = "Unable to add member. Please try again.";
                 }
             }
         }
     }
 
-    // Check for success message in session (from redirect)
-    if (isset($_SESSION['success'])) {
-        $success = $_SESSION['success'];
-        $join_url = $_SESSION['join_url'] ?? '';
-        unset($_SESSION['success']);
-        unset($_SESSION['join_url']);
+    if ($error !== '') {
+        audit_log_event('manager.member.create.rejected', [
+            'reason' => $error,
+        ]);
     }
+}
 
-    // Now include the header AFTER all processing
-    require_once '../includes/header.php';
+if (isset($_SESSION['success'])) {
+    $success = $_SESSION['success'];
+    $join_url = $_SESSION['join_url'] ?? '';
+    unset($_SESSION['success']);
+    unset($_SESSION['join_url']);
+}
+
+require_once '../includes/header.php';
 ?>
     <div class="row">
         <div class="col-lg-8 mx-auto">
@@ -171,20 +179,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <?php if (isset($_SESSION['error'])): ?>
                         <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-circle me-2"></i><?php echo $_SESSION['error']; ?>
+                            <i class="fas fa-exclamation-circle me-2"></i><?php echo htmlspecialchars($_SESSION['error'], ENT_QUOTES, 'UTF-8'); ?>
                         </div>
                     <?php unset($_SESSION['error']);
                     endif; ?>
 
                     <?php if ($success): ?>
                         <div class="alert alert-success">
-                            <i class="fas fa-check-circle me-2"></i><?php echo $success; ?>
+                            <i class="fas fa-check-circle me-2"></i><?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?>
 
                             <?php if ($join_url): ?>
                                 <div class="mt-3">
                                     <h6><i class="fas fa-link me-2"></i>Member Join Link:</h6>
                                     <div class="input-group">
-                                        <input type="text" class="form-control" id="joinLink" value="<?php echo $join_url; ?>" readonly>
+                                        <input type="text" class="form-control" id="joinLink" value="<?php echo htmlspecialchars($join_url, ENT_QUOTES, 'UTF-8'); ?>" readonly>
                                         <button class="btn btn-outline-secondary" type="button" onclick="copyJoinLink()">
                                             <i class="fas fa-copy"></i> Copy
                                         </button>
@@ -243,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="col-md-6">
                                 <label for="join_date" class="form-label">Join Date *</label>
                                 <input type="date" class="form-control" id="join_date" name="join_date"
-                                    value="<?php echo isset($_POST['join_date']) ? $_POST['join_date'] : date('Y-m-d'); ?>"
+                                    value="<?php echo htmlspecialchars($_POST['join_date'] ?? date('Y-m-d'), ENT_QUOTES, 'UTF-8'); ?>"
                                     required max="<?php echo date('Y-m-d'); ?>">
                                 <div class="invalid-feedback">Please select a join date</div>
                                 <div class="form-text">Date when member joined this house</div>
@@ -343,5 +351,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php
     mysqli_close($conn);
     require_once '../includes/footer.php';
-}
 ?>

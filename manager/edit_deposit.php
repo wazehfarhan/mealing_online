@@ -2,7 +2,13 @@
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/csrf.php';
-require_once '../includes/header.php';
+
+// Check if deposit ID is provided BEFORE including header (to avoid "headers already sent" error)
+if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
+    $_SESSION['error'] = "Invalid deposit ID";
+    header("Location: deposits.php");
+    exit();
+}
 
 $auth = new Auth();
 $functions = new Functions();
@@ -66,6 +72,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verify CSRF token
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = "Security token invalid. Please try again.";
+        audit_log_event('manager.deposit.update.rejected', [
+            'deposit_id' => $deposit_id,
+            'reason' => 'invalid_csrf_token',
+        ]);
     } else {
         $member_id = intval($_POST['member_id']);
         $amount = floatval($_POST['amount']);
@@ -103,6 +113,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (mysqli_stmt_execute($update_stmt)) {
                 $success = "Deposit updated successfully!";
+                audit_log_event('manager.deposit.update.success', [
+                    'deposit_id' => $deposit_id,
+                    'previous_member_id' => $deposit['member_id'],
+                    'member_id' => $member_id,
+                    'previous_amount' => number_format((float) $deposit['amount'], 2, '.', ''),
+                    'amount' => number_format($amount, 2, '.', ''),
+                    'previous_date' => $deposit['deposit_date'],
+                    'deposit_date' => $deposit_date,
+                ]);
                 
                 // Refresh deposit data
                 $sql = "SELECT d.*, m.name as member_name, 
@@ -120,8 +139,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $deposit = mysqli_fetch_assoc($result);
             } else {
                 $error = "Error updating deposit: " . mysqli_error($conn);
+                audit_log_event('manager.deposit.update.error', [
+                    'deposit_id' => $deposit_id,
+                    'database_error_code' => mysqli_errno($conn),
+                ]);
             }
         }
+    }
+    if ($error !== '' && !str_contains($error, 'Error updating deposit:')) {
+        audit_log_event('manager.deposit.update.rejected', [
+            'deposit_id' => $deposit_id,
+            'reason' => 'validation_or_house_membership',
+        ]);
     }
 }
 

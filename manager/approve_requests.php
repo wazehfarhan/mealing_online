@@ -121,9 +121,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         mysqli_stmt_close($log_stmt);
                         
                         mysqli_commit($conn);
+                        audit_log_event('manager.leave_request.approve.success', [
+                            'member_id' => (int) $member_id,
+                            'source_house_id' => (int) $member['house_id'],
+                        ]);
                         $_SESSION['approval_success'] = "Leave request approved. Member can now join another house.";
                     } catch (Exception $e) {
                         mysqli_rollback($conn);
+                        audit_log_event('manager.leave_request.approve.error', [
+                            'member_id' => (int) $member_id,
+                            'reason' => 'transaction_failed',
+                        ]);
                         $errors[] = "Failed to process leave request: " . $e->getMessage();
                     }
                 }
@@ -154,9 +162,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     mysqli_stmt_close($log_stmt);
                     
                     mysqli_commit($conn);
+                    audit_log_event('manager.leave_request.reject.success', [
+                        'member_id' => (int) $member_id,
+                        'house_id' => (int) $member['house_id'],
+                    ]);
                     $_SESSION['approval_success'] = "Leave request rejected.";
                 } catch (Exception $e) {
                     mysqli_rollback($conn);
+                    audit_log_event('manager.leave_request.reject.error', [
+                        'member_id' => (int) $member_id,
+                        'reason' => 'transaction_failed',
+                    ]);
                     $errors[] = "Failed to reject leave request: " . $e->getMessage();
                 }
             }
@@ -248,6 +264,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             mysqli_stmt_close($log_stmt);
                             
                             mysqli_commit($conn);
+                            audit_log_event('manager.join_request.approve.success', [
+                                'member_id' => (int) $member_id,
+                                'source_house_id' => (int) $old_house_id,
+                                'destination_house_id' => (int) $new_house['house_id'],
+                            ]);
                             
                             // If the member being approved is the current user, update their session
                             if (isset($_SESSION['member_id']) && $_SESSION['member_id'] == $member_id) {
@@ -259,6 +280,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             
                         } catch (Exception $e) {
                             mysqli_rollback($conn);
+                            audit_log_event('manager.join_request.approve.error', [
+                                'member_id' => (int) $member_id,
+                                'reason' => 'transaction_failed',
+                            ]);
                             $errors[] = "Failed to process join request: " . $e->getMessage();
                         }
                     }
@@ -295,9 +320,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     mysqli_stmt_close($log_stmt);
                     
                     mysqli_commit($conn);
+                    audit_log_event('manager.join_request.reject.success', [
+                        'member_id' => (int) $member_id,
+                        'destination_house_id' => (int) $member['requested_house_id'],
+                    ]);
                     $_SESSION['approval_success'] = "Join request rejected. Member can try joining another house.";
                 } catch (Exception $e) {
                     mysqli_rollback($conn);
+                    audit_log_event('manager.join_request.reject.error', [
+                        'member_id' => (int) $member_id,
+                        'reason' => 'transaction_failed',
+                    ]);
                     $errors[] = "Failed to reject join request: " . $e->getMessage();
                 }
             }
