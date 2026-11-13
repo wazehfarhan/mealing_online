@@ -377,6 +377,8 @@ require_once '../includes/header.php';
             </div>
             <div class="card-body">
                 <!-- Main House Update Form -->
+<form id="houseForm" method="POST" action="settings.php" class="needs-validation novalidate">
+    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCSRFToken()); ?>">
                 <form id="houseForm" method="POST" action="settings.php" class="needs-validation" novalidate>
                     <div class="row mb-3">
                         <div class="col-md-6">

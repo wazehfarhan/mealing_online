@@ -194,6 +194,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <h5 class="mb-0"><i class="fas fa-user me-2"></i>Change Username</h5>
                 </div>
                 <div class="card-body">
+                <form method="POST" action="">
+                    <input type="hidden" name="form_type" value="change_username">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCSRFToken()); ?>">
+                    <div class="row mb-3">
                     <form method="POST">
                         <input type="hidden" name="form_type" value="change_username">
                         <div class="mb-3">
@@ -218,6 +222,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <!-- Update Profile -->
         <div class="col-md-6 mb-4">
             <div class="card shadow-sm">
+                <form method="POST" action="">
+                    <input type="hidden" name="form_type" value="update_profile">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCSRFToken()); ?>">
+                    <div class="mb-3">
                 <div class="card-header bg-success text-white">
                     <h5 class="mb-0"><i class="fas fa-id-card me-2"></i>Update Profile</h5>
                 </div>
@@ -258,6 +266,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="col-md-12 mb-4">
             <div class="card shadow-sm">
                 <div class="card-header bg-warning text-dark">
+                <form method="POST" action="">
+                    <input type="hidden" name="form_type" value="change_password">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCSRFToken()); ?>">
+                    <div class="row mb-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="fas fa-key me-2"></i>Change Password</h5>
                         <a href="../auth/forgot_password.php" class="btn btn-outline-dark btn-sm">

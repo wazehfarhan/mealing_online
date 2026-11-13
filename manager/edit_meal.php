@@ -9,7 +9,6 @@ $functions = new Functions();
 
 $auth->requireRole('manager');
 
-// Get manager's house_id
 $user_id = $_SESSION['user_id'];
 $house_id = $auth->getUserHouseId($user_id);
 
@@ -17,7 +16,6 @@ $page_title = "Edit Meal Entry";
 
 $conn = getConnection();
 
-// Check if meal ID is provided
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
     $_SESSION['error'] = "Invalid meal ID";
     header("Location: meals.php");
@@ -26,16 +24,11 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 
 $meal_id = intval($_GET['id']);
 
-// Get meal details - with house verification
-$sql = "SELECT m.*, 
-               mb.name as member_name, 
-               mb.member_id,
-               mb.house_id as member_house_id,
-               uc.username as created_by_username,
-               uu.username as updated_by_username
-        FROM meals m 
-        JOIN members mb ON m.member_id = mb.member_id AND m.house_id = mb.house_id 
-        LEFT JOIN users uc ON m.created_by = uc.user_id 
+$sql = "SELECT m.*, mb.name as member_name, mb.member_id,
+               uc.username as created_by_username, uu.username as updated_by_username
+        FROM meals m
+        JOIN members mb ON m.member_id = mb.member_id AND m.house_id = mb.house_id
+        LEFT JOIN users uc ON m.created_by = uc.user_id
         LEFT JOIN users uu ON m.updated_by = uu.user_id
         WHERE m.meal_id = ? AND m.house_id = ?";
 $stmt = mysqli_prepare($conn, $sql);
@@ -52,48 +45,58 @@ if (!$meal) {
 
 $error = '';
 $success = '';
-
-// Generate CSRF token
 $csrf_token = generateCSRFToken();
 
-// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Verify CSRF token
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = "Security token invalid. Please try again.";
     } else {
         $meal_date = $_POST['meal_date'] ?? '';
         $meal_count = floatval($_POST['meal_count']);
         $member_id = intval($_POST['member_id']);
-        $user_id = $_SESSION['user_id'];
-    
-    // Validation
-    if (empty($meal_date)) {
-        $error = "Meal date is required";
-    } elseif ($meal_count <= 0) {
-        $error = "Meal count must be greater than 0";
-    } elseif ($meal_count > 3) {
-        $error = "Meal count cannot exceed 3 meals";
-    } else {
-        // Check if member belongs to the same house
-        $member_check_sql = "SELECT house_id FROM members WHERE member_id = ? AND house_id = ?";
-        $member_check_stmt = mysqli_prepare($conn, $member_check_sql);
-        mysqli_stmt_bind_param($member_check_stmt, "ii", $member_id, $house_id);
-        mysqli_stmt_execute($member_check_stmt);
-        mysqli_stmt_store_result($member_check_stmt);
         
-        if (mysqli_stmt_num_rows($member_check_stmt) == 0) {
-            $error = "Selected member does not belong to your house";
+        if (empty($meal_date)) {
+            $error = "Meal date is required";
+        } elseif ($meal_count <= 0) {
+            $error = "Meal count must be greater than 0";
+        } elseif ($meal_count > 3) {
+            $error = "Meal count cannot exceed 3 meals";
         } else {
-            // Check if another entry exists for same member, date, and house
-            $check_sql = "SELECT meal_id FROM meals WHERE member_id = ? AND meal_date = ? AND house_id = ? AND meal_id != ?";
-            $check_stmt = mysqli_prepare($conn, $check_sql);
-            mysqli_stmt_bind_param($check_stmt, "isii", $member_id, $meal_date, $house_id, $meal_id);
-            mysqli_stmt_execute($check_stmt);
-            mysqli_stmt_store_result($check_stmt);
+            $member_check_sql = "SELECT house_id FROM members WHERE member_id = ? AND house_id = ?";
+            $member_check_stmt = mysqli_prepare($conn, $member_check_sql);
+            mysqli_stmt_bind_param($member_check_stmt, "ii", $member_id, $house_id);
+            mysqli_stmt_execute($member_check_stmt);
+            mysqli_stmt_store_result($member_check_stmt);
             
-            if (mysqli_stmt_num_rows($check_stmt) > 0) {
-                $error = "Meal entry already exists for this member on selected date";
+            if (mysqli_stmt_num_rows($member_check_stmt) == 0) {
+                $error = "Selected member does not belong to your house";
+            } else {
+                $check_sql = "SELECT meal_id FROM meals WHERE member_id = ? AND meal_date = ? AND house_id = ? AND meal_id != ?";
+                $check_stmt = mysqli_prepare($conn, $check_sql);
+                mysqli_stmt_bind_param($check_stmt, "isii", $member_id, $meal_date, $house_id, $meal_id);
+                mysqli_stmt_execute($check_stmt);
+                mysqli_stmt_store_result($check_stmt);
+                
+                if (mysqli_stmt_num_rows($check_stmt) > 0) {
+                    $error = "Meal entry already exists for this member on selected date";
+                } else {
+                    $update_sql = "UPDATE meals SET member_id = ?, meal_date = ?, meal_count = ?,
+                                   updated_by = ?, updated_at = NOW()
+                                   WHERE meal_id = ? AND house_id = ?";
+                    $update_stmt = mysqli_prepare($conn, $update_sql);
+                    mysqli_stmt_bind_param($update_stmt, "isdiii", $member_id, $meal_date, $meal_count, $user_id, $meal_id, $house_id);
+                    
+                    if (mysqli_stmt_execute($update_stmt)) {
+                        $success = "Meal entry updated successfully!";
+                    } else {
+                        $error = "Error updating meal entry: " . mysqli_error($conn);
+                    }
+                }
+            }
+        }
+    }
+}
+?>        $error = "Meal entry already exists for this member on selected date";
             } else {
                 // Update meal entry
                 $update_sql = "UPDATE meals SET member_id = ?, meal_date = ?, meal_count = ?, 
@@ -158,6 +161,39 @@ $all_members = mysqli_fetch_all($members_result, MYSQLI_ASSOC);
                 </div>
                 <?php endif; ?>
                 
+<form method="POST" action="">
+    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="member_id" class="form-label">Member *</label>
+                            <select class="form-select" id="member_id" name="member_id" required>
+                                <option value="">Select Member</option>
+                                <?php foreach ($all_members as $m): ?>
+                                <option value="<?php echo $m['member_id']; ?>"
+                                        <?php echo (isset($_POST['member_id']) && $_POST['member_id'] == $m['member_id']) ? 'selected' : (($member['member_id'] ?? '') == $m['member_id'] ? 'selected' : ''); ?>>
+                                    <?php echo htmlspecialchars($m['name']); ?>
+                                    <?php if (!empty($m['phone'])): ?> (<?php echo htmlspecialchars($m['phone']); ?>)<?php endif; ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="meal_date" class="form-label">Meal Date *</label>
+                            <input type="date" class="form-control" id="meal_date" name="meal_date"
+                                   value="<?php echo isset($_POST['meal_date']) ? htmlspecialchars($_POST['meal_date']) : htmlspecialchars($meal['meal_date']); ?>" required>
+                            <div class="form-text">The date when this meal was (or will be) served.</div>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label for="meal_count" class="form-label">Meal Count *</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="meal_count" name="meal_count"
+                                   step="0.5" min="0.5" max="3"
+                                   value="<?php echo isset($_POST['meal_count']) ? htmlspecialchars($_POST['meal_count']) : $meal['meal_count']; ?>" required>
+                            <span class="input-group-text">meal(s)</span>
+                        </div>
+                        <div class="form-text">Enter meal count (0.5, 1.0, 1.5, etc.)</div>
+                    </div>
                 <form method="POST" action="">
                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <div class="mb-3">

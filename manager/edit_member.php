@@ -291,6 +291,7 @@ require_once '../includes/header.php';
                 <?php unset($_SESSION['error']); endif; ?>
                 
                 <form method="POST" action="">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="name" class="form-label">Full Name *</label>
