@@ -877,14 +877,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 submitBtn.innerHTML = originalBtnText;
                 submitBtn.disabled = false;
                 
-                // Auto-hide after 5 seconds
-                setTimeout(() => {
-                    const alert = container.querySelector('.alert');
-                    if (alert) {
-                        const bsAlert = new bootstrap.Alert(alert);
-                        bsAlert.close();
-                    }
-                }, 5000);
             })
             .catch(error => {
                 console.error('Error:', error);
@@ -938,12 +930,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                     document.body.appendChild(alertDiv);
                     
-                    // Reset button after 2 seconds
+                    // Reset the button while leaving the message visible until dismissed.
                     setTimeout(() => {
                         this.innerHTML = originalHTML;
                         this.classList.remove('btn-success');
                         this.classList.add('btn-outline-info');
-                        alertDiv.remove();
                     }, 2000);
                 } else {
                     prompt('Copy this link manually:', link);

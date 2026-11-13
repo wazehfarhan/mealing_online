@@ -22,13 +22,6 @@
                 });
             }
             
-            // Auto-hide alerts after 5 seconds
-            setTimeout(function() {
-                $('.alert').alert('close');
-            }, 9000);
-
-            // Auto-hide only flash message alerts after 5 seconds (not informational alerts)
-            
             // Confirm delete actions
             $('.confirm-delete').on('click', function() {
                 return confirm('Are you sure you want to delete this? This action cannot be undone.');

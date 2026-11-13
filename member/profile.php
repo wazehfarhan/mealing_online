@@ -2,14 +2,14 @@
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/csrf.php';
+$page_title = "My Profile";
+
 require_once '../includes/header.php';
 
 $auth = new Auth();
 $functions = new Functions();
 
 $auth->requireRole('member');
-
-$page_title = "My Profile";
 
 $conn = getConnection();
 $user_id = $_SESSION['user_id'];
@@ -418,108 +418,147 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </section>
     
-    <!-- Account Summary -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-light">
-            <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Account Information</h5>
+    <section class="card mb-4">
+        <div class="card-header">
+            <h2 class="h5 mb-1"><i class="fas fa-address-card text-primary me-2"></i>Account information</h2>
+            <p class="text-muted small mb-0">Your member and house details at a glance.</p>
         </div>
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <p><strong>Username:</strong> <?php echo htmlspecialchars($user['username']); ?></p>
-                    <p><strong>Email:</strong> <?php echo htmlspecialchars($user['email']); ?></p>
-                    <p><strong>Account Type:</strong> 
+            <div class="row g-3">
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">Username</span>
+                        <strong><?php echo htmlspecialchars($user['username']); ?></strong>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">Email</span>
+                        <strong class="text-break"><?php echo htmlspecialchars($user['email']); ?></strong>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">Account type</span>
                         <span class="badge bg-<?php echo $user['role'] === 'manager' ? 'primary' : 'success'; ?>">
                             <?php echo htmlspecialchars(ucfirst($user['role'])); ?>
                         </span>
-                    </p>
-                    <p><strong>Account Created:</strong> <?php echo date('F j, Y', strtotime($user['created_at'])); ?></p>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">Account created</span>
+                        <strong><?php echo date('F j, Y', strtotime($user['created_at'])); ?></strong>
+                    </div>
                 </div>
                 <?php if ($member): ?>
-                <div class="col-md-6">
-                    <p><strong>Member Name:</strong> <?php echo htmlspecialchars($member['name']); ?></p>
-                    <p><strong>Phone:</strong> <?php echo htmlspecialchars($member['phone'] ?? 'Not set'); ?></p>
-                    <p><strong>Member Since:</strong> <?php echo date('F j, Y', strtotime($member['join_date'])); ?></p>
-                    <p><strong>Status:</strong> 
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">Member name</span>
+                        <strong><?php echo htmlspecialchars($member['name']); ?></strong>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">Phone</span>
+                        <strong><?php echo htmlspecialchars($member['phone'] ?: 'Not set'); ?></strong>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">Member since</span>
+                        <strong><?php echo date('F j, Y', strtotime($member['join_date'])); ?></strong>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">Member status</span>
                         <span class="badge bg-<?php echo $member['status'] === 'active' ? 'success' : 'secondary'; ?>">
                             <?php echo htmlspecialchars(ucfirst($member['status'])); ?>
                         </span>
-                    </p>
-                </div>
-                <?php endif; ?>
-            </div>
-            
-            <!-- House Information -->
-            <div class="row mt-3">
-                <div class="col-md-6">
-                    <p><strong>House Name:</strong> <?php echo htmlspecialchars($user['house_name'] ?? 'Not set'); ?></p>
-                </div>
-                <div class="col-md-6">
-                    <p><strong>House Code:</strong> <?php echo htmlspecialchars($user['house_code'] ?? 'Not set'); ?></p>
-                </div>
-                <div class="col-md-6">
-                    <p><strong>Member ID:</strong> M<?php echo $member_id ? str_pad($member_id, 4, '0', STR_PAD_LEFT) : '0000'; ?></p>
-                </div>
-                <div class="col-md-6">
-                    <p><strong>User ID:</strong> U<?php echo str_pad($user['user_id'] ?? '0000', 4, '0', STR_PAD_LEFT); ?></p>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Account Statistics -->
-    <div class="card shadow-sm mt-4">
-        <div class="card-header bg-light">
-            <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Account Statistics</h5>
-        </div>
-        <div class="card-body">
-            <div class="row text-center">
-                <div class="col-md-3 mb-3">
-                    <div class="p-3 border rounded bg-light">
-                        <h6 class="text-muted mb-2">Account Created</h6>
-                        <h5 class="text-primary">
-                            <?php echo isset($user['created_at']) ? date('M d, Y', strtotime($user['created_at'])) : 'N/A'; ?>
-                        </h5>
                     </div>
                 </div>
-                <div class="col-md-3 mb-3">
-                    <div class="p-3 border rounded bg-light">
-                        <h6 class="text-muted mb-2">Last Login</h6>
-                        <h5 class="text-info">
-                            <?php 
-                            if (isset($user['last_login']) && $user['last_login'] != '0000-00-00 00:00:00' && $user['last_login'] != null) {
+                <?php endif; ?>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">House name</span>
+                        <strong><?php echo htmlspecialchars($user['house_name'] ?? 'Not set'); ?></strong>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">House code</span>
+                        <strong><?php echo htmlspecialchars($user['house_code'] ?? 'Not set'); ?></strong>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">Member ID</span>
+                        <strong>M<?php echo $member_id ? str_pad($member_id, 4, '0', STR_PAD_LEFT) : '0000'; ?></strong>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-detail">
+                        <span class="profile-detail-label">User ID</span>
+                        <strong>U<?php echo str_pad($user['user_id'] ?? '0000', 4, '0', STR_PAD_LEFT); ?></strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section class="card mb-4">
+        <div class="card-header">
+            <h2 class="h5 mb-1"><i class="fas fa-chart-bar text-primary me-2"></i>Account status</h2>
+            <p class="text-muted small mb-0">Sign-in and membership status.</p>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 text-center">
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-stat">
+                        <span class="profile-detail-label">Account created</span>
+                        <strong><?php echo isset($user['created_at']) ? date('M d, Y', strtotime($user['created_at'])) : 'N/A'; ?></strong>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-stat">
+                        <span class="profile-detail-label">Last login</span>
+                        <strong>
+                            <?php
+                            if (!empty($user['last_login']) && $user['last_login'] !== '0000-00-00 00:00:00') {
                                 echo date('M d, Y h:i A', strtotime($user['last_login']));
                             } else {
                                 echo 'Never';
                             }
                             ?>
-                        </h5>
+                        </strong>
                     </div>
                 </div>
-                <div class="col-md-3 mb-3">
-                    <div class="p-3 border rounded bg-light">
-                        <h6 class="text-muted mb-2">Account Status</h6>
-                        <span class="badge bg-<?php echo isset($user['is_active']) && $user['is_active'] == 1 ? 'success' : 'danger'; ?> p-2">
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-stat">
+                        <span class="profile-detail-label">Account status</span>
+                        <span class="badge bg-<?php echo isset($user['is_active']) && $user['is_active'] == 1 ? 'success' : 'danger'; ?> px-3 py-2">
                             <?php echo isset($user['is_active']) && $user['is_active'] == 1 ? 'Active' : 'Inactive'; ?>
                         </span>
                     </div>
                 </div>
-                <div class="col-md-3 mb-3">
-                    <div class="p-3 border rounded bg-light">
-                        <h6 class="text-muted mb-2">Member Status</h6>
-                        <span class="badge bg-<?php echo isset($member['status']) && $member['status'] == 'active' ? 'success' : 'danger'; ?> p-2">
-                            <?php echo isset($member['status']) ? ucfirst($member['status']) : 'Unknown'; ?>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="profile-stat">
+                        <span class="profile-detail-label">Member status</span>
+                        <span class="badge bg-<?php echo isset($member['status']) && $member['status'] == 'active' ? 'success' : 'secondary'; ?> px-3 py-2">
+                            <?php echo isset($member['status']) ? htmlspecialchars(ucfirst($member['status'])) : 'Unknown'; ?>
                         </span>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
     
     <!-- Quick Actions -->
-    <div class="card shadow-sm mt-4">
-        <div class="card-header bg-light">
-            <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
+    <section class="card mb-4">
+        <div class="card-header">
+            <h2 class="h5 mb-1"><i class="fas fa-bolt text-primary me-2"></i>Quick actions</h2>
+            <p class="text-muted small mb-0">Return to your regular member tools.</p>
         </div>
         <div class="card-body">
             <div class="row">
@@ -538,12 +577,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
             </div>
-            <div class="alert alert-info mt-3">
+            <div class="alert alert-info mt-3 mb-0">
                 <i class="fas fa-info-circle me-2"></i>
-                <strong>Note:</strong> If you need to change your name or other member details, please contact your house manager.
+                Need to update your name or other member details? Please contact your house manager.
             </div>
         </div>
-    </div>
+    </section>
 </div>
 
 <script>
