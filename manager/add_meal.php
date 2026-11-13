@@ -30,16 +30,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verify CSRF token
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = "Security token invalid. Please try again.";
+        audit_log_event('manager.meals.save.rejected', ['reason' => 'invalid_csrf_token']);
     } else {
         $meal_date = mysqli_real_escape_string($conn, $_POST['meal_date']);
         $entries = $_POST['entries'] ?? [];
         
         if (empty($meal_date)) {
             $error = "Please select a date";
+            audit_log_event('manager.meals.save.rejected', ['reason' => 'missing_meal_date']);
         } elseif (empty($members)) {
             $error = "No active members found";
+            audit_log_event('manager.meals.save.rejected', ['reason' => 'no_active_members']);
         } else {
             $success_count = 0;
+            $saved_meal_entries = [];
+            $saved_meal_total = 0.0;
             $error_messages = [];
             $user_id = $_SESSION['user_id'];
             
@@ -59,7 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_execute($check_stmt);
                 mysqli_stmt_store_result($check_stmt);
                 
-                if (mysqli_stmt_num_rows($check_stmt) > 0) {
+                $is_update = mysqli_stmt_num_rows($check_stmt) > 0;
+                if ($is_update) {
                     // Update existing entry
                     $sql = "UPDATE meals SET meal_count = ?, updated_by = ?, updated_at = NOW() 
                             WHERE member_id = ? AND meal_date = ? AND house_id = ?";
@@ -75,6 +81,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if (mysqli_stmt_execute($stmt)) {
                     $success_count++;
+                    $saved_meal_entries[] = [
+                        'member_id' => $member_id,
+                        'meal_count' => number_format($meal_count, 2, '.', ''),
+                        'operation' => $is_update ? 'updated' : 'created',
+                    ];
+                    $saved_meal_total += $meal_count;
                 } else {
                     $error_messages[] = "Error saving meal for " . $member['name'] . ": " . mysqli_error($conn);
                 }
@@ -89,10 +101,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($success_count > 0) {
                 $date_formatted = date('M d, Y', strtotime($meal_date));
                 $success = "Successfully saved $success_count meal entries for $date_formatted";
+                audit_log_event('manager.meals.save.success', [
+                    'meal_date' => $meal_date,
+                    'entry_count' => $success_count,
+                    'entries' => $saved_meal_entries,
+                    'total_meals' => number_format($saved_meal_total, 2, '.', ''),
+                    'failed_entry_count' => count($error_messages),
+                ]);
                 // Clear form
                 $_POST = array();
             } else {
                 $error = "No meal entries were saved.";
+                audit_log_event('manager.meals.save.error', [
+                    'meal_date' => $meal_date,
+                    'failed_entry_count' => count($error_messages),
+                ]);
                 if (!empty($error_messages)) {
                     $error .= " Errors: " . implode(", ", $error_messages);
                 }

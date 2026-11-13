@@ -33,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verify CSRF token
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = "Security token invalid. Please try again.";
+        audit_log_event('manager.deposit.create.rejected', ['reason' => 'invalid_csrf_token']);
     } else {
     $member_id = intval($_POST['member_id']);
     $amount = floatval($_POST['amount']);
@@ -68,13 +69,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if (mysqli_stmt_execute($stmt)) {
                     $success = "Deposit added successfully!";
+                    audit_log_event('manager.deposit.create.success', [
+                        'deposit_id' => mysqli_insert_id($conn),
+                        'member_id' => $member_id,
+                        'amount' => number_format($amount, 2, '.', ''),
+                        'deposit_date' => $deposit_date,
+                    ]);
                     
                     // Clear form
                     $_POST = array();
                 } else {
                     $error = "Error adding deposit: " . mysqli_error($conn);
+                    audit_log_event('manager.deposit.create.error', [
+                        'member_id' => $member_id,
+                        'database_error_code' => mysqli_errno($conn),
+                    ]);
                 }
             }
+        }
+        if ($error !== '' && !str_contains($error, 'Error adding deposit:')) {
+            audit_log_event('manager.deposit.create.rejected', ['reason' => 'validation_or_house_membership']);
         }
     }
 }

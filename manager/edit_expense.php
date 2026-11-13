@@ -2,12 +2,18 @@
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/csrf.php';
-require_once '../includes/header.php';
 
 $auth = new Auth();
 $functions = new Functions();
 
 $auth->requireRole('manager');
+
+// Check for valid expense ID BEFORE including header (to avoid "headers already sent" error)
+if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
+    $_SESSION['error'] = "Invalid expense ID";
+    header("Location: expenses.php");
+    exit();
+}
 
 // Get manager's house_id
 $user_id = $_SESSION['user_id'];
@@ -16,13 +22,6 @@ $house_id = $auth->getUserHouseId($user_id);
 $page_title = "Edit Expense";
 
 $conn = getConnection();
-
-// Check if expense ID is provided
-if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
-    $_SESSION['error'] = "Invalid expense ID";
-    header("Location: expenses.php");
-    exit();
-}
 
 $expense_id = intval($_GET['id']);
 
@@ -43,6 +42,12 @@ if (!$expense) {
     header("Location: expenses.php");
     exit();
 }
+$original_expense = $expense;
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    audit_log_event('manager.expense.edit.view', [
+        'expense_id' => $expense_id,
+    ]);
+}
 
 $error = '';
 $success = '';
@@ -59,19 +64,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = "Security token invalid. Please try again.";
     } else {
-        $amount = floatval($_POST['amount']);
-        $category = $_POST['category'] ?? '';
-        $description = $_POST['description'] ?? '';
-        $expense_date = $_POST['expense_date'] ?? '';
+        $amount = is_numeric($_POST['amount'] ?? null) ? (float) $_POST['amount'] : 0;
+        $category = is_string($_POST['category'] ?? null) ? $_POST['category'] : '';
+        $description = is_string($_POST['description'] ?? null) ? trim($_POST['description']) : '';
+        $expense_date = is_string($_POST['expense_date'] ?? null) ? $_POST['expense_date'] : '';
         $updated_by = $_SESSION['user_id'];
-    
+
+        $date_parts = explode('-', $expense_date);
+        $valid_date = count($date_parts) === 3
+            && checkdate((int) $date_parts[1], (int) $date_parts[2], (int) $date_parts[0]);
+
     // Validation
-    if (empty($expense_date)) {
-        $error = "Expense date is required";
+    if (!$valid_date) {
+        $error = "A valid expense date is required";
     } elseif ($amount <= 0) {
         $error = "Amount must be greater than 0";
-    } elseif (empty($category)) {
-        $error = "Category is required";
+    } elseif (!in_array($category, $categories, true)) {
+        $error = "Select a valid category";
     } elseif ($amount > 1000000) {
         $error = "Amount is too high. Please enter a reasonable amount.";
     } else {
@@ -85,6 +94,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (mysqli_stmt_execute($update_stmt)) {
             $success = "Expense updated successfully!";
+            audit_log_event('manager.expense.update.success', [
+                'expense_id' => $expense_id,
+                'before' => [
+                    'amount' => $original_expense['amount'],
+                    'category' => $original_expense['category'],
+                    'expense_date' => $original_expense['expense_date'],
+                ],
+                'after' => [
+                    'amount' => $amount,
+                    'category' => $category,
+                    'expense_date' => $expense_date,
+                ],
+            ]);
             
             // Refresh expense data
             $sql = "SELECT e.*, u.username as created_by_name, u2.username as updated_by_name
@@ -98,8 +120,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = mysqli_stmt_get_result($stmt);
             $expense = mysqli_fetch_assoc($result);
         } else {
-            $error = "Error updating expense: " . mysqli_error($conn);
+            $error = "Unable to update expense. Please try again.";
+            audit_log_event('manager.expense.update.error', [
+                'expense_id' => $expense_id,
+                'error' => mysqli_error($conn),
+            ]);
         }
+    }
+    }
+
+    if ($error !== '') {
+        audit_log_event('manager.expense.update.rejected', [
+            'expense_id' => $expense_id,
+            'reason' => $error,
+        ]);
     }
 }
 
@@ -137,6 +171,8 @@ function getBadgeTextColor($badge_color) {
     // For light/yellow badges, use dark text
     return ($badge_color == 'warning' || $badge_color == 'light') ? 'text-dark' : 'text-white';
 }
+
+require_once '../includes/header.php';
 ?>
 <div class="row">
     <div class="col-lg-6 mx-auto">
@@ -146,12 +182,12 @@ function getBadgeTextColor($badge_color) {
             </div>
             <div class="card-body">
                 <?php if ($error): ?>
-                <div class="alert alert-danger"><?php echo $error; ?></div>
+                <div class="alert alert-danger"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
                 <?php endif; ?>
                 
                 <?php if ($success): ?>
                 <div class="alert alert-success">
-                    <?php echo $success; ?>
+                    <?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?>
                     <div class="mt-3">
                         <a href="expenses.php" class="btn btn-primary">Back to All Expenses</a>
                     </div>
@@ -165,14 +201,15 @@ function getBadgeTextColor($badge_color) {
                             <label for="amount" class="form-label">Amount (৳) *</label>
                             <div class="input-group">
                                 <span class="input-group-text">৳</span>
-                                <input type="number" class="form-control" id="amount" name="amount" 
-                                       step="0.01" min="0.01" max="1000000" value="<?php echo $expense['amount']; ?>" required>
+                                <input type="number" class="form-control" id="amount" name="amount"
+                                       step="0.01" min="0.01" max="1000000"
+                                       value="<?php echo htmlspecialchars((string) ($_POST['amount'] ?? $expense['amount']), ENT_QUOTES, 'UTF-8'); ?>" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <label for="expense_date" class="form-label">Expense Date *</label>
-                            <input type="date" class="form-control" id="expense_date" name="expense_date" 
-                                   value="<?php echo $expense['expense_date']; ?>" required>
+                            <input type="date" class="form-control" id="expense_date" name="expense_date"
+                                   value="<?php echo htmlspecialchars($_POST['expense_date'] ?? $expense['expense_date'], ENT_QUOTES, 'UTF-8'); ?>" required>
                         </div>
                     </div>
                     
@@ -192,10 +229,10 @@ function getBadgeTextColor($badge_color) {
                                         $badge_class = 'bg-' . $category_color . ' ' . $badge_text_color;
                                     }
                                 ?>
-                                <option value="<?php echo $cat; ?>" 
-                                        <?php echo $expense['category'] == $cat ? 'selected' : ''; ?>>
+                                <option value="<?php echo htmlspecialchars($cat, ENT_QUOTES, 'UTF-8'); ?>"
+                                        <?php echo ($_POST['category'] ?? $expense['category']) === $cat ? 'selected' : ''; ?>>
                                     <span class="badge <?php echo $badge_class; ?> me-2">
-                                        <?php echo $cat; ?>
+                                        <?php echo htmlspecialchars($cat, ENT_QUOTES, 'UTF-8'); ?>
                                     </span>
                                 </option>
                                 <?php endforeach; ?>
@@ -204,7 +241,7 @@ function getBadgeTextColor($badge_color) {
                         <div class="col-md-6">
                             <label for="description" class="form-label">Description</label>
                             <input type="text" class="form-control" id="description" name="description"
-                                   value="<?php echo htmlspecialchars($expense['description']); ?>"
+                                   value="<?php echo htmlspecialchars($_POST['description'] ?? $expense['description'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                    placeholder="Optional description">
                         </div>
                     </div>
@@ -281,10 +318,10 @@ function getBadgeTextColor($badge_color) {
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <p><strong>Original Amount:</strong> <?php echo $functions->formatCurrency($expense['amount']); ?></p>
+                        <p><strong>Original Amount:</strong> <?php echo $functions->formatCurrency($original_expense['amount']); ?></p>
                         <p><strong>Original Category:</strong> 
                             <?php 
-                            $category_color = getCategoryColor($expense['category']);
+                            $category_color = getCategoryColor($original_expense['category']);
                             $badge_text_color = getBadgeTextColor($category_color);
                             
                             // Special case for Oil (purple)
@@ -295,27 +332,27 @@ function getBadgeTextColor($badge_color) {
                             }
                             ?>
                             <span class="badge <?php echo $badge_class; ?>">
-                                <?php echo $expense['category']; ?>
+                                <?php echo htmlspecialchars($original_expense['category'], ENT_QUOTES, 'UTF-8'); ?>
                             </span>
                         </p>
-                        <p><strong>Original Date:</strong> <?php echo $functions->formatDate($expense['expense_date']); ?></p>
+                        <p><strong>Original Date:</strong> <?php echo $functions->formatDate($original_expense['expense_date']); ?></p>
                     </div>
                     <div class="col-md-6">
-                        <p><strong>Created By:</strong> <?php echo $expense['created_by_name'] ?: 'System'; ?></p>
-                        <p><strong>Created At:</strong> <?php echo date('M d, Y h:i A', strtotime($expense['created_at'])); ?></p>
-                        <?php if (!empty($expense['updated_at']) && $expense['updated_at'] != $expense['created_at']): ?>
-                        <p><strong>Last Updated:</strong> <?php echo date('M d, Y h:i A', strtotime($expense['updated_at'])); ?></p>
-                        <?php if (!empty($expense['updated_by_name'])): ?>
-                        <p><strong>Updated By:</strong> <?php echo $expense['updated_by_name']; ?></p>
+                        <p><strong>Created By:</strong> <?php echo htmlspecialchars($original_expense['created_by_name'] ?: 'System', ENT_QUOTES, 'UTF-8'); ?></p>
+                        <p><strong>Created At:</strong> <?php echo date('M d, Y h:i A', strtotime($original_expense['created_at'])); ?></p>
+                        <?php if (!empty($original_expense['updated_at']) && $original_expense['updated_at'] != $original_expense['created_at']): ?>
+                        <p><strong>Last Updated:</strong> <?php echo date('M d, Y h:i A', strtotime($original_expense['updated_at'])); ?></p>
+                        <?php if (!empty($original_expense['updated_by_name'])): ?>
+                        <p><strong>Updated By:</strong> <?php echo htmlspecialchars($original_expense['updated_by_name'], ENT_QUOTES, 'UTF-8'); ?></p>
                         <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>
                 
-                <?php if ($expense['description']): ?>
+                <?php if ($original_expense['description']): ?>
                 <div class="mt-3">
                     <h6>Description:</h6>
-                    <p class="mb-0"><?php echo htmlspecialchars($expense['description']); ?></p>
+                    <p class="mb-0"><?php echo htmlspecialchars($original_expense['description'], ENT_QUOTES, 'UTF-8'); ?></p>
                 </div>
                 <?php endif; ?>
             </div>
@@ -336,5 +373,4 @@ function getBadgeTextColor($badge_color) {
 <?php 
 mysqli_close($conn);
 require_once '../includes/footer.php'; 
-}
 ?>

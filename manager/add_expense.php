@@ -30,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verify CSRF token
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = "Security token invalid. Please try again.";
+        audit_log_event('manager.expense.create.rejected', ['reason' => 'invalid_csrf_token']);
     } else {
     $amount = floatval($_POST['amount']);
     $category = $_POST['category'] ?? '';
@@ -54,12 +55,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (mysqli_stmt_execute($insert_stmt)) {
             $success = "Expense added successfully!";
+            audit_log_event('manager.expense.create.success', [
+                'expense_id' => mysqli_insert_id($conn),
+                'amount' => number_format($amount, 2, '.', ''),
+                'category' => $category,
+                'expense_date' => $expense_date,
+            ]);
             
             // Clear form fields on success
             $_POST = array();
         } else {
             $error = "Error adding expense: " . mysqli_error($conn);
+            audit_log_event('manager.expense.create.error', [
+                'database_error_code' => mysqli_errno($conn),
+            ]);
         }
+    }
+    if ($error !== '' && !str_contains($error, 'Error adding expense:')) {
+        audit_log_event('manager.expense.create.rejected', ['reason' => 'validation']);
     }
     }
 }
