@@ -81,6 +81,10 @@ try {
     
     // Commit transaction
     mysqli_commit($conn);
+    audit_log_event('manager.house.leave.success', [
+        'house_id' => (int) $house_id,
+        'user_id' => $user_id,
+    ]);
     
     // Clear session house data
     unset($_SESSION['house_id']);
@@ -91,6 +95,10 @@ try {
     
 } catch (Exception $e) {
     mysqli_rollback($conn);
+    audit_log_event('manager.house.leave.error', [
+        'house_id' => (int) $house_id,
+        'reason' => 'transaction_failed',
+    ]);
     $_SESSION['error'] = "Error leaving house: " . $e->getMessage();
     header("Location: settings.php");
 }

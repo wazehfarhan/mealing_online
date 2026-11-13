@@ -70,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verify CSRF token
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = "Security validation failed. Please try again.";
+        audit_log_event('manager.member.invite.rejected', ['reason' => 'invalid_csrf_token']);
     } elseif (isset($_POST['member_id'])) {
         $member_id = intval($_POST['member_id']);
         
@@ -83,6 +84,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (!$member) {
             $error = "Member not found or doesn't belong to your house";
+            audit_log_event('manager.member.invite.rejected', [
+                'member_id' => $member_id,
+                'reason' => 'not_found_or_wrong_house',
+            ]);
         } else {
             // Check if member already has account
             $check_sql = "SELECT user_id FROM users WHERE member_id = ?";
@@ -93,6 +98,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (mysqli_stmt_num_rows($check_stmt) > 0) {
                 $error = "This member already has an account";
+                audit_log_event('manager.member.invite.rejected', [
+                    'member_id' => $member_id,
+                    'reason' => 'account_already_exists',
+                ]);
             } else {
                 // Generate new token
                 $new_token = bin2hex(random_bytes(32));
@@ -104,6 +113,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_bind_param($update_stmt, "ssii", $new_token, $token_expiry, $member_id, $house_id);
                 
                 if (mysqli_stmt_execute($update_stmt)) {
+                    audit_log_event('manager.member.invite.generated', [
+                        'member_id' => $member_id,
+                        'expires_at' => $token_expiry,
+                    ]);
                     // Create join URL
                     $base_url = str_replace($_SERVER['DOCUMENT_ROOT'], '', str_replace('\\', '/', dirname(__DIR__)));
                     $join_url = 'http://' . $_SERVER['HTTP_HOST'] . $base_url . '/member/join.php?token=' . $new_token;
@@ -137,12 +150,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $members_active_tokens = mysqli_fetch_all($result, MYSQLI_ASSOC);
                 } else {
                     $error = "Error generating join link: " . mysqli_error($conn);
+                    audit_log_event('manager.member.invite.error', [
+                        'member_id' => $member_id,
+                        'database_error_code' => mysqli_errno($conn),
+                    ]);
                 }
             }
         }
     } elseif (isset($_POST['generate_all'])) {
         // Generate links for all members without accounts for this house
         $generated_count = 0;
+        $generated_member_ids = [];
         $error_messages = [];
         
         foreach ($members_without_accounts as $member) {
@@ -162,12 +180,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (mysqli_stmt_execute($update_stmt)) {
                 $generated_count++;
+                $generated_member_ids[] = (int) $member['member_id'];
             } else {
                 $error_messages[] = "Error for " . $member['name'] . ": " . mysqli_error($conn);
             }
         }
         
         if ($generated_count > 0) {
+            audit_log_event('manager.member.invite.bulk.success', [
+                'generated_count' => $generated_count,
+                'member_ids' => $generated_member_ids,
+                'failed_count' => count($error_messages),
+            ]);
             $success = "Generated join links for $generated_count members successfully!";
             
             // Refresh lists for this house
@@ -196,6 +220,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = mysqli_stmt_get_result($stmt);
             $members_active_tokens = mysqli_fetch_all($result, MYSQLI_ASSOC);
         } else {
+            audit_log_event('manager.member.invite.bulk.noop', [
+                'generated_count' => 0,
+                'failed_count' => count($error_messages),
+            ]);
             $error = "No new links were generated. " . implode(" ", $error_messages);
         }
     }
@@ -224,8 +252,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_transfer_tok
     
     if (mysqli_stmt_execute($stmt)) {
         $transfer_success = "Transfer token generated successfully!";
+        audit_log_event('manager.house_transfer_token.generated', [
+            'token_id' => mysqli_insert_id($conn),
+            'expires_at' => $expires_at,
+        ]);
     } else {
         $transfer_error = "Failed to generate transfer token: " . mysqli_error($conn);
+        audit_log_event('manager.house_transfer_token.error', [
+            'database_error_code' => mysqli_errno($conn),
+        ]);
     }
 }
 

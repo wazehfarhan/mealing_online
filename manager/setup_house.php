@@ -2,6 +2,8 @@
 // setup_house.php - ENHANCED VERSION
 session_start();
 require_once '../config/database.php';
+require_once '../includes/logging.php';
+init_logging();
 
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: ../auth/login.php");
@@ -113,6 +115,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $_SESSION['house_id'] = $new_house_id;
                             $_SESSION['member_id'] = $member_id;
                             $_SESSION['house_code'] = $house_code;
+                            audit_log_event('manager.house.create.success', [
+                                'house_id' => $new_house_id,
+                                'member_id' => $member_id,
+                            ]);
                             
                             $_SESSION['success'] = "House created successfully! Your House Code is: <strong>$house_code</strong>";
                             header("Location: settings.php");
@@ -125,6 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 } catch (Exception $e) {
                     mysqli_rollback($conn);
+                    audit_log_event('manager.house.create.error', ['reason' => 'transaction_failed']);
                     $error = $e->getMessage();
                 }
             }
@@ -194,6 +201,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Set session variables
                         $_SESSION['house_id'] = $house['house_id'];
                         $_SESSION['member_id'] = $member_id;
+                        audit_log_event('manager.house.join.success', [
+                            'house_id' => (int) $house['house_id'],
+                            'member_id' => $member_id,
+                        ]);
                         
                         $_SESSION['success'] = "Successfully joined house: <strong>" . htmlspecialchars($house['house_name']) . "</strong>";
                         header("Location: settings.php");
@@ -203,6 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 } catch (Exception $e) {
                     mysqli_rollback($conn);
+                    audit_log_event('manager.house.join.error', ['reason' => 'transaction_failed']);
                     $error = $e->getMessage();
                 }
             }
