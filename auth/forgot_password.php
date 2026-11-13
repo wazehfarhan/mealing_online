@@ -963,17 +963,6 @@ if (isset($_SESSION['reset_email']) && $step == 2) {
                 });
             });
             
-            // Auto-hide error alerts after 5 seconds (except success)
-            setTimeout(() => {
-                const alerts = document.querySelectorAll('.alert-danger');
-                alerts.forEach(alert => {
-                    const closeBtn = alert.querySelector('.btn-close');
-                    if (closeBtn) {
-                        closeBtn.click();
-                    }
-                });
-            }, 5000);
-            
             // Auto-focus first input
             const firstInput = document.querySelector('input[type="email"], input[type="text"], input[type="password"]');
             if (firstInput && window.innerWidth > 768 && !document.querySelector('.success-step')) {

@@ -850,19 +850,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 });
             });
             
-            // Auto-hide error alerts after 5 seconds
-            setTimeout(() => {
-                const alerts = document.querySelectorAll('.alert-danger');
-                alerts.forEach(alert => {
-                    const closeBtn = alert.querySelector('.btn-close');
-                    if (closeBtn) {
-                        setTimeout(() => {
-                            closeBtn.click();
-                        }, 100);
-                    }
-                });
-            }, 5000);
-            
             // Auto-focus first input
             if (currentPasswordInput && window.innerWidth > 768) {
                 setTimeout(() => {
