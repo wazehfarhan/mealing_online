@@ -150,6 +150,8 @@ $member_totals = $member_totals_result ? mysqli_fetch_all($member_totals_result,
                 </div>
                 <?php else: ?>
                 <form method="POST" action="">
+    <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+    <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="member_id" class="form-label">Member *</label>
