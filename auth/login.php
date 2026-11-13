@@ -603,24 +603,6 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                 this.classList.remove('is-invalid');
             });
             
-            // Auto-hide success alerts after 10 seconds, keep error alerts visible longer
-            setTimeout(() => {
-                const alerts = document.querySelectorAll('.alert-success');
-                alerts.forEach(alert => {
-                    const bsAlert = new bootstrap.Alert(alert);
-                    bsAlert.close();
-                });
-            }, 10000);
-            
-            // Auto-hide error alerts after 20 seconds
-            setTimeout(() => {
-                const alerts = document.querySelectorAll('.alert-danger');
-                alerts.forEach(alert => {
-                    const bsAlert = new bootstrap.Alert(alert);
-                    bsAlert.close();
-                });
-            }, 20000);
-            
             // Auto-focus username on desktop
             if (window.innerWidth > 768) {
                 usernameInput.focus();
