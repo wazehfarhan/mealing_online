@@ -63,6 +63,11 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
         
         if (mysqli_stmt_execute($delete_stmt)) {
             $_SESSION['success'] = "Member deleted successfully";
+            audit_log_event('manager.member.delete.success', [
+                'member_id' => $member_id,
+                'member_name' => $member['name'],
+                'result' => 'deleted',
+            ]);
             
             // Log the deletion
             $log_sql = "INSERT INTO house_transfers_log 
@@ -74,6 +79,10 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
             mysqli_stmt_close($log_stmt);
         } else {
             $_SESSION['error'] = "Error deleting member";
+            audit_log_event('manager.member.delete.error', [
+                'member_id' => $member_id,
+                'database_error_code' => mysqli_errno($conn),
+            ]);
         }
         mysqli_stmt_close($delete_stmt);
     } else {
@@ -89,6 +98,14 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
             if ($has_user_account) $reason[] = "user account";
             
             $_SESSION['success'] = "Member marked as inactive (has " . implode(" and ", $reason) . ")";
+            audit_log_event('manager.member.delete.success', [
+                'member_id' => $member_id,
+                'member_name' => $member['name'],
+                'result' => 'marked_inactive',
+                'has_meals' => $has_meals,
+                'has_deposits' => $has_deposits,
+                'has_user_account' => $has_user_account,
+            ]);
             
             // Log the deactivation
             $log_sql = "INSERT INTO house_transfers_log 
@@ -100,6 +117,10 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
             mysqli_stmt_close($log_stmt);
         } else {
             $_SESSION['error'] = "Error updating member status";
+            audit_log_event('manager.member.delete.error', [
+                'member_id' => $member_id,
+                'database_error_code' => mysqli_errno($conn),
+            ]);
         }
         mysqli_stmt_close($update_stmt);
     }

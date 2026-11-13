@@ -30,6 +30,7 @@ $house_id = $user_data['house_id'];
 
 // Verify CSRF token
 if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+    audit_log_event('manager.house.update.rejected', ['reason' => 'invalid_csrf_token']);
     echo "Error: Security token invalid";
     exit();
 }
@@ -40,6 +41,7 @@ $description = isset($_POST['description']) ? trim($_POST['description']) : '';
 $is_active = isset($_POST['is_active']) ? 1 : 0;
 
 if (empty($house_name)) {
+    audit_log_event('manager.house.update.rejected', ['reason' => 'missing_house_name']);
     echo "Error: House name is required";
     exit();
 }
@@ -100,15 +102,22 @@ if (mysqli_stmt_execute($stmt)) {
         }
         
         // Update session if house_name exists
-        if (isset($_SESSION['house_name'])) {
-            $_SESSION['house_name'] = $house_name;
-        }
+        $_SESSION['house_name'] = $house_name;
+        audit_house_name((int) $house_id, $house_name);
+        audit_log_event('manager.house.update.success', [
+            'changed_fields' => ['house_name', 'description', 'is_active'],
+            'is_active' => (bool) $is_active,
+            'previous_is_active' => (bool) $previous_is_active,
+        ]);
         
         // Also update session house status
         $_SESSION['house_is_active'] = $is_active;
         
         echo "Success: House updated successfully";
     } else {
+        audit_log_event('manager.house.update.error', [
+            'database_error_code' => mysqli_errno($conn),
+        ]);
         echo "Info: No changes made or house not found";
     }
 } else {

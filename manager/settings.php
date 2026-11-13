@@ -44,6 +44,7 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_join_status'])) {
     // Verify CSRF token
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        audit_log_event('manager.house.join_status.rejected', ['reason' => 'invalid_csrf_token']);
         $_SESSION['error'] = "Security validation failed. Please try again.";
     } else {
         $new_status = isset($_POST['is_open_for_join']) ? 1 : 0;
@@ -53,11 +54,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_join_status'])
         mysqli_stmt_bind_param($stmt, "ii", $new_status, $house_id);
 
         if (mysqli_stmt_execute($stmt)) {
+            audit_log_event('manager.house.join_status.updated', ['is_open_for_join' => (bool) $new_status]);
             $_SESSION['success'] = "House join status updated successfully!";
             // Redirect to refresh the page
             header("Location: settings.php");
             exit();
         } else {
+            audit_log_event('manager.house.join_status.error', [
+                'database_error_code' => mysqli_errno($conn),
+            ]);
             $_SESSION['error'] = "Failed to update join status: " . mysqli_error($conn);
             header("Location: settings.php");
             exit();
@@ -89,6 +94,7 @@ $current_user = $auth->getCurrentUser();
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_house'])) {
     // Verify CSRF token
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        audit_log_event('manager.house.update.rejected', ['reason' => 'invalid_csrf_token']);
         // For AJAX
         if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
             header('Content-Type: application/json');
@@ -142,6 +148,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_house'])) {
         mysqli_stmt_bind_param($stmt, "ssii", $house_name, $description, $is_active, $house_id);
         
         if (mysqli_stmt_execute($stmt)) {
+            $_SESSION['house_name'] = $house_name;
+            audit_house_name((int) $house_id, $house_name);
+            audit_log_event('manager.house.update.success', [
+                'changed_fields' => ['house_name', 'description', 'is_active'],
+                'is_active' => (bool) $is_active,
+                'previous_is_active' => (bool) $previous_is_active,
+            ]);
             // Check if house was deactivated (from active to inactive)
             if ($previous_is_active == 1 && $is_active == 0) {
                 // Update all active members of this house to have house_inactive status
@@ -200,6 +213,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_house'])) {
             }
         } else {
             $error_msg = mysqli_error($conn);
+            audit_log_event('manager.house.update.error', [
+                'database_error_code' => mysqli_errno($conn),
+            ]);
             if ($isAjax) {
                 echo json_encode(['success' => false, 'message' => 'Update failed: ' . $error_msg]);
                 exit();
@@ -212,6 +228,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_house'])) {
         mysqli_stmt_close($stmt);
     } else {
         $error_msg = mysqli_error($conn);
+        audit_log_event('manager.house.update.error', [
+            'database_error_code' => mysqli_errno($conn),
+        ]);
         if ($isAjax) {
             echo json_encode(['success' => false, 'message' => 'Prepare failed: ' . $error_msg]);
             exit();
@@ -242,11 +261,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_stmt_bind_param($stmt, "ssssii", $name, $phone, $email, $status, $member_id, $house_id);
             
             if (mysqli_stmt_execute($stmt)) {
+                audit_log_event('manager.member.update.success', [
+                    'member_id' => $member_id,
+                    'changed_fields' => ['name', 'phone', 'email', 'status'],
+                    'status' => $status,
+                ]);
                 $_SESSION['success'] = "Member updated successfully";
                 header("Location: settings.php");
                 exit();
             } else {
                 $error = "Failed to update member: " . mysqli_error($conn);
+                audit_log_event('manager.member.update.error', [
+                    'member_id' => $member_id,
+                    'database_error_code' => mysqli_errno($conn),
+                ]);
             }
             mysqli_stmt_close($stmt);
         }
@@ -266,8 +294,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         mysqli_stmt_bind_param($stmt, "ssii", $token, $token_expiry, $member_id, $house_id);
         
         if (mysqli_stmt_execute($stmt)) {
+            audit_log_event('manager.member.invite.generated', [
+                'member_id' => $member_id,
+                'expires_at' => $token_expiry,
+            ]);
             $_SESSION['success'] = "Invite link generated successfully";
         } else {
+            audit_log_event('manager.member.invite.error', [
+                'member_id' => $member_id,
+                'database_error_code' => mysqli_errno($conn),
+            ]);
             $_SESSION['error'] = "Failed to generate invite: " . mysqli_error($conn);
         }
         mysqli_stmt_close($stmt);
