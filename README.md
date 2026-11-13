@@ -18,6 +18,8 @@ A comprehensive web-based application for managing meals in hostels, messes, and
 ### Manager Features
 
 - Add/remove members
+- Promote linked active members to managers and demote managers while keeping another active manager in the house
+- To leave a house, appoint another manager, change your own role to Member, then submit a leave request for approval
 - Generate member invite links
 - Manage meal records
 - Handle expenses and deposits
@@ -242,6 +244,7 @@ define('BASE_URL', 'http://localhost/mealing_online/');
 
 - Full access to their house
 - Manage members
+- Managers also have a linked member profile and can switch to Member after appointing another active manager
 - Add/edit meals, expenses, deposits
 - Generate reports
 - Settings management
