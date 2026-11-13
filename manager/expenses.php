@@ -66,7 +66,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $expense_id = intval($_GET['delete']);
     
     // Verify the expense belongs to manager's house
-    $verify_sql = "SELECT house_id FROM expenses WHERE expense_id = ?";
+    $verify_sql = "SELECT house_id, amount, category, expense_date FROM expenses WHERE expense_id = ?";
     $verify_stmt = mysqli_prepare($conn, $verify_sql);
     mysqli_stmt_bind_param($verify_stmt, "i", $expense_id);
     mysqli_stmt_execute($verify_stmt);
@@ -74,6 +74,10 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $expense = mysqli_fetch_assoc($verify_result);
     
     if (!$expense || $expense['house_id'] != $house_id) {
+        audit_log_event('manager.expense.delete.rejected', [
+            'expense_id' => $expense_id,
+            'reason' => 'not_found_or_wrong_house',
+        ]);
         $_SESSION['error'] = "Unauthorized access or expense not found";
         header("Location: expenses.php");
         exit();
@@ -85,8 +89,18 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     
     if (mysqli_stmt_execute($delete_stmt)) {
         $_SESSION['success'] = "Expense deleted successfully";
+        audit_log_event('manager.expense.delete.success', [
+            'expense_id' => $expense_id,
+            'amount' => number_format((float) $expense['amount'], 2, '.', ''),
+            'category' => $expense['category'],
+            'expense_date' => $expense['expense_date'],
+        ]);
     } else {
         $_SESSION['error'] = "Error deleting expense";
+        audit_log_event('manager.expense.delete.error', [
+            'expense_id' => $expense_id,
+            'database_error_code' => mysqli_errno($conn),
+        ]);
     }
     
     // Redirect back with filters

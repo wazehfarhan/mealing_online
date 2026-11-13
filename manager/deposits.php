@@ -33,7 +33,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $deposit_id = intval($_GET['delete']);
     
     // First, verify the deposit belongs to manager's house
-    $verify_sql = "SELECT house_id FROM deposits WHERE deposit_id = ?";
+    $verify_sql = "SELECT house_id, member_id, amount, deposit_date FROM deposits WHERE deposit_id = ?";
     $verify_stmt = mysqli_prepare($conn, $verify_sql);
     mysqli_stmt_bind_param($verify_stmt, "i", $deposit_id);
     mysqli_stmt_execute($verify_stmt);
@@ -41,6 +41,10 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $deposit = mysqli_fetch_assoc($verify_result);
     
     if (!$deposit || $deposit['house_id'] != $house_id) {
+        audit_log_event('manager.deposit.delete.rejected', [
+            'deposit_id' => $deposit_id,
+            'reason' => 'not_found_or_wrong_house',
+        ]);
         $_SESSION['error'] = "Unauthorized access or deposit not found";
         header("Location: deposits.php");
         exit();
@@ -52,8 +56,18 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     
     if (mysqli_stmt_execute($delete_stmt)) {
         $_SESSION['success'] = "Deposit deleted successfully";
+        audit_log_event('manager.deposit.delete.success', [
+            'deposit_id' => $deposit_id,
+            'member_id' => $deposit['member_id'],
+            'amount' => number_format((float) $deposit['amount'], 2, '.', ''),
+            'deposit_date' => $deposit['deposit_date'],
+        ]);
     } else {
         $_SESSION['error'] = "Error deleting deposit";
+        audit_log_event('manager.deposit.delete.error', [
+            'deposit_id' => $deposit_id,
+            'database_error_code' => mysqli_errno($conn),
+        ]);
     }
     
     // Redirect back with filters
