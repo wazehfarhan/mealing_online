@@ -62,6 +62,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verify CSRF token
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $error = "Security validation failed. Please try again.";
+        audit_log_event('manager.member.update.rejected', [
+            'member_id' => $member_id,
+            'reason' => 'invalid_csrf_token',
+        ]);
     } else {
         $name = trim($_POST['name']);
         $phone = trim($_POST['phone']);
@@ -82,8 +86,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $base_url = str_replace($_SERVER['DOCUMENT_ROOT'], '', str_replace('\\', '/', dirname(__DIR__)));
             $join_url = 'http://' . $_SERVER['HTTP_HOST'] . $base_url . '/member/join.php?token=' . $new_token;
             $success = "Join token regenerated successfully!";
+            audit_log_event('manager.member.invite.regenerated', [
+                'member_id' => $member_id,
+                'expires_at' => $token_expiry,
+            ]);
         } else {
             $error = "Error regenerating token: " . mysqli_error($conn);
+            audit_log_event('manager.member.invite.error', [
+                'member_id' => $member_id,
+                'database_error_code' => mysqli_errno($conn),
+            ]);
         }
     } else {
         // Update member details
@@ -146,6 +158,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if (mysqli_stmt_execute($update_stmt)) {
                     $success = "Member updated successfully!";
+                    audit_log_event('manager.member.update.success', [
+                        'member_id' => $member_id,
+                        'changed_fields' => ['name', 'phone', 'email', 'join_date', 'status'],
+                        'status' => $status,
+                        'approved_leave' => $status === 'inactive'
+                            && $member['status'] === 'active'
+                            && $member['house_status'] === 'pending_leave',
+                    ]);
                     
                     // If we approved a pending leave request, log it
                     if ($status == 'inactive' && $member['status'] == 'active' && $member['house_status'] == 'pending_leave') {
@@ -177,9 +197,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 } else {
                     $error = "Error updating member: " . mysqli_error($conn);
+                    audit_log_event('manager.member.update.error', [
+                        'member_id' => $member_id,
+                        'database_error_code' => mysqli_errno($conn),
+                    ]);
                 }
             }
         }
+    }
+    if ($error !== '' && !str_contains($error, 'Error updating member:')
+        && !str_contains($error, 'Error regenerating token:')) {
+        audit_log_event('manager.member.update.rejected', [
+            'member_id' => $member_id,
+            'reason' => 'validation_or_duplicate_contact',
+        ]);
     }
     
     // Refresh member data
@@ -207,6 +238,10 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $delete_member = mysqli_fetch_assoc($check_result);
     
     if (!$delete_member) {
+        audit_log_event('manager.member.delete.rejected', [
+            'member_id' => $delete_id,
+            'reason' => 'not_found_or_wrong_house',
+        ]);
         $_SESSION['error'] = "Member not found or you don't have permission to delete this member";
         header("Location: members.php");
         exit();
@@ -230,8 +265,18 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
         
         if (mysqli_stmt_execute($update_stmt)) {
             $_SESSION['success'] = "Member marked as inactive (has existing records)";
+            audit_log_event('manager.member.delete.success', [
+                'member_id' => $delete_id,
+                'result' => 'marked_inactive',
+                'has_meals' => (int) $has_records['meal_count'] > 0,
+                'has_deposits' => (int) $has_records['deposit_count'] > 0,
+            ]);
         } else {
             $_SESSION['error'] = "Error updating member status";
+            audit_log_event('manager.member.delete.error', [
+                'member_id' => $delete_id,
+                'database_error_code' => mysqli_errno($conn),
+            ]);
         }
     } else {
         // No records - can delete
@@ -241,8 +286,16 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
         
         if (mysqli_stmt_execute($delete_stmt)) {
             $_SESSION['success'] = "Member deleted successfully (no records found)";
+            audit_log_event('manager.member.delete.success', [
+                'member_id' => $delete_id,
+                'result' => 'deleted',
+            ]);
         } else {
             $_SESSION['error'] = "Error deleting member";
+            audit_log_event('manager.member.delete.error', [
+                'member_id' => $delete_id,
+                'database_error_code' => mysqli_errno($conn),
+            ]);
         }
     }
     

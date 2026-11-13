@@ -30,7 +30,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $meal_id = intval($_GET['delete']);
     
     // First, verify the meal belongs to manager's house
-    $verify_sql = "SELECT house_id FROM meals WHERE meal_id = ?";
+    $verify_sql = "SELECT house_id, member_id, meal_date, meal_count FROM meals WHERE meal_id = ?";
     $verify_stmt = mysqli_prepare($conn, $verify_sql);
     mysqli_stmt_bind_param($verify_stmt, "i", $meal_id);
     mysqli_stmt_execute($verify_stmt);
@@ -38,6 +38,10 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $meal = mysqli_fetch_assoc($verify_result);
     
     if (!$meal || $meal['house_id'] != $house_id) {
+        audit_log_event('manager.meal.delete.rejected', [
+            'meal_id' => $meal_id,
+            'reason' => 'not_found_or_wrong_house',
+        ]);
         $_SESSION['error'] = "Unauthorized access or meal not found";
         header("Location: meals.php");
         exit();
@@ -49,8 +53,18 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     
     if (mysqli_stmt_execute($delete_stmt)) {
         $_SESSION['success'] = "Meal entry deleted successfully";
+        audit_log_event('manager.meal.delete.success', [
+            'meal_id' => $meal_id,
+            'member_id' => $meal['member_id'],
+            'meal_date' => $meal['meal_date'],
+            'meal_count' => $meal['meal_count'],
+        ]);
     } else {
         $_SESSION['error'] = "Error deleting meal entry";
+        audit_log_event('manager.meal.delete.error', [
+            'meal_id' => $meal_id,
+            'database_error_code' => mysqli_errno($conn),
+        ]);
     }
     
     // Redirect back with filters
