@@ -1,5 +1,14 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/logging.php';
+
+init_logging();
+audit_log_event('request.received', [
+    'method' => $_SERVER['REQUEST_METHOD'] ?? 'CLI',
+    'path' => parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/',
+    'query_parameter_names' => array_keys($_GET),
+    'form_field_names' => array_keys($_POST),
+]);
 
 class Auth {
     private mysqli $conn;
@@ -63,6 +72,7 @@ class Auth {
         $stmt = mysqli_prepare($this->conn, $sql);
         
         if (!$stmt) {
+            audit_log_event('auth.login.failed', ['reason' => 'query_prepare_failed']);
             return false;
         }
         
@@ -107,11 +117,13 @@ class Auth {
                 mysqli_stmt_bind_param($update_stmt, "i", $row['user_id']);
                 mysqli_stmt_execute($update_stmt);
                 mysqli_stmt_close($update_stmt);
+                audit_log_event('auth.login.success');
                 
                 return true;
             }
         }
         
+        audit_log_event('auth.login.failed', ['reason' => 'invalid_credentials']);
         return false;
     }
     
@@ -124,6 +136,7 @@ class Auth {
      */
     public function requireLogin(): void {
         if (!$this->isLoggedIn()) {
+            audit_log_event('auth.login.required');
             $_SESSION['redirect_url'] = $_SERVER['REQUEST_URI'];
             header("Location: ../auth/login.php");
             exit();
@@ -137,6 +150,7 @@ class Auth {
         $this->requireLogin();
         
         if ($_SESSION['role'] !== $role) {
+            audit_log_event('auth.role.rejected', ['required_role' => $role]);
             $_SESSION['error'] = "Access denied. You need to be a " . $role . " to access this page.";
             
             // Redirect based on user's actual role
@@ -568,6 +582,8 @@ class Auth {
      * @return never
      */
     public function logout(): never {
+        audit_log_event('auth.logout');
+
         // Unset all session variables
         $_SESSION = array();
         
@@ -598,6 +614,7 @@ class Auth {
         mysqli_stmt_store_result($check_stmt);
         
         if (mysqli_stmt_num_rows($check_stmt) > 0) {
+            audit_log_event('auth.register.rejected', ['reason' => 'account_already_exists']);
             return false; // User already exists
         }
         
@@ -624,7 +641,18 @@ class Auth {
                                  $role, $security_question, $hashed_answer);
         }
         
-        return mysqli_stmt_execute($stmt);
+        if (mysqli_stmt_execute($stmt)) {
+            audit_log_event('auth.register.success', [
+                'user_id' => mysqli_insert_id($this->conn),
+                'role' => $role,
+            ]);
+            return true;
+        }
+
+        audit_log_event('auth.register.error', [
+            'database_error_code' => mysqli_errno($this->conn),
+        ]);
+        return false;
     }
     
     /**
@@ -677,11 +705,19 @@ class Auth {
                 $sql = "UPDATE users SET password = ? WHERE user_id = ?";
                 $stmt = mysqli_prepare($this->conn, $sql);
                 mysqli_stmt_bind_param($stmt, "si", $new_hashed, $user_id);
-                
-                return mysqli_stmt_execute($stmt);
+                if (mysqli_stmt_execute($stmt)) {
+                    audit_log_event('auth.password.update.success');
+                    return true;
+                }
+
+                audit_log_event('auth.password.update.error', [
+                    'database_error_code' => mysqli_errno($this->conn),
+                ]);
+                return false;
             }
         }
         
+        audit_log_event('auth.password.update.rejected', ['reason' => 'current_password_mismatch']);
         return false;
     }
     
@@ -820,11 +856,13 @@ class Auth {
         // Validate token first
         $tokenData = $this->validateJoinToken($token);
         if (!$tokenData) {
+            audit_log_event('member.account.register.rejected', ['reason' => 'invalid_or_expired_invite']);
             return ['success' => false, 'error' => 'Invalid or expired token'];
         }
         
         // Check if username/email exists
         if ($this->usernameExists($username) || $this->emailExists($email)) {
+            audit_log_event('member.account.register.rejected', ['reason' => 'account_already_exists']);
             return ['success' => false, 'error' => 'Username or email already exists'];
         }
         
@@ -881,6 +919,10 @@ class Auth {
             $_SESSION['house_name'] = $tokenData['house_name'];
             $_SESSION['house_code'] = $tokenData['house_code'];
             $_SESSION['logged_in'] = true;
+            audit_log_event('member.account.register.success', [
+                'user_id' => (int) $user_id,
+                'member_id' => (int) $tokenData['member_id'],
+            ]);
             
             return [
                 'success' => true,
@@ -891,6 +933,9 @@ class Auth {
             
         } catch (Exception $e) {
             mysqli_rollback($this->conn);
+            audit_log_event('member.account.register.error', [
+                'reason' => 'registration_transaction_failed',
+            ]);
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
@@ -1043,6 +1088,7 @@ class Auth {
         $result = mysqli_stmt_get_result($stmt);
         
         if (mysqli_num_rows($result) !== 1) {
+            audit_log_event('auth.password_reset.rejected', ['reason' => 'account_not_found']);
             return ['success' => false, 'error' => 'Email not found'];
         }
         
@@ -1050,6 +1096,7 @@ class Auth {
         
         // Check if security question is set
         if (empty($row['security_question'])) {
+            audit_log_event('auth.password_reset.rejected', ['reason' => 'security_question_not_configured']);
             return ['success' => false, 'error' => 'No security question set for this account'];
         }
         
@@ -1062,12 +1109,20 @@ class Auth {
         mysqli_stmt_bind_param($stmt, "sss", $token, $expiry, $email);
         
         if (mysqli_stmt_execute($stmt)) {
+            audit_log_event('auth.password_reset.requested', [
+                'user_id' => (int) $row['user_id'],
+                'expires_at' => $expiry,
+            ]);
             return [
                 'success' => true,
                 'token' => $token,
                 'question' => $row['security_question']
             ];
         }
+        audit_log_event('auth.password_reset.error', [
+            'user_id' => (int) $row['user_id'],
+            'database_error_code' => mysqli_errno($this->conn),
+        ]);
         
         return ['success' => false, 'error' => 'Failed to generate reset token'];
     }
@@ -1129,6 +1184,7 @@ class Auth {
         $result = mysqli_stmt_get_result($stmt);
         
         if (mysqli_num_rows($result) !== 1) {
+            audit_log_event('auth.password_reset.rejected', ['reason' => 'invalid_token']);
             return ['success' => false, 'error' => 'Invalid token'];
         }
         
@@ -1136,6 +1192,7 @@ class Auth {
         
         // Check if token is expired
         if (strtotime($row['reset_token_expiry']) < time()) {
+            audit_log_event('auth.password_reset.rejected', ['reason' => 'expired_token']);
             return ['success' => false, 'error' => 'Token has expired'];
         }
         
@@ -1148,9 +1205,13 @@ class Auth {
         mysqli_stmt_bind_param($stmt, "ss", $hashed_password, $email);
         
         if (mysqli_stmt_execute($stmt)) {
+            audit_log_event('auth.password_reset.success');
             return ['success' => true];
         }
         
+        audit_log_event('auth.password_reset.error', [
+            'database_error_code' => mysqli_errno($this->conn),
+        ]);
         return ['success' => false, 'error' => 'Failed to reset password'];
     }
     
@@ -1172,9 +1233,17 @@ class Auth {
             
             if ($row = mysqli_fetch_assoc($result)) {
                 if (!password_verify($current_password, $row['password'])) {
+                    audit_log_event('auth.security_question.update.rejected', [
+                        'user_id' => $user_id,
+                        'reason' => 'current_password_mismatch',
+                    ]);
                     return ['success' => false, 'error' => 'Current password is incorrect'];
                 }
             } else {
+                audit_log_event('auth.security_question.update.rejected', [
+                    'user_id' => $user_id,
+                    'reason' => 'user_not_found',
+                ]);
                 return ['success' => false, 'error' => 'User not found'];
             }
         }
@@ -1188,9 +1257,16 @@ class Auth {
         mysqli_stmt_bind_param($stmt, "ssi", $question, $hashed_answer, $user_id);
         
         if (mysqli_stmt_execute($stmt)) {
+            audit_log_event('auth.security_question.update.success', [
+                'user_id' => $user_id,
+            ]);
             return ['success' => true];
         }
         
+        audit_log_event('auth.security_question.update.error', [
+            'user_id' => $user_id,
+            'database_error_code' => mysqli_errno($this->conn),
+        ]);
         return ['success' => false, 'error' => 'Failed to update security question'];
     }
     

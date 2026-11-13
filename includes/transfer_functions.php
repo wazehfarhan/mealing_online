@@ -157,6 +157,13 @@ function generateJoinToken($house_id, $member_id = null, $token_type = 'house_tr
     mysqli_stmt_bind_param($stmt, "siisss", $token, $house_id, $member_id, $token_type, $expires_at, $created_by);
     
     if (mysqli_stmt_execute($stmt)) {
+        audit_log_event('member.house_transfer_token.generated', [
+            'token_id' => mysqli_insert_id($conn),
+            'destination_house_id' => (int) $house_id,
+            'member_id' => $member_id === null ? null : (int) $member_id,
+            'token_type' => $token_type,
+            'expires_at' => $expires_at,
+        ]);
         mysqli_stmt_close($stmt);
         return [
             'success' => true,
@@ -166,6 +173,10 @@ function generateJoinToken($house_id, $member_id = null, $token_type = 'house_tr
     }
     
     mysqli_stmt_close($stmt);
+    audit_log_event('member.house_transfer_token.error', [
+        'destination_house_id' => (int) $house_id,
+        'database_error_code' => mysqli_errno($conn),
+    ]);
     return ['success' => false, 'error' => mysqli_error($conn)];
 }
 
@@ -186,6 +197,10 @@ function useJoinToken($token, $member_id) {
     
     if (!$token_data) {
         mysqli_stmt_close($stmt);
+        audit_log_event('member.house_transfer_token.rejected', [
+            'member_id' => (int) $member_id,
+            'reason' => 'invalid_or_expired_token',
+        ]);
         return ['success' => false, 'error' => 'Invalid or expired token.'];
     }
     mysqli_stmt_close($stmt);
@@ -196,8 +211,23 @@ function useJoinToken($token, $member_id) {
                    WHERE token_id = ?";
     $update_stmt = mysqli_prepare($conn, $update_sql);
     mysqli_stmt_bind_param($update_stmt, "ii", $member_id, $token_data['token_id']);
-    mysqli_stmt_execute($update_stmt);
+    $updated = mysqli_stmt_execute($update_stmt);
     mysqli_stmt_close($update_stmt);
+    if (!$updated) {
+        audit_log_event('member.house_transfer_token.error', [
+            'member_id' => (int) $member_id,
+            'destination_house_id' => (int) $token_data['house_id'],
+            'database_error_code' => mysqli_errno($conn),
+        ]);
+        return ['success' => false, 'error' => 'Failed to use join token.'];
+    }
+
+    audit_log_event('member.house_transfer_token.used', [
+        'member_id' => (int) $member_id,
+        'destination_house_id' => (int) $token_data['house_id'],
+        'token_id' => (int) $token_data['token_id'],
+        'token_type' => $token_data['token_type'],
+    ]);
     
     return [
         'success' => true,
@@ -414,13 +444,24 @@ function requestJoinHouseByCode($member_id, $house_code) {
     mysqli_stmt_bind_param($stmt, "ii", $house_data['house_id'], $member_id);
     
     if (mysqli_stmt_execute($stmt)) {
+        audit_log_event('member.join_request.success', [
+            'member_id' => (int) $member_id,
+            'destination_house_id' => (int) $house_data['house_id'],
+            'request_method' => 'house_code',
+        ]);
         mysqli_stmt_close($stmt);
         return [
             'success' => true, 
             'message' => 'Join request submitted successfully.',
-            'house_name' => $house_data['house_name']
+            'house_name' => $house_data['house_name'],
+            'house_id' => (int) $house_data['house_id'],
         ];
     } else {
+        audit_log_event('member.join_request.error', [
+            'member_id' => (int) $member_id,
+            'destination_house_id' => (int) $house_data['house_id'],
+            'database_error_code' => mysqli_errno($conn),
+        ]);
         mysqli_stmt_close($stmt);
         return ['success' => false, 'error' => 'Failed to submit join request.'];
     }
@@ -497,13 +538,24 @@ function requestJoinHouseByToken($member_id, $token) {
     mysqli_stmt_bind_param($stmt, "ii", $house_id, $member_id);
     
     if (mysqli_stmt_execute($stmt)) {
+        audit_log_event('member.join_request.success', [
+            'member_id' => (int) $member_id,
+            'destination_house_id' => (int) $house_id,
+            'request_method' => 'transfer_token',
+        ]);
         mysqli_stmt_close($stmt);
         return [
             'success' => true, 
             'message' => 'Join request submitted successfully.',
-            'house_name' => $house_data['house_name']
+            'house_name' => $house_data['house_name'],
+            'house_id' => (int) $house_id,
         ];
     } else {
+        audit_log_event('member.join_request.error', [
+            'member_id' => (int) $member_id,
+            'destination_house_id' => (int) $house_id,
+            'database_error_code' => mysqli_errno($conn),
+        ]);
         mysqli_stmt_close($stmt);
         return ['success' => false, 'error' => 'Failed to submit join request.'];
     }
@@ -524,6 +576,10 @@ function cancelLeaveRequest($member_id) {
     
     $result = mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
+    audit_log_event(
+        $result ? 'member.leave_request.cancelled' : 'member.leave_request.cancel.error',
+        ['member_id' => (int) $member_id]
+    );
     
     return $result;
 }
@@ -544,6 +600,10 @@ function cancelJoinRequest($member_id) {
     
     $result = mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
+    audit_log_event(
+        $result ? 'member.join_request.cancelled' : 'member.join_request.cancel.error',
+        ['member_id' => (int) $member_id]
+    );
     
     return $result;
 }
