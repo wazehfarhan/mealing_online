@@ -21,7 +21,14 @@ if (isset($_GET['return']) && $_GET['return'] == 1) {
     $return_stmt = mysqli_prepare($conn, "UPDATE members SET is_viewing_history = 0, history_house_id = NULL WHERE member_id = ?");
     if ($return_stmt) {
         mysqli_stmt_bind_param($return_stmt, "i", $member_id);
-        mysqli_stmt_execute($return_stmt);
+        if (mysqli_stmt_execute($return_stmt)) {
+            audit_log_event('member.history.returned', ['member_id' => $member_id]);
+        } else {
+            audit_log_event('member.history.return.error', [
+                'member_id' => $member_id,
+                'database_error_code' => mysqli_errno($conn),
+            ]);
+        }
         mysqli_stmt_close($return_stmt);
     }
     

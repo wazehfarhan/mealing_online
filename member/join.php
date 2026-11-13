@@ -354,6 +354,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['house_code'] = $house_data['house_code'] ?? '';
                 $_SESSION['member_name'] = $member_data['name'] ?? '';
                 $_SESSION['logged_in'] = true;
+                audit_log_event('member.account.register.success', [
+                    'member_id' => (int) $member_info['member_id'],
+                    'user_id' => (int) $user_id,
+                ]);
                 
                 // Update last login
                 $update_login_sql = "UPDATE users SET last_login = NOW() WHERE user_id = ?";
@@ -378,6 +382,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
             } catch (Exception $e) {
                 mysqli_rollback($conn);
+                audit_log_event('member.account.register.error', [
+                    'reason' => 'registration_transaction_failed',
+                ]);
                 $error = "Registration failed: " . $e->getMessage();
                 
                 // Refresh member info if available

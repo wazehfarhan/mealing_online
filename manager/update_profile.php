@@ -1,6 +1,10 @@
 <?php
 session_start();
 
+require_once '../config/database.php';
+require_once '../includes/logging.php';
+init_logging();
+
 if (empty($_SESSION['user_id'])) {
     header("Location: ../auth/login.php");
     exit();
@@ -8,7 +12,6 @@ if (empty($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 
-require_once '../config/database.php';
 require_once '../includes/csrf.php';
 $conn = getConnection();
 
@@ -78,11 +81,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     mysqli_stmt_bind_param($update_stmt, "si", $new_username, $user_id);
                     
                     if (mysqli_stmt_execute($update_stmt)) {
+                        audit_log_event('manager.profile.username.update.success', [
+                            'changed_fields' => ['username'],
+                        ]);
                         $_SESSION['username'] = $new_username;
                         $user['username'] = $new_username;
                         $success = "Username updated successfully!";
                     } else {
                         $error = "Error updating username";
+                        audit_log_event('manager.profile.username.update.error', [
+                            'database_error_code' => mysqli_errno($conn),
+                        ]);
                     }
                 }
             }
@@ -129,6 +138,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         
                         mysqli_commit($conn);
+                        audit_log_event('manager.profile.update.success', [
+                            'changed_fields' => $member && !empty($user['member_id'])
+                                ? ['email', 'member_name', 'phone']
+                                : ['email'],
+                        ]);
                         
                         $_SESSION['email'] = $new_email;
                         $user['email'] = $new_email;
@@ -137,6 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } catch (Exception $e) {
                         mysqli_rollback($conn);
                         $error = "Error updating profile";
+                        audit_log_event('manager.profile.update.error', ['reason' => 'transaction_failed']);
                     }
                 }
             }
@@ -163,11 +178,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if (mysqli_stmt_execute($stmt)) {
                         $success = "Password changed successfully!";
+                        audit_log_event('manager.profile.password.update.success');
                     } else {
                         $error = "Error updating password";
+                        audit_log_event('manager.profile.password.update.error', [
+                            'database_error_code' => mysqli_errno($conn),
+                        ]);
                     }
                 } else {
                     $error = "Current password is incorrect";
+                    audit_log_event('manager.profile.password.update.rejected', [
+                        'reason' => 'current_password_mismatch',
+                    ]);
                 }
             }
         }

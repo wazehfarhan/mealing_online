@@ -44,6 +44,11 @@ if (!$member) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'use_token') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $errors[] = "Security token invalid. Please try again.";
+        audit_log_event('member.join_request.rejected', [
+            'member_id' => (int) $member_id,
+            'action' => 'use_token',
+            'reason' => 'invalid_csrf_token',
+        ]);
     } else {
         $token = trim($_POST['join_token'] ?? '');
         
@@ -131,6 +136,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'cancel_join_request') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $_SESSION['error'] = "Security token invalid. Please try again.";
+        audit_log_event('member.join_request.cancel.rejected', [
+            'member_id' => (int) $member_id,
+            'reason' => 'invalid_csrf_token',
+        ]);
         header("Location: join_request.php");
         exit();
     }
@@ -159,6 +168,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     
     header("Location: join_request.php");
     exit();
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($errors)) {
+    audit_log_event('member.join_request.rejected', [
+        'member_id' => (int) $member_id,
+        'action' => $_POST['action'] ?? 'unknown',
+        'reason' => 'validation_or_state_check',
+    ]);
 }
 
 // Refresh member data after any processing
