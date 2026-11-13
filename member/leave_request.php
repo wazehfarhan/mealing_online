@@ -31,6 +31,14 @@ function getMemberData($conn, $member_id) {
     return $data;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($errors)) {
+    audit_log_event('member.leave_request.rejected', [
+        'member_id' => (int) $member_id,
+        'action' => $_POST['action'] ?? 'unknown',
+        'reason' => 'validation_or_state_check',
+    ]);
+}
+
 $member = getMemberData($conn, $member_id);
 
 if (!$member) {
@@ -71,6 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verify CSRF token
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $errors[] = "Security token invalid. Please try again.";
+        audit_log_event('member.leave_request.rejected', ['reason' => 'invalid_csrf_token']);
     } elseif (isset($_POST['action']) && $_POST['action'] == 'submit_leave') {
         // Allow inactive members to submit leave request too
         if ($member['house_status'] == 'left') {
@@ -101,6 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (mysqli_stmt_execute($update_stmt)) {
                 if (mysqli_stmt_affected_rows($update_stmt) > 0) {
+                    audit_log_event('member.leave_request.success', ['member_id' => $member_id]);
                     $log_sql = "INSERT INTO house_transfers_log 
                                 (member_id, from_house_id, action, performed_by, notes)
                                 VALUES (?, ?, 'leave_requested', ?, 'Member submitted leave request')";
@@ -114,9 +124,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit();
                 } else {
                     $errors[] = "Unable to submit leave request.";
+                    audit_log_event('member.leave_request.rejected', [
+                        'member_id' => $member_id,
+                        'reason' => 'member_status_changed',
+                    ]);
                 }
             } else {
                 $errors[] = "Failed to submit leave request. Error: " . mysqli_error($conn);
+                audit_log_event('member.leave_request.error', [
+                    'member_id' => $member_id,
+                    'database_error_code' => mysqli_errno($conn),
+                ]);
             }
             mysqli_stmt_close($update_stmt);
         }
@@ -130,6 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (mysqli_stmt_execute($cancel_stmt)) {
                 if (mysqli_stmt_affected_rows($cancel_stmt) > 0) {
+                    audit_log_event('member.leave_request.cancelled', ['member_id' => $member_id]);
                     $log_sql = "INSERT INTO house_transfers_log (member_id, from_house_id, action, performed_by, notes) VALUES (?, ?, 'leave_cancelled', ?, 'Member cancelled leave request')";
                     $log_stmt = mysqli_prepare($conn, $log_sql);
                     mysqli_stmt_bind_param($log_stmt, "iii", $member_id, $current_house_id, $member_id);
@@ -142,6 +161,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } else {
                 $errors[] = "Failed to cancel request.";
+                audit_log_event('member.leave_request.cancel.error', [
+                    'member_id' => $member_id,
+                    'database_error_code' => mysqli_errno($conn),
+                ]);
             }
             mysqli_stmt_close($cancel_stmt);
         }

@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 require_once '../includes/header.php';
 
 $auth = new Auth();
@@ -46,7 +47,11 @@ if (!$user) {
 
 // Process form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['form_type'])) {
+    if (!verifyCSRFToken()) {
+        http_response_code(403);
+        $error = "Your session security check failed. Please refresh the page and try again.";
+        audit_log_event('member.profile.update.rejected', ['reason' => 'csrf_validation_failed']);
+    } elseif (isset($_POST['form_type'])) {
         $form_type = $_POST['form_type'];
         
         if ($form_type === 'change_username') {
@@ -74,11 +79,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     mysqli_stmt_bind_param($update_stmt, "si", $new_username, $user_id);
                     
                     if (mysqli_stmt_execute($update_stmt)) {
+                        audit_log_event('member.username.update.success', [
+                            'changed_fields' => ['username'],
+                        ]);
                         $_SESSION['username'] = $new_username;
                         $user['username'] = $new_username;
                         $success = "Username updated successfully!";
                     } else {
                         $error = "Error updating username";
+                        audit_log_event('member.username.update.error', [
+                            'database_error_code' => mysqli_errno($conn),
+                        ]);
                     }
                 }
             }
@@ -123,6 +134,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         
                         mysqli_commit($conn);
+                        audit_log_event('member.profile.update.success', [
+                            'changed_fields' => $member && $member_id
+                                ? ['email', 'phone']
+                                : ['email'],
+                        ]);
                         
                         $_SESSION['email'] = $new_email;
                         $user['email'] = $new_email;
@@ -131,6 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } catch (Exception $e) {
                         mysqli_rollback($conn);
                         $error = "Error updating profile";
+                        audit_log_event('member.profile.update.error', ['reason' => 'transaction_failed']);
                     }
                 }
             }
@@ -157,11 +174,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if (mysqli_stmt_execute($stmt)) {
                         $success = "Password changed successfully!";
+                        audit_log_event('member.password.update.success');
                     } else {
                         $error = "Error updating password";
+                        audit_log_event('member.password.update.error', [
+                            'database_error_code' => mysqli_errno($conn),
+                        ]);
                     }
                 } else {
                     $error = "Current password is incorrect";
+                    audit_log_event('member.password.update.rejected', ['reason' => 'current_password_mismatch']);
                 }
             }
         }

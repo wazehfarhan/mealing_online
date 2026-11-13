@@ -24,6 +24,12 @@ if ($member_id && $house_id) {
     if (mysqli_stmt_execute($stmt)) {
         $_SESSION['viewing_history'] = true;
         $_SESSION['history_house_id'] = $house_id;
+        audit_log_event('member.history.viewed', ['history_house_id' => (int) $house_id]);
+    } else {
+        audit_log_event('member.history.view.error', [
+            'history_house_id' => (int) $house_id,
+            'database_error_code' => mysqli_errno($conn),
+        ]);
     }
     mysqli_stmt_close($stmt);
 }
