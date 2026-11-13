@@ -148,6 +148,29 @@ class Auth {
      */
     public function requireRole(string $role): void {
         $this->requireLogin();
+
+        $user_id = (int) ($_SESSION['user_id'] ?? 0);
+        if ($user_id < 1) {
+            audit_log_event('auth.role.rejected', ['reason' => 'missing_user_id']);
+            header("Location: ../auth/login.php");
+            exit();
+        }
+
+        $role_sql = "SELECT role FROM users WHERE user_id = ?";
+        $role_stmt = mysqli_prepare($this->conn, $role_sql);
+        mysqli_stmt_bind_param($role_stmt, "i", $user_id);
+        mysqli_stmt_execute($role_stmt);
+        $role_result = mysqli_stmt_get_result($role_stmt);
+        $current_user = mysqli_fetch_assoc($role_result);
+        mysqli_stmt_close($role_stmt);
+
+        if (!$current_user) {
+            audit_log_event('auth.role.rejected', ['reason' => 'user_not_found']);
+            unset($_SESSION['role']);
+            header("Location: ../auth/login.php");
+            exit();
+        }
+        $_SESSION['role'] = $current_user['role'];
         
         if ($_SESSION['role'] !== $role) {
             audit_log_event('auth.role.rejected', ['required_role' => $role]);
@@ -504,6 +527,25 @@ class Auth {
         if (!$house_id) {
             return ['success' => false, 'error' => 'No house to leave'];
         }
+
+        $role_sql = "SELECT role, house_id FROM users WHERE user_id = ?";
+        $role_stmt = mysqli_prepare($this->conn, $role_sql);
+        mysqli_stmt_bind_param($role_stmt, "i", $user_id);
+        mysqli_stmt_execute($role_stmt);
+        $role_result = mysqli_stmt_get_result($role_stmt);
+        $current_user = mysqli_fetch_assoc($role_result);
+        mysqli_stmt_close($role_stmt);
+
+        if (!$current_user || (int) $current_user['house_id'] !== (int) $house_id) {
+            return ['success' => false, 'error' => 'Your current house could not be verified'];
+        }
+
+        if ($current_user['role'] === 'manager') {
+            return [
+                'success' => false,
+                'error' => 'Assign another active manager and change your role to member before requesting to leave.',
+            ];
+        }
         
         // Start transaction
         mysqli_begin_transaction($this->conn);
@@ -516,37 +558,6 @@ class Auth {
             
             if (!mysqli_stmt_execute($stmt)) {
                 throw new Exception("Failed to remove house from user: " . mysqli_error($this->conn));
-            }
-            
-            // If user is a manager, handle manager transition
-            if ($_SESSION['role'] === 'manager') {
-                // Check if there are other managers in the house
-                $sql = "SELECT COUNT(*) as manager_count FROM users 
-                        WHERE house_id = ? AND role = 'manager' AND user_id != ?";
-                $stmt = mysqli_prepare($this->conn, $sql);
-                mysqli_stmt_bind_param($stmt, "ii", $house_id, $user_id);
-                mysqli_stmt_execute($stmt);
-                $result = mysqli_stmt_get_result($stmt);
-                $data = mysqli_fetch_assoc($result);
-                
-                if ($data['manager_count'] == 0) {
-                    // No other managers, assign the oldest active member as manager
-                    $sql = "SELECT user_id FROM users 
-                            WHERE house_id = ? AND role = 'member' AND is_active = 1 
-                            ORDER BY created_at ASC LIMIT 1";
-                    $stmt = mysqli_prepare($this->conn, $sql);
-                    mysqli_stmt_bind_param($stmt, "i", $house_id);
-                    mysqli_stmt_execute($stmt);
-                    $result = mysqli_stmt_get_result($stmt);
-                    
-                    if ($new_manager = mysqli_fetch_assoc($result)) {
-                        // Promote this member to manager
-                        $sql = "UPDATE users SET role = 'manager' WHERE user_id = ?";
-                        $stmt = mysqli_prepare($this->conn, $sql);
-                        mysqli_stmt_bind_param($stmt, "i", $new_manager['user_id']);
-                        mysqli_stmt_execute($stmt);
-                    }
-                }
             }
             
             // Update member status to inactive

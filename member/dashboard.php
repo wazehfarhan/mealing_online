@@ -10,7 +10,6 @@ ob_start();
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/transfer_functions.php';
-require_once '../includes/header.php';
 
 $auth = new Auth();
 $functions = new Functions();
@@ -18,6 +17,7 @@ $functions = new Functions();
 $auth->requireRole('member');
 
 $page_title = "Member Dashboard";
+require_once '../includes/header.php';
 
 $conn = getConnection();
 $user_id = $_SESSION['user_id'];

@@ -520,7 +520,7 @@ require_once '../includes/header.php';
         <div class="alert alert-warning">
             <i class="fas fa-exclamation-triangle me-2"></i>
             <strong>You are currently in an active house.</strong> 
-            You must <a href="leave_house.php" class="alert-link">request to leave</a> your current house before joining a new one.
+            You must <a href="leave_request.php" class="alert-link">request to leave</a> your current house before joining a new one.
         </div>
         <?php endif; ?>
         

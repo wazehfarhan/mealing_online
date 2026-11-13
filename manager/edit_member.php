@@ -104,8 +104,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (empty($join_date)) {
             $error = "Join date is required";
         } else {
+            if ($status === 'inactive') {
+                $manager_check_sql = "SELECT user_id FROM users
+                                      WHERE member_id = ? AND house_id = ? AND role = 'manager'
+                                      LIMIT 1";
+                $manager_check_stmt = mysqli_prepare($conn, $manager_check_sql);
+                mysqli_stmt_bind_param($manager_check_stmt, "ii", $member_id, $house_id);
+                mysqli_stmt_execute($manager_check_stmt);
+                $manager_account = mysqli_fetch_assoc(mysqli_stmt_get_result($manager_check_stmt));
+                mysqli_stmt_close($manager_check_stmt);
+
+                if ($manager_account) {
+                    $error = "Change this account to a member before deactivating it.";
+                }
+            }
+
             // Check for duplicate phone/email in the same house (excluding current member)
-            if (!empty($phone) || !empty($email)) {
+            if ($error === '' && (!empty($phone) || !empty($email))) {
                 $check_sql = "SELECT member_id FROM members WHERE house_id = ? AND (phone = ? OR email = ?) AND member_id != ?";
                 $check_stmt = mysqli_prepare($conn, $check_sql);
                 mysqli_stmt_bind_param($check_stmt, "issi", $house_id, $phone, $email, $member_id);
@@ -230,7 +245,11 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $delete_id = intval($_GET['delete']);
     
     // Check if member belongs to current house
-    $check_sql = "SELECT house_id, status, house_status FROM members WHERE member_id = ? AND house_id = ?";
+    $check_sql = "SELECT m.house_id, m.status, m.house_status,
+                         (SELECT COUNT(*) FROM users u
+                          WHERE u.member_id = m.member_id AND u.house_id = m.house_id AND u.role = 'manager') AS manager_account_count
+                  FROM members m
+                  WHERE m.member_id = ? AND m.house_id = ?";
     $check_stmt = mysqli_prepare($conn, $check_sql);
     mysqli_stmt_bind_param($check_stmt, "ii", $delete_id, $house_id);
     mysqli_stmt_execute($check_stmt);
@@ -243,6 +262,16 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
             'reason' => 'not_found_or_wrong_house',
         ]);
         $_SESSION['error'] = "Member not found or you don't have permission to delete this member";
+        header("Location: members.php");
+        exit();
+    }
+
+    if ((int) $delete_member['manager_account_count'] > 0) {
+        audit_log_event('manager.member.delete.rejected', [
+            'member_id' => $delete_id,
+            'reason' => 'manager_role_must_be_changed_first',
+        ]);
+        $_SESSION['error'] = "Change this account to a member before deactivating or removing it.";
         header("Location: members.php");
         exit();
     }

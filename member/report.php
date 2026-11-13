@@ -2,13 +2,13 @@
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/transfer_functions.php';
-require_once '../includes/header.php';
 date_default_timezone_set('Asia/Dhaka');
 $auth = new Auth();
 $functions = new Functions();
 $auth->requireRole('member');
 
 $page_title = "Monthly Report";
+require_once '../includes/header.php';
 $conn = getConnection();
 $user_id = $_SESSION['user_id'];
 $member_id = $_SESSION['member_id'];

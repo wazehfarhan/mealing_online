@@ -545,7 +545,7 @@ require_once '../includes/header.php';
                     </button>
                     <button type="button" class="btn btn-outline-danger" 
                             data-bs-toggle="modal" data-bs-target="#leaveHouseModal">
-                        <i class="fas fa-sign-out-alt me-2"></i>Leave House
+                        <i class="fas fa-sign-out-alt me-2"></i>Prepare to Leave
                     </button>
                 </div>
             </div>
@@ -585,7 +585,7 @@ require_once '../includes/header.php';
             </button>
             <button type="button" class="btn btn-outline-danger" 
                     data-bs-toggle="modal" data-bs-target="#leaveHouseModal">
-                <i class="fas fa-sign-out-alt me-2"></i>Leave This House
+                <i class="fas fa-sign-out-alt me-2"></i>Request to Leave
             </button>
         </div>
     </div>
@@ -764,31 +764,30 @@ require_once '../includes/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    <strong>Warning:</strong> This action cannot be undone!
-                </div>
-                
-                <p>Are you sure you want to leave <strong><?php echo htmlspecialchars($house['house_name']); ?></strong>?</p>
-                
                 <?php if ($_SESSION['role'] === 'manager'): ?>
                 <div class="alert alert-warning">
                     <i class="fas fa-crown me-2"></i>
-                    <strong>As a manager</strong>, leaving the house will:
+                    <strong>Before leaving <?php echo htmlspecialchars($house['house_name']); ?>:</strong>
                     <ul class="mb-0 mt-2">
-                        <li>Remove all your administrative privileges</li>
-                        <li>You'll need to join another house or create a new one</li>
-                        <li>The house will remain active for other members</li>
+                        <li>Appoint another active member as manager in Manage Members.</li>
+                        <li>Change your own account role back to Member.</li>
+                        <li>Then submit a leave request from Member Settings. The new manager must approve it before you can join another house.</li>
                     </ul>
+                </div>
+                <?php else: ?>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Your leave request will be reviewed by the house manager. After approval, you can join another house.
                 </div>
                 <?php endif; ?>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form method="POST" action="leave_house.php" style="display: inline;">
-                    <input type="hidden" name="house_id" value="<?php echo $house_id; ?>">
-                    <button type="submit" class="btn btn-danger">Leave House</button>
-                </form>
+                <?php if ($_SESSION['role'] === 'manager'): ?>
+                <a href="members.php" class="btn btn-primary">Manage Members</a>
+                <?php else: ?>
+                <a href="../member/leave_request.php" class="btn btn-danger">Continue to Leave Request</a>
+                <?php endif; ?>
             </div>
         </div>
     </div>

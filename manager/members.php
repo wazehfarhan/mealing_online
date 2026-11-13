@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
+require_once '../includes/csrf.php';
 
 $auth = new Auth();
 $functions = new Functions();
@@ -26,6 +27,7 @@ if (!$house_id) {
 $page_title = "Manage Members";
 
 $conn = getConnection();
+$csrf_token = generateCSRFToken();
 
 // Handle member deletion/removal
 if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
@@ -35,7 +37,8 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     $check_sql = "SELECT m.*, 
                   (SELECT COUNT(*) FROM meals WHERE member_id = m.member_id) as meal_count,
                   (SELECT COUNT(*) FROM deposits WHERE member_id = m.member_id) as deposit_count,
-                  (SELECT COUNT(*) FROM users WHERE member_id = m.member_id) as user_count
+                  (SELECT COUNT(*) FROM users WHERE member_id = m.member_id AND house_id = m.house_id) as user_count,
+                  (SELECT COUNT(*) FROM users WHERE member_id = m.member_id AND house_id = m.house_id AND role = 'manager') as manager_account_count
                   FROM members m 
                   WHERE m.member_id = ? AND m.house_id = ?";
     $check_stmt = mysqli_prepare($conn, $check_sql);
@@ -47,6 +50,12 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     
     if (!$member) {
         $_SESSION['error'] = "Member not found or you don't have permission to delete this member";
+        header("Location: members.php");
+        exit();
+    }
+
+    if ((int) $member['manager_account_count'] > 0) {
+        $_SESSION['error'] = "Change this account to a member before deactivating or removing it.";
         header("Location: members.php");
         exit();
     }
@@ -142,12 +151,22 @@ $house = mysqli_fetch_assoc($house_result);
 mysqli_stmt_close($house_stmt);
 $house_name = $house ? $house['house_name'] : 'Unknown House';
 
+$manager_count_stmt = mysqli_prepare(
+    $conn,
+    "SELECT COUNT(*) AS manager_count FROM users WHERE house_id = ? AND role = 'manager' AND is_active = 1"
+);
+mysqli_stmt_bind_param($manager_count_stmt, "i", $house_id);
+mysqli_stmt_execute($manager_count_stmt);
+$manager_count_result = mysqli_stmt_get_result($manager_count_stmt);
+$active_manager_count = (int) (mysqli_fetch_assoc($manager_count_result)['manager_count'] ?? 0);
+mysqli_stmt_close($manager_count_stmt);
+
 // Get all members for current house only
 // Show members with different statuses
 $sql = "SELECT m.*, u.username as created_by_name,
         (SELECT COUNT(*) FROM meals WHERE member_id = m.member_id) as meal_count,
         (SELECT COUNT(*) FROM deposits WHERE member_id = m.member_id) as deposit_count,
-        (SELECT COUNT(*) FROM users WHERE member_id = m.member_id) as user_count
+        (SELECT COUNT(*) FROM users WHERE member_id = m.member_id AND house_id = m.house_id) as user_count
         FROM members m 
         LEFT JOIN users u ON m.created_by = u.user_id 
         WHERE m.house_id = ?
@@ -266,10 +285,14 @@ mysqli_stmt_close($prev_members_stmt);
                             <?php foreach ($members as $member): 
                                 // Get user account info
                                 $user_account = null;
-                                $user_sql = "SELECT username, is_active FROM users WHERE member_id = ?";
+                                $user_sql = "SELECT user_id, username, is_active, role
+                                             FROM users
+                                             WHERE member_id = ? AND house_id = ?
+                                             ORDER BY user_id ASC
+                                             LIMIT 1";
                                 $user_stmt = mysqli_prepare($conn, $user_sql);
                                 if ($user_stmt) {
-                                    mysqli_stmt_bind_param($user_stmt, "i", $member['member_id']);
+                                    mysqli_stmt_bind_param($user_stmt, "ii", $member['member_id'], $house_id);
                                     mysqli_stmt_execute($user_stmt);
                                     $user_result = mysqli_stmt_get_result($user_stmt);
                                     $user_account = mysqli_fetch_assoc($user_result);
@@ -278,6 +301,14 @@ mysqli_stmt_close($prev_members_stmt);
                                 
                                 $has_records = ($member['meal_count'] > 0 || $member['deposit_count'] > 0);
                                 $can_delete = (!$has_records && $member['user_count'] == 0);
+                                $can_make_manager = $user_account
+                                    && $user_account['role'] === 'member'
+                                    && (int) $user_account['is_active'] === 1
+                                    && $member['status'] === 'active'
+                                    && $member['house_status'] === 'active';
+                                $can_make_member = $user_account
+                                    && $user_account['role'] === 'manager'
+                                    && $active_manager_count > ((int) $user_account['is_active'] === 1 ? 1 : 0);
                             ?>
                             <tr>
                                 <td><?php echo $counter++; ?></td>
@@ -306,6 +337,12 @@ mysqli_stmt_close($prev_members_stmt);
                                 <td>
                                     <?php if ($user_account): ?>
                                         <span class="badge bg-success">Linked</span>
+                                        <span class="badge bg-<?php echo $user_account['role'] === 'manager' ? 'primary' : 'secondary'; ?>">
+                                            <?php echo htmlspecialchars(ucfirst($user_account['role'])); ?>
+                                        </span>
+                                        <?php if ((int) $user_account['is_active'] !== 1): ?>
+                                        <span class="badge bg-warning text-dark">Disabled</span>
+                                        <?php endif; ?>
                                     <?php elseif (!empty($member['join_token']) && strtotime($member['token_expiry']) > time()): ?>
                                         <span class="badge bg-warning text-dark">Invited</span>
                                     <?php elseif (!empty($member['join_token'])): ?>
@@ -334,7 +371,26 @@ mysqli_stmt_close($prev_members_stmt);
                                            class="btn btn-info" title="View Report">
                                             <i class="fas fa-chart-bar"></i>
                                         </a>
-                                        <?php if ($member['status'] == 'active' || $can_delete): ?>
+                                        <?php if ($can_make_manager || $can_make_member): ?>
+                                        <?php $target_role = $can_make_manager ? 'manager' : 'member'; ?>
+                                        <form method="POST" action="change_member_role.php" class="d-inline"
+                                              onsubmit="return confirm('Change this account role to <?php echo $target_role; ?>?');">
+                                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                            <input type="hidden" name="member_id" value="<?php echo (int) $member['member_id']; ?>">
+                                            <input type="hidden" name="target_role" value="<?php echo $target_role; ?>">
+                                            <button type="submit" class="btn btn-outline-primary"
+                                                    title="<?php echo $target_role === 'manager' ? 'Make manager' : 'Make member'; ?>">
+                                                <i class="fas <?php echo $target_role === 'manager' ? 'fa-user-shield' : 'fa-user'; ?> me-1"></i>
+                                                <?php echo $target_role === 'manager' ? 'Make manager' : 'Make member'; ?>
+                                            </button>
+                                        </form>
+                                        <?php elseif ($user_account && $user_account['role'] === 'manager'): ?>
+                                        <span class="badge bg-warning text-dark" title="Another active manager must remain in the house">
+                                            Last manager
+                                        </span>
+                                        <?php endif; ?>
+                                        <?php if (($member['status'] == 'active' || $can_delete)
+                                            && (!$user_account || $user_account['role'] !== 'manager')): ?>
                                         <button type="button" class="btn btn-danger" 
                                                 onclick="confirmDelete(<?php echo $member['member_id']; ?>, '<?php echo addslashes($member['name']); ?>', <?php echo $has_records ? 'true' : 'false'; ?>, <?php echo $member['user_count'] > 0 ? 'true' : 'false'; ?>)"
                                                 title="<?php echo $can_delete ? 'Permanently Delete' : 'Deactivate Member'; ?>">
@@ -367,6 +423,7 @@ mysqli_stmt_close($prev_members_stmt);
                                     </li>
                                     <li>Deactivated members' data is preserved for historical reports</li>
                                     <li>Members with pending leave requests will appear here until approved</li>
+                                    <li>Promote an active, linked member to manager. Keep another active manager before demoting one.</li>
                                 </ul>
                             </div>
                         </div>

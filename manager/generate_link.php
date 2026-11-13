@@ -2,14 +2,15 @@
 require_once '../includes/auth.php';
 require_once '../includes/functions.php';
 require_once '../includes/csrf.php';
-require_once '../includes/header.php';
 
 $auth = new Auth();
 $functions = new Functions();
 
 $auth->requireRole('manager');
 
+$csrf_token = generateCSRFToken();
 $page_title = "Generate Join Link";
+require_once '../includes/header.php';
 
 $conn = getConnection();
 
@@ -346,6 +347,7 @@ $transfer_tokens = mysqli_fetch_all($tokens_result, MYSQLI_ASSOC);
                     </div>
                     <div class="card-body">
                         <form method="POST" action="" class="row g-3">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                             <div class="col-md-8">
                                 <select class="form-select" name="member_id" required>
                                     <option value="">Select Member</option>
@@ -388,6 +390,7 @@ $transfer_tokens = mysqli_fetch_all($tokens_result, MYSQLI_ASSOC);
                             Members with existing active links will be skipped.
                         </div>
                         <form method="POST" action="">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                             <input type="hidden" name="generate_all" value="1">
                             <div class="d-grid">
                                 <button type="submit" class="btn btn-success btn-lg">
@@ -468,6 +471,7 @@ $transfer_tokens = mysqli_fetch_all($tokens_result, MYSQLI_ASSOC);
                                                     <i class="fas fa-copy"></i>
                                                 </button>
                                                 <form method="POST" action="" style="display: inline;">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                                     <input type="hidden" name="member_id" value="<?php echo $member['member_id']; ?>">
                                                     <button type="submit" class="btn btn-warning" title="Regenerate">
                                                         <i class="fas fa-sync"></i>
@@ -516,6 +520,7 @@ $transfer_tokens = mysqli_fetch_all($tokens_result, MYSQLI_ASSOC);
                                                 <?php endif; ?>
                                             </div>
                                             <form method="POST" action="" class="mb-0">
+                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                                 <input type="hidden" name="member_id" value="<?php echo $member['member_id']; ?>">
                                                 <button type="submit" class="btn btn-danger btn-sm">
                                                     <i class="fas fa-sync me-1"></i>Regenerate
@@ -587,6 +592,7 @@ $transfer_tokens = mysqli_fetch_all($tokens_result, MYSQLI_ASSOC);
                         <?php endif; ?>
                         
                         <form method="POST" action="">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                             <input type="hidden" name="generate_transfer_token" value="1">
                             <div class="d-grid">
                                 <button type="submit" class="btn btn-purple btn-lg">

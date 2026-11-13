@@ -7,6 +7,7 @@ require_once '../includes/csrf.php';
 $auth = new Auth();
 $auth->requireRole('manager');
 
+$csrf_token = generateCSRFToken();
 $page_title = "Approve House Requests";
 
 $conn = getConnection();
@@ -559,6 +560,7 @@ require_once '../includes/header.php';
                                     <div class="btn-group">
                                         <?php if (isset($request['today_meals']) && $request['today_meals'] == 0): ?>
                                         <form method="POST" action="" class="d-inline">
+                                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                             <input type="hidden" name="member_id" value="<?php echo $request['member_id']; ?>">
                                             <input type="hidden" name="action" value="approve">
                                             <button type="submit" class="btn btn-success btn-sm" 
@@ -584,6 +586,7 @@ require_once '../includes/header.php';
                                                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                                 </div>
                                                 <form method="POST" action="">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                                     <div class="modal-body">
                                                         <p>Reject leave request for <strong><?php echo htmlspecialchars($request['name'] ?? ''); ?></strong>?</p>
                                                         <div class="mb-3">
@@ -664,6 +667,7 @@ require_once '../includes/header.php';
                                     <div class="btn-group">
                                         <?php if (isset($request['requested_house_name']) && $request['requested_house_name']): ?>
                                         <form method="POST" action="" class="d-inline">
+                                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                             <input type="hidden" name="member_id" value="<?php echo $request['member_id']; ?>">
                                             <input type="hidden" name="action" value="approve">
                                             <button type="submit" class="btn btn-success btn-sm"
@@ -689,6 +693,7 @@ require_once '../includes/header.php';
                                                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                                 </div>
                                                 <form method="POST" action="">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                                     <div class="modal-body">
                                                         <p>Reject join request for <strong><?php echo htmlspecialchars($request['name'] ?? ''); ?></strong>?</p>
                                                         <p>

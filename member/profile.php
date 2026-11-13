@@ -4,12 +4,11 @@ require_once '../includes/functions.php';
 require_once '../includes/csrf.php';
 $page_title = "My Profile";
 
-require_once '../includes/header.php';
-
 $auth = new Auth();
 $functions = new Functions();
 
 $auth->requireRole('member');
+require_once '../includes/header.php';
 
 $conn = getConnection();
 $user_id = $_SESSION['user_id'];
